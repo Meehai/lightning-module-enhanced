@@ -1,19 +1,17 @@
 """Generic Pytorch Lightning Graph module on top of a Graph module"""
 from typing import Dict, Callable, List, Union, Any
-from pytorch_lightning import Callback
-from torchmetrics import Metric
-import pytorch_lightning as pl
+from overrides import overrides
+import logging as logger
 import torch as tr
 from torch import optim, nn
 from torchinfo import summary
-from overrides import overrides
-
-from ..torch import tr_get_data, tr_to_device
-from ..logger import logger
+from pytorch_lightning import Callback, LightningModule
+from torchmetrics import Metric
+from nwutils.torch import tr_get_data, tr_to_device
 
 
 # pylint: disable=too-many-ancestors, arguments-differ, unused-argument, abstract-method
-class PLModule(pl.LightningModule):
+class PLModule(LightningModule):
     """Pytorch Lightning module class for Graphs"""
     def __init__(self, base_model: nn.Module, *args, **kwargs):
         assert isinstance(base_model, nn.Module)
