@@ -1,3 +1,3 @@
 """Init module"""
 
-from .pl_module import PLModule
+from .lightning_module_enhanced import LightningModuleEnhanced

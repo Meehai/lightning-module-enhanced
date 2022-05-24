@@ -11,8 +11,8 @@ from nwutils.torch import tr_get_data, tr_to_device
 
 
 # pylint: disable=too-many-ancestors, arguments-differ, unused-argument, abstract-method
-class PLModule(LightningModule):
-    """Pytorch Lightning module class for Graphs"""
+class LightningModuleEnhanced(LightningModule):
+    """Pytorch Lightning module enhanced"""
     def __init__(self, base_model: nn.Module, *args, **kwargs):
         assert isinstance(base_model, nn.Module)
         super().__init__()
@@ -34,6 +34,19 @@ class PLModule(LightningModule):
     def device(self):
         return next(self.base_model.parameters()).device
 
+    def forward(self, *args, **kwargs):
+        tr_args = tr_to_device(args, self.device)
+        tr_kwargs = tr_to_device(kwargs, self.device)
+        return self.base_model.forward(*tr_args, **tr_kwargs)
+
+    def np_forward(self, *args, **kwargs):
+        """Forward numpy data to the model, returns whatever the model returns, usually torch data"""
+        tr_args = tr_get_data(args)
+        tr_kwargs = tr_get_data(kwargs)
+        with tr.no_grad():
+            y_tr = self.forward(*tr_args, **tr_kwargs)
+        return y_tr
+
     def generic_train_step(self, train_batch: Dict, prefix: str):
         """Generic step for computing the forward pass during training."""
         x = train_batch["data"]
@@ -43,7 +56,6 @@ class PLModule(LightningModule):
     def _generic_get_outputs(self, y, gt, prefix: str):
         loss = self.criterion_fn(y, gt)
         outputs = {f"{prefix}loss": loss}
-        y = y.detach()
         for metric_name, metric_callback in self.metrics.items():
             outputs[f"{prefix}{metric_name}"] = metric_callback(y, gt)
         for metric_name in self.logged_metrics:
@@ -55,18 +67,6 @@ class PLModule(LightningModule):
         y = self.generic_train_step(train_batch, prefix)
         gt = tr_to_device(tr_get_data(train_batch["labels"]), self.device)
         return self._generic_get_outputs(y, gt, prefix)
-
-    def forward(self, *args, **kwargs):
-        """Model's forward pass."""
-        return self.base_model.forward(*args, **kwargs)
-
-    def np_forward(self, *args, **kwargs):
-        """Forward numpy data to the model, returns whatever the model returns, usually torch data"""
-        tr_args = tr_to_device(tr_get_data(args), self.device)
-        tr_kwargs = tr_to_device(tr_get_data(kwargs), self.device)
-        with tr.no_grad():
-            y_tr = self.base_model.forward(*tr_args, **tr_kwargs)
-        return y_tr
 
     @overrides
     def training_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs) -> Union[tr.Tensor, Dict[str, Any]]:
