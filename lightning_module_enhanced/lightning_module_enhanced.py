@@ -1,5 +1,5 @@
 """Generic Pytorch Lightning Graph module on top of a Graph module"""
-from typing import Dict, Callable, List, Union, Any
+from typing import Dict, Callable, List, Union, Any, Sequence
 from overrides import overrides
 import logging as logger
 import torch as tr
@@ -27,7 +27,7 @@ class LightningModuleEnhanced(LightningModule):
         self.callbacks: List[Callback] = []
 
     @overrides
-    def configure_callbacks(self):
+    def configure_callbacks(self) -> Union[Sequence[Callback], Callback]:
         return self.callbacks
 
     @property
