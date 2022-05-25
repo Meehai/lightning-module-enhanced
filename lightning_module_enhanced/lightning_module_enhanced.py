@@ -47,7 +47,7 @@ class LightningModuleEnhanced(LightningModule):
             y_tr = self.forward(*tr_args, **tr_kwargs)
         return y_tr
 
-    def generic_train_step(self, train_batch: Dict, prefix: str):
+    def generic_train_step(self, train_batch: Dict):
         """Generic step for computing the forward pass during training."""
         x = train_batch["data"]
         y = self.forward(x)
@@ -64,7 +64,7 @@ class LightningModuleEnhanced(LightningModule):
 
     def _generic_step(self, train_batch: Dict, prefix: str = ""):
         """Generic step for computing the forward pass, loss and metrics."""
-        y = self.generic_train_step(train_batch, prefix)
+        y = self.generic_train_step(train_batch)
         gt = tr_to_device(tr_get_data(train_batch["labels"]), self.device)
         return self._generic_get_outputs(y, gt, prefix)
 

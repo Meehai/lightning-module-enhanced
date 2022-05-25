@@ -1,10 +1,9 @@
-"""Module to create a plot callback for train and/or validation for a PLModule"""
+"""Module to create a plot callback for train and/or validation for a Lightning Module"""
 from typing import Callable
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import Callback
 from pathlib import Path
 import torch as tr
-from nwutils.torch import tr_to_device
 from ..lightning_module_enhanced import LightningModuleEnhanced
 
 class PlotCallback(Callback):
@@ -23,5 +22,6 @@ class PlotCallback(Callback):
         x, gt = batch["data"], batch["labels"]
         with tr.no_grad():
             y = pl_module.forward(x)
+        breakpoint()
         
         self.plot_callback(x=x, y=y, gt=gt, out_dir=out_dir)
