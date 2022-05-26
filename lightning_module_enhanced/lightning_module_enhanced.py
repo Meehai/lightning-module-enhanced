@@ -57,7 +57,8 @@ class LightningModuleEnhanced(LightningModule):
         loss = self.criterion_fn(y, gt)
         outputs = {f"{prefix}loss": loss}
         for metric_name, metric_callback in self.metrics.items():
-            outputs[f"{prefix}{metric_name}"] = metric_callback(y, gt)
+            with tr.no_grad():
+                outputs[f"{prefix}{metric_name}"] = metric_callback(y, gt)
         for metric_name in self.logged_metrics:
             self.log(f"{prefix}{metric_name}", outputs[f"{prefix}{metric_name}"], prog_bar=True, on_step=True)
         return outputs
