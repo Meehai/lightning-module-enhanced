@@ -1,7 +1,6 @@
 """Generic Pytorch Lightning Graph module on top of a Graph module"""
 from typing import Dict, Callable, List, Union, Any, Sequence
 from overrides import overrides
-import logging as logger
 import torch as tr
 from torch import optim, nn
 from torchinfo import summary
@@ -9,6 +8,7 @@ from pytorch_lightning import Callback, LightningModule
 from torchmetrics import Metric
 from nwutils.torch import tr_get_data, tr_to_device
 
+from .logger import logger
 
 # pylint: disable=too-many-ancestors, arguments-differ, unused-argument, abstract-method
 class LightningModuleEnhanced(LightningModule):
@@ -158,3 +158,7 @@ class LightningModuleEnhanced(LightningModule):
             "rmsprop": optim.RMSprop
         }[train_cfg["optimizer"]["type"]]
         self.optimizer = optimizer_type(self.base_model.parameters(), **train_cfg["optimizer"]["args"])
+        logger.info(f"Setting optimizer to {self.optimizer}")
+
+        if "scheduler" in train_cfg:
+            logger.info("Scheduler not yet implemented")
