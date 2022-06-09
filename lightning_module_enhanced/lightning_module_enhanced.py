@@ -130,7 +130,7 @@ class LightningModuleEnhanced(LightningModule):
 
     def summary(self, **kwargs) -> str:
         """Prints the summary (layers, num params, size in MB), with the help of torchinfo module."""
-        self._summary = summary(self, verbose=0, **kwargs) if self._summary is None else self._summary
+        self._summary = summary(self.base_model, verbose=0, **kwargs) if self._summary is None else self._summary
         return self._summary
 
     def get_num_params(self) -> int:
