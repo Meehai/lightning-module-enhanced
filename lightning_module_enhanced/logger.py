@@ -2,7 +2,6 @@
 
 import os
 import logging
-from tqdm import trange
 
 KEY = "LIGHTNING_MODULE_ENHANCED"
 ENV_KEY = f"{KEY}_LOGLEVEL"
@@ -12,29 +11,6 @@ env_var = int(os.environ[ENV_KEY]) if ENV_KEY in os.environ else 2
 logging.DEBUG2 = 3
 loglevel = {0: logging.NOTSET, 1: logging.INFO, 2: logging.DEBUG, 3: logging.DEBUG2}[env_var]
 logging.addLevelName(logging.DEBUG2, "DEBUG-VERBOSE")
-
-
-class drange:
-    """Use `drange` instead of `range` and `tqdm.trange`.
-    If {Key}_TQDM is set to 1, `drange` will call `trange`, otherwise will call `range`.
-    """
-
-    def __init__(self, *args, **kwargs):
-        tqdm_key = f"{KEY}_TQDM"
-        self.env_var = bool(int(os.environ[tqdm_key])) if tqdm_key in os.environ else True
-        self.range = trange(*args, **kwargs) if self.env_var else range(*args)
-
-    def __iter__(self):
-        return self.range.__iter__()
-
-    # def __next__(self):
-    #     return self.range.__next__()
-
-    def set_description(self, *args, **kwargs):
-        """Set description."""
-        if self.env_var:
-            self.range.set_description(*args, **kwargs)
-
 
 class CustomFormatter(logging.Formatter):
     """Custom formatting for logger."""
