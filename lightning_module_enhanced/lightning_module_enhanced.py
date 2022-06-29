@@ -188,9 +188,9 @@ class LightningModuleEnhanced(LightningModule):
         for metric_name in self.logged_metrics:
             prefixed_metric_name = f"{prefix}{metric_name}"
             metric_fn: Metric = self.metrics[prefixed_metric_name]
-            metric_output = metric_fn.update(y, gt)
+            metric_output = metric_fn.forward(y, gt)
             outputs[prefixed_metric_name] = metric_output
-            if metric_fn.compute_on_step:
+            if metric_output is not None:
                 self.log(prefixed_metric_name, outputs[prefixed_metric_name], prog_bar=True, on_step=True)
         return outputs
 
@@ -202,7 +202,7 @@ class LightningModuleEnhanced(LightningModule):
             val_logged_metrics = [f"val_{metric_name}" for metric_name in logged_metrics]
             logged_metrics = [*logged_metrics, *val_logged_metrics]
         for metric_name in logged_metrics:
-            metric_fn = self.metrics[metric_name]
+            metric_fn: Metric = self.metrics[metric_name]
             metric_epoch_result = metric_fn.compute()
             self.log(metric_name, metric_epoch_result, on_epoch=True)
             # Reset the metric after storing this epoch's value

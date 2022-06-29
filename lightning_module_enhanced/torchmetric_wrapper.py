@@ -7,7 +7,7 @@ import torch as tr
 class TorchMetricWrapper(Metric):
     """Wrapper for a regular callable torch metric"""
     def __init__(self, metric_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor], higher_is_better: bool):
-        super().__init__(compute_on_step=True)
+        super().__init__()
         assert isinstance(metric_fn, Callable)
         self.metric_fn = metric_fn
         self.batch_results = tr.FloatTensor([0])
@@ -15,13 +15,17 @@ class TorchMetricWrapper(Metric):
         self._higher_is_better = higher_is_better
 
     @overrides(check_signature=False)
-    def update(self, preds: tr.Tensor, target: tr.Tensor) -> None:
+    def forward(self, preds: tr.Tensor, target: tr.Tensor) -> tr.Tensor:
         """This is called at each batch end. It must be a number so .item() works."""
         batch_res = self.metric_fn(preds, target)
+        self.update(batch_res)
+        return batch_res
+
+    @overrides(check_signature=False)
+    def update(self, batch_res) -> None:
         batch_res_number = batch_res.item()
         self.batch_results += batch_res_number
         self.batch_count += 1
-        return batch_res
 
     @overrides
     def compute(self) -> tr.Tensor:
