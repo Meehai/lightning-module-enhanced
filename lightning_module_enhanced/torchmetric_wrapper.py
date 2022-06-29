@@ -6,12 +6,13 @@ import torch as tr
 
 class TorchMetricWrapper(Metric):
     """Wrapper for a regular callable torch metric"""
-    def __init__(self, metric_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor]):
+    def __init__(self, metric_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor], higher_is_better: bool):
         super().__init__(compute_on_step=True)
         assert isinstance(metric_fn, Callable)
         self.metric_fn = metric_fn
         self.batch_results = tr.FloatTensor([0])
         self.batch_count = tr.IntTensor([0])
+        self._higher_is_better = higher_is_better
 
     @overrides(check_signature=False)
     def update(self, preds: tr.Tensor, target: tr.Tensor) -> None:

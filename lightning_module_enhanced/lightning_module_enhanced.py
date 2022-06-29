@@ -1,5 +1,5 @@
 """Generic Pytorch Lightning Graph module on top of a Graph module"""
-from typing import Dict, Callable, List, Union, Any, Sequence
+from typing import Dict, Callable, List, Union, Any, Sequence, Tuple
 from copy import deepcopy
 from overrides import overrides
 import torch as tr
@@ -73,19 +73,21 @@ class LightningModuleEnhanced(LightningModule):
         return self._metrics
 
     @metrics.setter
-    def metrics(self, metrics: Dict[str, Callable]):
+    def metrics(self, metrics: Dict[str, Tuple[Callable, str]]):
         if len(self._metrics) != 0:
             logger.info(f"Overwriting existing metrics: {list(metrics.keys())}")
         self._metrics = {}
         for metric_name, metric_fn in metrics.items():
-            assert isinstance(metric_fn, (Metric, Callable)), \
-                f"Unknown metric type: '{type(metric_fn)}'. Expcted torchmetrics.Metric or Callable."
+            assert isinstance(metric_fn, (Metric, Tuple)), \
+                f"Unknown metric type: '{type(metric_fn)}'. Expcted torchmetrics.Metric or Tuple[Callable, str]."
             if not isinstance(metric_fn, Metric):
                 logger.debug(f"Metric '{metric_name}' is a callable. Converting to torchmetrics.Metric.")
-                metric_fn = TorchMetricWrapper(metric_fn)
+                metric_fn, min_or_max = metric_fn
+                assert isinstance(metric_fn, Callable) and isinstance(min_or_max, str) and min_or_max in ("min", "max")
+                metric_fn = TorchMetricWrapper(metric_fn, higher_is_better = min_or_max == "max")
 
             self._metrics[metric_name] = metric_fn
-        self._metrics["loss"] = TorchMetricWrapper(self.criterion_fn)
+        self._metrics["loss"] = TorchMetricWrapper(self.criterion_fn, higher_is_better=False)
         self._metrics["loss"]._enable_grad = True
         self.logged_metrics = list(self._metrics.keys())
 
@@ -100,19 +102,17 @@ class LightningModuleEnhanced(LightningModule):
         assert len(diff) == 0, f"Metrics {diff} are not in set metrics: {self._metrics.keys()}"
         self._logged_metrics = logged_metrics
 
-    # Pytorch lightning overrides
-
     @overrides
-    def on_train_start(self) -> None:
+    def on_fit_start(self) -> None:
         # We need to make a copy for all metrics if we have a validation dataloader, such that the global statistics
         #  are unique for each of these datasets.
         new_metrics = self.metrics
         prefix = "val_"
-        if len(self.trainer.val_dataloaders) > 0:
+        if self.trainer.enable_validation:
             for metric_name in self.logged_metrics:
                 new_metrics[f"{prefix}{metric_name}"] = deepcopy(self.metrics[metric_name])
         self._metrics = new_metrics
-        return super().on_train_start()
+        return super().on_fit_start()
 
     @overrides
     def training_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs) -> Union[tr.Tensor, Dict[str, Any]]:
@@ -196,7 +196,7 @@ class LightningModuleEnhanced(LightningModule):
     def _on_epoch_end(self):
         """Get epoch-level metrics"""
         logged_metrics = self.logged_metrics
-        if len(self.trainer.val_dataloaders) > 0:
+        if self.trainer.enable_validation:
             val_logged_metrics = [f"val_{metric_name}" for metric_name in logged_metrics]
             logged_metrics = [*logged_metrics, *val_logged_metrics]
         for metric_name in logged_metrics:

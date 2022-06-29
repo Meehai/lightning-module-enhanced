@@ -9,72 +9,53 @@ class PlotMetrics(Callback):
     """Plot metrics implementation"""
     def __init__(self):
         self.history: Dict[str, List[float]] = None
-        self.current_epoch_results: Dict[str, List[float]] = None
 
-    def _generic_on_batch_end(self, prefix, outputs):
-        assert prefix in ("train", "val")
-        metrics = outputs.keys()
-        # Sometimes they are "val_loss", sometimes (for train) just "loss".
-        unprefixed = ["_".join(metric.split("_")[1: ]) if metric.startswith(prefix) else metric for metric in metrics]
-        if self.current_epoch_results is None:
-            self.current_epoch_results = {u_metric: {"train": [], "val": []} for u_metric in unprefixed}
-        for unprefixed_metric, metric in zip(unprefixed, metrics):
-            value = float(outputs[metric].detach().to("cpu"))
-            self.current_epoch_results[unprefixed_metric][prefix].append(value)
+    def _plot_best_dot(self, pl_module, metric_name):
+        """Plot the dot. We require to know if the metric is max or min typed."""
+        metric = pl_module.metrics[metric_name]
+        higher_is_better = False
+        if type(metric).higher_is_better is not None:
+            higher_is_better = type(metric).higher_is_better
+        else:
+            if hasattr(metric, "_higher_is_better"):
+                higher_is_better = metric._higher_is_better
+        metric_history = self.history[metric_name]
+        scores = metric_history["val"] if metric_history["val"][0] is not None else metric_history["train"]
+        metric_x = np.argmax(scores) if higher_is_better else np.argmin(scores)
+        metric_y = scores[metric_x]
+        plt.annotate(f"Epoch {metric_x + 1}\nMax {metric_y:.2f}", xy=(metric_x + 1, metric_y))
+        plt.plot([metric_x + 1], [metric_y], "o")
 
-    @overrides
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
-        self._generic_on_batch_end(prefix="val", outputs=outputs)
-
-    @overrides
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, unused=False):
-        self._generic_on_batch_end(prefix="train", outputs=outputs)
-
-    @staticmethod
-    def _do_plot(metric_history, metric, out_file):
+    def _do_plot(self, pl_module, metric_name: str, out_file: str):
+        """Plot the figure with the metric"""
         plt.figure()
+        metric_history = self.history[metric_name]
         _range = range(1, len(metric_history["train"]) + 1)
         plt.plot(_range, metric_history["train"], label="train")
         if None not in metric_history["val"]:
             plt.plot(_range, metric_history["val"], label="validation")
+        self._plot_best_dot(pl_module, metric_name)
         plt.xlabel("Epoch")
-        plt.ylabel(metric)
+        plt.ylabel(metric_name)
         plt.legend()
         plt.savefig(out_file)
         plt.close()
 
-    def _generic_on_epoch_end(self, out_dir, current_epoch):
-        if self.history is None:
-            self.history = {metric: {"train": [], "val": []} for metric in self.current_epoch_results.keys()}
-        if current_epoch < len(self.history["loss"]["train"]):
-            return
-        assert self.current_epoch_results is not None
-        # Validation sanity check stuff
-        if len(self.current_epoch_results["loss"]["train"]) == 0:
-            return
-
-        for metric in self.current_epoch_results.keys():
-            train_mean = np.mean(self.current_epoch_results[metric]["train"])
-            val_res = self.current_epoch_results[metric]["val"]
-            val_mean = np.mean(val_res) if len(val_res) > 0 else None
-            assert len(self.history[metric]["train"]) == len(self.history[metric]["val"]) == current_epoch
-            self.history[metric]["train"].append(train_mean)
-            self.history[metric]["val"].append(val_mean)
-
-            out_file = f"{out_dir}/{metric}.png"
-            PlotMetrics._do_plot(self.history[metric], metric, out_file)
-        self.current_epoch_results = None
-
-    @overrides
-    def on_validation_epoch_end(self, trainer, pl_module):
-        self._generic_on_epoch_end(trainer.logger.log_dir, trainer.current_epoch)
-
     @overrides
     def on_train_epoch_end(self, trainer, pl_module):
-        # Call _generic_on_epoch_end only if there is no validation dataset.
-        if trainer.val_dataloaders is not None and len(trainer.val_dataloaders) > 0:
-            return
-        self._generic_on_epoch_end(trainer.logger.log_dir, trainer.current_epoch)
+        relevant_metrics = {k: v for k, v in trainer.logged_metrics.items()
+                            if not (k.endswith("_epoch") or k.endswith("_step"))}
+        non_val_metrics = list(filter(lambda name: not name.startswith("val_"), relevant_metrics.keys()))
+        if self.history is None:
+            self.history = {metric: {"train": [], "val": []} for metric in non_val_metrics}
+
+        for metric_name in non_val_metrics:
+            self.history[metric_name]["train"].append(relevant_metrics[metric_name].item())
+            val_number = relevant_metrics[f"val_{metric_name}"].item() if trainer.enable_validation else None
+            self.history[metric_name]["val"].append(val_number)
+
+            out_file = f"{trainer.logger.log_dir}/{metric_name}.png"
+            self._do_plot(pl_module, metric_name, out_file)
 
     @overrides
     def state_dict(self) -> Dict[str, Any]:
