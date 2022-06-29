@@ -1,0 +1,16 @@
+image: python:3.9-bullseye
+
+before_script:
+  - apt-get update
+  - export PYTHONPATH="$PYTHONPATH:`pwd`"
+  - pip install -r requirements.txt
+  - pip install pylint pytest
+
+test:
+  script:
+  - cd test/
+  - python -m pytest .
+
+# pylint:
+#   script:
+#   - python -m pylint --rcfile=.pylintrc --ignore=.pylintrc nwutils/
