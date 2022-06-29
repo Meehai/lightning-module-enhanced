@@ -2,3 +2,4 @@ pytorch_lightning>=1.6
 torch>=1.10
 torchinfo
 overrides
+git+https://gitlab.com/neuralwrappers/nwutils/#egg=nwutils
