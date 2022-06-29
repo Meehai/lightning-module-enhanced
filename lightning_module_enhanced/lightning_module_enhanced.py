@@ -78,13 +78,15 @@ class LightningModuleEnhanced(LightningModule):
             logger.info(f"Overwriting existing metrics: {list(metrics.keys())}")
         self._metrics = {}
         for metric_name, metric_fn in metrics.items():
-            assert isinstance(metric_fn, (Metric, Tuple)), \
-                f"Unknown metric type: '{type(metric_fn)}'. Expcted torchmetrics.Metric or Tuple[Callable, str]."
+            assert isinstance(metric_fn, (Metric, Tuple, Callable)), f"Unknown metric type: '{type(metric_fn)}'. " \
+                   "Expcted torchmetrics.Metric, Tuple[Callable, str] or Callable."
             if not isinstance(metric_fn, Metric):
                 logger.debug(f"Metric '{metric_name}' is a callable. Converting to torchmetrics.Metric.")
-                metric_fn, min_or_max = metric_fn
+                min_or_max = "min"
+                if isinstance(metric_fn, Tuple):
+                    metric_fn, min_or_max = metric_fn
                 assert isinstance(metric_fn, Callable) and isinstance(min_or_max, str) and min_or_max in ("min", "max")
-                metric_fn = TorchMetricWrapper(metric_fn, higher_is_better = min_or_max == "max")
+                metric_fn = TorchMetricWrapper(metric_fn, higher_is_better=(min_or_max == "max"))
 
             self._metrics[metric_name] = metric_fn
         self._metrics["loss"] = TorchMetricWrapper(self.criterion_fn, higher_is_better=False)
