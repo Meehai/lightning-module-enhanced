@@ -18,8 +18,8 @@ class LightningModuleEnhanced(LightningModule):
         super().__init__()
         self.save_hyperparameters({"args": args, **kwargs})
         self.base_model = base_model
-        self.optimizer = None # TODO getter/setter with string, type and instance options.
-        self.scheduler = []
+        self.optimizer = None
+        self.scheduler_dict = None
         self.criterion_fn: Callable[[tr.Tensor, tr.Tensor], float]
         self.metrics: Dict[str, Metric] = {}
         self.logged_metrics: List[str] = []
@@ -119,10 +119,14 @@ class LightningModuleEnhanced(LightningModule):
         """Configure the optimizer/scheduler/monitor."""
         if self.optimizer is None:
             raise ValueError("No optimizer has been provided. Set a torch optimizer first.")
-        if self.scheduler:
-            assert len(self.scheduler) == 2
-            return {"optimizer": self.optimizer, "lr_scheduler": self.scheduler[0], "monitor": self.scheduler[1]}
-        return {"optimizer": self.optimizer}
+
+        if self.scheduler_dict is None:
+            return {"optimizer": self.optimizer}
+
+        return {
+            "optimizer": self.optimizer,
+            "lr_scheduler": self.scheduler_dict
+        }
 
     def reset_parameters(self):
         """Resets the parameters of the base model"""
@@ -131,7 +135,7 @@ class LightningModuleEnhanced(LightningModule):
 
     def summary(self, **kwargs) -> str:
         """Prints the summary (layers, num params, size in MB), with the help of torchinfo module."""
-        self._summary = summary(self, verbose=0, **kwargs) if self._summary is None else self._summary
+        self._summary = summary(self.base_model, verbose=0, **kwargs) if self._summary is None else self._summary
         return self._summary
 
     def get_num_params(self) -> int:
@@ -149,17 +153,6 @@ class LightningModuleEnhanced(LightningModule):
             param.requires_grad_(value)
 
     def setup_module_for_train(self, train_cfg: Dict):
-        """Given a train cfg, prepare this module for training, by setting the required information
-            TODO: create a train_cfg object and make this more customizable
-        """
-        optimizer_type = {
-            "adamw": optim.AdamW,
-            "adam": optim.Adam,
-            "sgd": optim.SGD,
-            "rmsprop": optim.RMSprop
-        }[train_cfg["optimizer"]["type"]]
-        self.optimizer = optimizer_type(self.base_model.parameters(), **train_cfg["optimizer"]["args"])
-        logger.info(f"Setting optimizer to {self.optimizer}")
-
-        if "scheduler" in train_cfg:
-            logger.info("Scheduler not yet implemented")
+        """Given a train cfg, prepare this module for training, by setting the required information."""
+        from .train_setup import TrainSetup
+        TrainSetup(self, train_cfg).setup()
