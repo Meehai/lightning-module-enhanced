@@ -114,6 +114,7 @@ class LightningModuleEnhanced(LightningModule):
         """Computes average test loss and metrics for logging."""
         self._on_epoch_end(outputs)
 
+    @overrides
     def configure_optimizers(self) -> Dict:
         """Configure the optimizer/scheduler/monitor."""
         if self.optimizer is None:
