@@ -54,7 +54,7 @@ class PlotMetrics(Callback):
             val_number = relevant_metrics[f"val_{metric_name}"].item() if trainer.enable_validation else None
             self.history[metric_name]["val"].append(val_number)
 
-            out_file = f"{trainer.logger.log_dir}/{metric_name}.png"
+            out_file = f"{trainer.loggers[0].log_dir}/{metric_name}.png"
             self._do_plot(pl_module, metric_name, out_file)
 
     @overrides

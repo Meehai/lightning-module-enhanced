@@ -1,5 +1,5 @@
 """Generic Pytorch Lightning Graph module on top of a Graph module"""
-from typing import Dict, Callable, List, Union, Any, Sequence, Tuple
+from typing import Dict, Callable, List, Union, Any, Sequence, Tuple, Optional
 from copy import deepcopy
 from overrides import overrides
 import torch as tr
@@ -11,6 +11,7 @@ from nwutils.torch import tr_get_data, tr_to_device
 
 from .logger import logger
 from .torchmetric_wrapper import TorchMetricWrapper
+from .metadata_logger import MetadataLogger
 
 # pylint: disable=too-many-ancestors, arguments-differ, unused-argument, abstract-method
 class LightningModuleEnhanced(LightningModule):
@@ -30,6 +31,7 @@ class LightningModuleEnhanced(LightningModule):
         self._logged_metrics: List[str] = []
         self._summary: ModelStatistics = None
         self.callbacks: List[Callback] = []
+        self.metadata_logger: MetadataLogger = None
 
     # Getters and setters for properties
 
@@ -104,8 +106,24 @@ class LightningModuleEnhanced(LightningModule):
         assert len(diff) == 0, f"Metrics {diff} are not in set metrics: {self._metrics.keys()}"
         self._logged_metrics = logged_metrics
 
+    @overrides(check_signature=False)
+    def log(self, name: str, value: Any, prog_bar: bool = False, logger: bool = True, on_step: Optional[bool] = None,
+            on_epoch: Optional[bool] = None, *args, **kwargs):
+
+        # If it is a single value, call all the loggers
+        if isinstance(value, tr.Tensor) and len(value.shape) == 0:
+            super().log(name, value, prog_bar, logger, on_step, on_epoch, *args, **kwargs)
+        if on_epoch is not True:
+            return None
+        # Othrerwise, call just the metadata logger, but only if it applies to the epoch since we only care about
+        #  epoch metrics
+        return self.metadata_logger.save_epoch_metric(name, value, self.trainer.current_epoch)
+
     @overrides
     def on_fit_start(self) -> None:
+        self.metadata_logger = MetadataLogger(self, self.loggers[0].log_dir)
+        logger.info(f"Adding metadata logger to this model: {self.metadata_logger}")
+
         # We need to make a copy for all metrics if we have a validation dataloader, such that the global statistics
         #  are unique for each of these datasets.
         new_metrics = self.metrics
@@ -113,12 +131,17 @@ class LightningModuleEnhanced(LightningModule):
             val_metrics = self._clone_all_metrics_with_prefix(prefix="val_")
             new_metrics = {**new_metrics, **val_metrics}
         self._metrics = new_metrics
+        self.metadata_logger.save_metadata("fit_start_hparams", self.hparams)
         return super().on_fit_start()
 
     @overrides
     def on_test_start(self) -> None:
+        self.metadata_logger = MetadataLogger(self, self.loggers[0].log_dir)
+        logger.info(f"Adding metadata logger to this model: {self.metadata_logger}")
+
         test_metrics = self._clone_all_metrics_with_prefix(prefix="test_")
         self._metrics = test_metrics
+        self.metadata_logger.save_metadata("test_start_hparams", self.hparams)
         return super().on_test_start()
 
     @overrides
@@ -147,12 +170,7 @@ class LightningModuleEnhanced(LightningModule):
 
     @overrides
     def test_epoch_end(self, outputs):
-        for metric_name in self.metrics.keys():
-            metric_fn: Metric = self.metrics[metric_name]
-            metric_epoch_result = metric_fn.compute()
-            self.log(metric_name, metric_epoch_result, on_epoch=True)
-            # Reset the metric after storing this epoch's value
-            metric_fn.reset()
+        self._run_and_log_metrics_at_epoch_end(self.metrics.keys())
 
     @overrides
     def configure_optimizers(self) -> Dict:
@@ -213,8 +231,7 @@ class LightningModuleEnhanced(LightningModule):
             metric_fn.update(metric_output)
             outputs[prefixed_metric_name] = metric_output
             # Log all the numeric batch metrics. Don't show on pbar.
-            if isinstance(metric_output, tr.Tensor) and len(metric_output.shape) == 0:
-                self.log(prefixed_metric_name, metric_output, prog_bar=False, on_step=True, batch_size=1)
+            self.log(prefixed_metric_name, metric_output, prog_bar=False, on_step=True, batch_size=1)
         return outputs
 
     # pylint: disable=no-member
@@ -230,10 +247,13 @@ class LightningModuleEnhanced(LightningModule):
         """Runs and logs a given list of logged metrics. Assume they all exist in self.metrics"""
         for metric_name in metrics_to_log:
             metric_fn: Metric = self.metrics[metric_name]
+            # Get the metric's epoch result
             metric_epoch_result = metric_fn.compute()
+            # Log the metric at the end of the epoch
             self.log(metric_name, metric_epoch_result, on_epoch=True)
             # Reset the metric after storing this epoch's value
             metric_fn.reset()
+        self.metadata_logger.save()
 
     def _clone_all_metrics_with_prefix(self, prefix: str):
         """Clones all the existing metris, by ading a prefix"""
@@ -244,3 +264,4 @@ class LightningModuleEnhanced(LightningModule):
                                                        f"already has prefix '{prefix}'"
             new_metrics[f"{prefix}{metric_name}"] = deepcopy(self.metrics[metric_name])
         return new_metrics
+

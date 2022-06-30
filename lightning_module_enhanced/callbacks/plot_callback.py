@@ -13,7 +13,7 @@ class PlotCallbackGeneric(Callback):
 
     def get_out_dir(self, trainer: Trainer, dir_name: str) -> Path:
         """Gets the output directory as '/path/to/log_dir/pngs/train_or_val/epoch_N/' """
-        logger = trainer.logger
+        logger = trainer.loggers[0]
         out_dir = Path(f"{logger.log_dir}/pngs/{dir_name}/{trainer.current_epoch}")
         out_dir.mkdir(exist_ok=True, parents=True)
         return out_dir
