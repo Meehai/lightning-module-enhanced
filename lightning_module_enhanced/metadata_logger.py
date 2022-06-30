@@ -13,6 +13,7 @@ class MetadataLogger:
         self.log_file_path = self.log_dir / "metadata.json"
         self.metadata = {
             "epoch_metrics": {},
+            "hparams_current": None,
             "hparams_initial": self.model.hparams_initial
         }
 
@@ -34,8 +35,11 @@ class MetadataLogger:
         self.metadata["epoch_metrics"][key][epoch] = value.tolist()
 
     def save(self):
+        # Always use the current hparams such that, for test modes, we get the loaded stats
+        metadata = {**self.metadata}
+        metadata["hparams_current"] = self.model.hparams
         with open(self.log_file_path, "w") as fp:
-            json.dump(self.metadata, fp)
+            json.dump(metadata, fp)
 
     def __str__(self):
         return f"Metadata Logger. Log dir: '{self.log_dir}'"

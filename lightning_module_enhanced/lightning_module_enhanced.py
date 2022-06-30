@@ -106,6 +106,8 @@ class LightningModuleEnhanced(LightningModule):
         assert len(diff) == 0, f"Metrics {diff} are not in set metrics: {self._metrics.keys()}"
         self._logged_metrics = logged_metrics
 
+    # Overrides on top of the standard pytorch lightning module
+
     @overrides(check_signature=False)
     def log(self, name: str, value: Any, prog_bar: bool = False, logger: bool = True, on_step: Optional[bool] = None,
             on_epoch: Optional[bool] = None, *args, **kwargs):
