@@ -109,12 +109,17 @@ class LightningModuleEnhanced(LightningModule):
         # We need to make a copy for all metrics if we have a validation dataloader, such that the global statistics
         #  are unique for each of these datasets.
         new_metrics = self.metrics
-        prefix = "val_"
         if self.trainer.enable_validation:
-            for metric_name in self.logged_metrics:
-                new_metrics[f"{prefix}{metric_name}"] = deepcopy(self.metrics[metric_name])
+            val_metrics = self._clone_all_metrics_with_prefix(prefix="val_")
+            new_metrics = {**new_metrics, **val_metrics}
         self._metrics = new_metrics
         return super().on_fit_start()
+
+    @overrides
+    def on_test_start(self) -> None:
+        test_metrics = self._clone_all_metrics_with_prefix(prefix="test_")
+        self._metrics = test_metrics
+        return super().on_test_start()
 
     @overrides
     def training_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs) -> Union[tr.Tensor, Dict[str, Any]]:
@@ -142,8 +147,12 @@ class LightningModuleEnhanced(LightningModule):
 
     @overrides
     def test_epoch_end(self, outputs):
-        """Computes average test loss and metrics for logging."""
-        self._on_epoch_end()
+        for metric_name in self.metrics.keys():
+            metric_fn: Metric = self.metrics[metric_name]
+            metric_epoch_result = metric_fn.compute()
+            self.log(metric_name, metric_epoch_result, on_epoch=True)
+            # Reset the metric after storing this epoch's value
+            metric_fn.reset()
 
     @overrides
     def configure_optimizers(self) -> Dict:
@@ -173,6 +182,17 @@ class LightningModuleEnhanced(LightningModule):
             y_tr = self.forward(*tr_args, **tr_kwargs)
         return y_tr
 
+    def reset_parameters(self):
+        """Resets the parameters of the base model"""
+        for layer in self.base_model.children():
+            assert hasattr(layer, "reset_parameters")
+            layer.reset_parameters()
+
+    def setup_module_for_train(self, train_cfg: Dict):
+        """Given a train cfg, prepare this module for training, by setting the required information."""
+        from .train_setup import TrainSetup
+        TrainSetup(self, train_cfg).setup()
+
     # Internal methods
 
     def _generic_batch_step(self, train_batch: Dict, prefix: str = "") -> Dict[str, tr.Tensor]:
@@ -188,33 +208,39 @@ class LightningModuleEnhanced(LightningModule):
         for metric_name in self.logged_metrics:
             prefixed_metric_name = f"{prefix}{metric_name}"
             metric_fn: Metric = self.metrics[prefixed_metric_name]
-            metric_output = metric_fn.forward(y, gt)
+            # Call the metric and update its state
+            metric_output: tr.Tensor = metric_fn.forward(y, gt)
+            metric_fn.update(metric_output)
             outputs[prefixed_metric_name] = metric_output
-            if metric_output is not None:
-                self.log(prefixed_metric_name, outputs[prefixed_metric_name], prog_bar=True, on_step=True)
+            # Log all the numeric batch metrics. Don't show on pbar.
+            if isinstance(metric_output, tr.Tensor) and len(metric_output.shape) == 0:
+                self.log(prefixed_metric_name, metric_output, prog_bar=False, on_step=True, batch_size=1)
         return outputs
 
     # pylint: disable=no-member
     def _on_epoch_end(self):
         """Get epoch-level metrics"""
-        logged_metrics = self.logged_metrics
+        # If validation is enabled (for train loops), add "val_" metrics for all logged metrics.
         if self.trainer.enable_validation:
-            val_logged_metrics = [f"val_{metric_name}" for metric_name in logged_metrics]
-            logged_metrics = [*logged_metrics, *val_logged_metrics]
-        for metric_name in logged_metrics:
+            val_logged_metrics = [f"val_{metric_name}" for metric_name in self.logged_metrics]
+            metrics_to_log = [*self.logged_metrics, *val_logged_metrics]
+        self._run_and_log_metrics_at_epoch_end(metrics_to_log)
+
+    def _run_and_log_metrics_at_epoch_end(self, metrics_to_log: List[str]):
+        """Runs and logs a given list of logged metrics. Assume they all exist in self.metrics"""
+        for metric_name in metrics_to_log:
             metric_fn: Metric = self.metrics[metric_name]
             metric_epoch_result = metric_fn.compute()
             self.log(metric_name, metric_epoch_result, on_epoch=True)
             # Reset the metric after storing this epoch's value
             metric_fn.reset()
 
-    def reset_parameters(self):
-        """Resets the parameters of the base model"""
-        for layer in self.base_model.children():
-            assert hasattr(layer, "reset_parameters")
-            layer.reset_parameters()
-
-    def setup_module_for_train(self, train_cfg: Dict):
-        """Given a train cfg, prepare this module for training, by setting the required information."""
-        from .train_setup import TrainSetup
-        TrainSetup(self, train_cfg).setup()
+    def _clone_all_metrics_with_prefix(self, prefix: str):
+        """Clones all the existing metris, by ading a prefix"""
+        assert len(prefix) > 0 and prefix[-1] == "_"
+        new_metrics = {}
+        for metric_name in self.metrics:
+            assert not metric_name.startswith(prefix), f"This may be a bug, since metric '{metric_name}'" \
+                                                       f"already has prefix '{prefix}'"
+            new_metrics[f"{prefix}{metric_name}"] = deepcopy(self.metrics[metric_name])
+        return new_metrics
