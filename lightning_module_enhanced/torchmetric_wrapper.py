@@ -1,4 +1,4 @@
-"""Wrapper than converts a Callable to a torchmetrics.Metric with compute_on_step=True that returns a number"""
+"""Wrapper than converts a Callable to a torchmetrics.Metric with self.forward() that returns a number"""
 from typing import Callable, Union
 from torchmetrics import Metric
 from overrides import overrides
@@ -8,8 +8,8 @@ EpochFnType = Union[str, Callable[[tr.Tensor, tr.Tensor], tr.Tensor]]
 
 class TorchMetricWrapper(Metric):
     """Wrapper for a regular callable torch metric"""
-    def __init__(self, metric_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor], higher_is_better: bool = False,
-                 epoch_fn: EpochFnType = "mean"):
+    def __init__(self, metric_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor], epoch_fn: EpochFnType = "mean",
+                 higher_is_better: bool = False):
         super().__init__()
         assert isinstance(metric_fn, Callable)
         epoch_fn = TorchMetricWrapper._get_epoch_fn(epoch_fn)

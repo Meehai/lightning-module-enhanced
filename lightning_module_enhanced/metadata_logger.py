@@ -1,11 +1,10 @@
 import json
 from pathlib import Path
 from pytorch_lightning import LightningModule
-from nwutils.torch import np_get_data
 import torch as tr
 
 class MetadataLogger:
-    """Metadata Logger for a LightningModuleEnhanced. Stores various information about a training."""
+    """Metadata Logger for a CoreModule. Stores various information about a training."""
     def __init__(self, model: LightningModule, log_dir: str):
         self.model = model
         self.log_dir = Path(log_dir).absolute()
@@ -14,7 +13,6 @@ class MetadataLogger:
         self.metadata = {
             "epoch_metrics": {},
             "hparams_current": None,
-            "hparams_initial": self.model.hparams_initial
         }
 
         if self.log_file_path.exists():

@@ -7,31 +7,55 @@ from torch import optim, nn
 from torchinfo import summary, ModelStatistics
 from pytorch_lightning import Callback, LightningModule
 from torchmetrics import Metric
-from nwutils.torch import tr_get_data, tr_to_device
 
+from nwutils.torch import tr_get_data as to_tensor, tr_to_device as to_device
 from .logger import logger
-from .torchmetric_wrapper import TorchMetricWrapper
+
 from .metadata_logger import MetadataLogger
+from .torchmetric_wrapper import TorchMetricWrapper
 
 # pylint: disable=too-many-ancestors, arguments-differ, unused-argument, abstract-method
 class LightningModuleEnhanced(LightningModule):
     """
-        Pytorch Lightning module enhanced. Callbacks and metrics are called based on the order described here:
+
+        Generic pytorch-lightning module for predict-ml models.
+
+        Callbacks and metrics are called based on the order described here:
         https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html#hooks
+
+        Takes a :class:`torch.nn.Module` as the underlying model and implements
+        all the training/validation/testing logic.
+
+        Attributes:
+            base_model: The base :class:`torch.nn.Module`.
+            optimizer: The torch optimizer.
+            scheduler: The torch scheduler.
+            criterion_fn: The model's criterion.
+            metrics: The evaluation metrics as dict `name: torch metric`.
+
+        Args:
+            base_model: The base :class:`torch.nn.Module`.
     """
     def __init__(self, base_model: nn.Module, *args, **kwargs):
         assert isinstance(base_model, nn.Module)
         super().__init__()
-        self.save_hyperparameters({"args": args, **kwargs})
         self.base_model = base_model
         self.optimizer: optim.Optimizer = None
         self.scheduler_dict: optim.lr_scheduler._LRScheduler = None
-        self.criterion_fn: Callable[[tr.Tensor, tr.Tensor], float] = None
+        self._criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor] = None
         self._metrics: Dict[str, Metric] = {}
         self._logged_metrics: List[str] = []
         self._summary: ModelStatistics = None
         self.callbacks: List[Callback] = []
         self.metadata_logger: MetadataLogger = None
+
+        hyper_parameters = {
+            "args": args,
+            "base_model": base_model.__class__.__name__,
+            **kwargs
+        }
+        self.save_hyperparameters(hyper_parameters, ignore=["base_model"])
+
 
     # Getters and setters for properties
 
@@ -71,6 +95,17 @@ class LightningModuleEnhanced(LightningModule):
         self._summary = None
 
     @property
+    def criterion_fn(self) -> Callable[[tr.Tensor, tr.Tensor], tr.Tensor]:
+        return self._criterion_fn
+
+    @criterion_fn.setter
+    def criterion_fn(self, criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor]):
+        assert isinstance(criterion_fn, Callable)
+        self._criterion_fn = criterion_fn
+        if len(self.metrics) == 0:
+            self.metrics = {}
+
+    @property
     def metrics(self) -> List[str]:
         return self._metrics
 
@@ -101,6 +136,8 @@ class LightningModuleEnhanced(LightningModule):
 
     @logged_metrics.setter
     def logged_metrics(self, logged_metrics: List[str]):
+        assert "loss" in logged_metrics, "When manually settings logged_metrics, " \
+                                         f"loss must be present. Got: {logged_metrics}"
         logger.info(f"Setting the logged metrics to {logged_metrics}")
         diff = set(logged_metrics).difference(self._metrics.keys())
         assert len(diff) == 0, f"Metrics {diff} are not in set metrics: {self._metrics.keys()}"
@@ -126,6 +163,9 @@ class LightningModuleEnhanced(LightningModule):
         self.metadata_logger = MetadataLogger(self, self.loggers[0].log_dir)
         logger.info(f"Adding metadata logger to this model: {self.metadata_logger}")
 
+        if len(self.metrics) == 0:
+            self.metrics = {}
+
         # We need to make a copy for all metrics if we have a validation dataloader, such that the global statistics
         #  are unique for each of these datasets.
         new_metrics = self.metrics
@@ -149,7 +189,8 @@ class LightningModuleEnhanced(LightningModule):
     @overrides
     def training_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs) -> Union[tr.Tensor, Dict[str, Any]]:
         """Training step: returns batch training loss and metrics."""
-        return self._generic_batch_step(train_batch)
+        res = self._generic_batch_step(train_batch)
+        return res
 
     @overrides
     def validation_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs):
@@ -172,6 +213,7 @@ class LightningModuleEnhanced(LightningModule):
 
     @overrides
     def test_epoch_end(self, outputs):
+        breakpoint()
         self._run_and_log_metrics_at_epoch_end(self.metrics.keys())
 
     @overrides
@@ -190,14 +232,14 @@ class LightningModuleEnhanced(LightningModule):
     # Public methods
 
     def forward(self, *args, **kwargs):
-        tr_args = tr_to_device(args, self.device)
-        tr_kwargs = tr_to_device(kwargs, self.device)
+        tr_args = to_device(args, self.device)
+        tr_kwargs = to_device(kwargs, self.device)
         return self.base_model.forward(*tr_args, **tr_kwargs)
 
     def np_forward(self, *args, **kwargs):
         """Forward numpy data to the model, returns whatever the model returns, usually torch data"""
-        tr_args = tr_get_data(args)
-        tr_kwargs = tr_get_data(kwargs)
+        tr_args = to_tensor(args)
+        tr_kwargs = to_tensor(kwargs)
         with tr.no_grad():
             y_tr = self.forward(*tr_args, **tr_kwargs)
         return y_tr
@@ -213,12 +255,18 @@ class LightningModuleEnhanced(LightningModule):
         from .train_setup import TrainSetup
         TrainSetup(self, train_cfg).setup()
 
+    def load_state_from_path(self, path: str):
+        """Loads the state dict from a path"""
+        # if path is remote (gcs) download checkpoint to a temp dir
+        self.load_state_dict(tr.load(path)["state_dict"])
+        return self
+
     # Internal methods
 
     def _generic_batch_step(self, train_batch: Dict, prefix: str = "") -> Dict[str, tr.Tensor]:
         """Generic step for computing the forward pass, loss and metrics."""
         y = self.forward(train_batch["data"])
-        gt = tr_to_device(tr_get_data(train_batch["labels"]), self.device)
+        gt = to_device(to_tensor(train_batch["labels"]), self.device)
         outputs = self._get_batch_metrics(y, gt, prefix)
         return outputs
 
@@ -266,4 +314,3 @@ class LightningModuleEnhanced(LightningModule):
                                                        f"already has prefix '{prefix}'"
             new_metrics[f"{prefix}{metric_name}"] = deepcopy(self.metrics[metric_name])
         return new_metrics
-
