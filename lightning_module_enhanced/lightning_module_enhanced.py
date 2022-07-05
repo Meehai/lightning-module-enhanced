@@ -1,5 +1,5 @@
 """Generic Pytorch Lightning Graph module on top of a Graph module"""
-from typing import Dict, Callable, List, Union, Any, Sequence, Tuple, Optional
+from typing import Dict, Callable, List, Union, Any, Sequence, Tuple
 from copy import deepcopy
 from overrides import overrides
 import torch as tr
@@ -9,10 +9,11 @@ from pytorch_lightning import Callback, LightningModule
 from torchmetrics import Metric
 
 from nwutils.torch import tr_get_data as to_tensor, tr_to_device as to_device
-from .logger import logger
 
+from .logger import logger
 from .metadata_logger import MetadataLogger
 from .torchmetric_wrapper import TorchMetricWrapper
+
 
 # pylint: disable=too-many-ancestors, arguments-differ, unused-argument, abstract-method
 class LightningModuleEnhanced(LightningModule):
@@ -47,15 +48,17 @@ class LightningModuleEnhanced(LightningModule):
         self._logged_metrics: List[str] = []
         self._summary: ModelStatistics = None
         self.callbacks: List[Callback] = []
-        self.metadata_logger: MetadataLogger = None
+        self.metadata_logger: MetadataLogger = MetadataLogger(self)
 
         hyper_parameters = {
             "args": args,
-            "base_model": base_model.__class__.__name__,
+            "metadata": {
+                "base_model": base_model.__class__.__name__,
+                "summary": self.summary
+            },
             **kwargs
         }
         self.save_hyperparameters(hyper_parameters, ignore=["base_model"])
-
 
     # Getters and setters for properties
 
@@ -96,6 +99,7 @@ class LightningModuleEnhanced(LightningModule):
 
     @property
     def criterion_fn(self) -> Callable[[tr.Tensor, tr.Tensor], tr.Tensor]:
+        """Get the criterion function loss(y, gt) -> backpropagable tensor"""
         return self._criterion_fn
 
     @criterion_fn.setter
@@ -106,7 +110,8 @@ class LightningModuleEnhanced(LightningModule):
             self.metrics = {}
 
     @property
-    def metrics(self) -> List[str]:
+    def metrics(self) -> Dict[str, Metric]:
+        """Gets the list of metric names"""
         return self._metrics
 
     @metrics.setter
@@ -127,11 +132,12 @@ class LightningModuleEnhanced(LightningModule):
 
             self._metrics[metric_name] = metric_fn
         self._metrics["loss"] = TorchMetricWrapper(self.criterion_fn, higher_is_better=False)
-        self._metrics["loss"]._enable_grad = True
+        self._metrics["loss"]._enable_grad = True  # pylint: disable=protected-access
         self.logged_metrics = list(self._metrics.keys())
 
     @property
     def logged_metrics(self) -> List[str]:
+        """Return the list of logged metrics out of all the defined ones"""
         return self._logged_metrics
 
     @logged_metrics.setter
@@ -146,23 +152,21 @@ class LightningModuleEnhanced(LightningModule):
     # Overrides on top of the standard pytorch lightning module
 
     @overrides(check_signature=False)
-    def log(self, name: str, value: Any, prog_bar: bool = False, logger: bool = True, on_step: Optional[bool] = None,
-            on_epoch: Optional[bool] = None, *args, **kwargs):
+    def log(self, name: str, value: Any, *args, **kwargs):
+        assert kwargs["on_epoch"] is True, "We only log metrics at the end of an epoch"
 
-        # If it is a single value, call all the loggers
-        if isinstance(value, tr.Tensor) and len(value.shape) == 0:
-            super().log(name, value, prog_bar, logger, on_step, on_epoch, *args, **kwargs)
-        if on_epoch is not True:
-            return None
-        # Othrerwise, call just the metadata logger, but only if it applies to the epoch since we only care about
-        #  epoch metrics
+        # Our metrics have a special method that reduces complex metrics to a single number as well.
+        # Some metrics may have a special method that reduces complex metrics to a single number.
+        value_pbar = value
+        if name in self.metrics and hasattr(self.metrics[name], "compute_pbar"):
+            value_pbar = self.metrics[name].compute_pbar()
+        if isinstance(value_pbar, tr.Tensor) and len(value_pbar.shape) == 0:
+            super().log(name, value_pbar, *args, **kwargs)
+        # Call the metadata logger for the full result, since it can handle any sort of metrics, not just raw numbers
         return self.metadata_logger.save_epoch_metric(name, value, self.trainer.current_epoch)
 
     @overrides
     def on_fit_start(self) -> None:
-        self.metadata_logger = MetadataLogger(self, self.loggers[0].log_dir)
-        logger.info(f"Adding metadata logger to this model: {self.metadata_logger}")
-
         if len(self.metrics) == 0:
             self.metrics = {}
 
@@ -173,17 +177,12 @@ class LightningModuleEnhanced(LightningModule):
             val_metrics = self._clone_all_metrics_with_prefix(prefix="val_")
             new_metrics = {**new_metrics, **val_metrics}
         self._metrics = new_metrics
-        self.metadata_logger.save_metadata("fit_start_hparams", self.hparams)
+        self.metadata_logger.on_fit_start(self)
         return super().on_fit_start()
 
     @overrides
     def on_test_start(self) -> None:
-        self.metadata_logger = MetadataLogger(self, self.loggers[0].log_dir)
-        logger.info(f"Adding metadata logger to this model: {self.metadata_logger}")
-
-        test_metrics = self._clone_all_metrics_with_prefix(prefix="test_")
-        self._metrics = test_metrics
-        self.metadata_logger.save_metadata("test_start_hparams", self.hparams)
+        self.metadata_logger.on_test_start(self)
         return super().on_test_start()
 
     @overrides
@@ -194,13 +193,13 @@ class LightningModuleEnhanced(LightningModule):
 
     @overrides
     def validation_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs):
-        """Training step: returns batch validation loss and metrics."""
+        """Validation step: returns batch validation loss and metrics."""
         return self._generic_batch_step(train_batch, prefix="val_")
 
     @overrides
     def test_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs):
-        """Training step: returns batch validation loss and metrics."""
-        return self._generic_batch_step(train_batch, prefix="test_")
+        """Testing step: returns batch test loss and metrics. No prefix."""
+        return self._generic_batch_step(train_batch)
 
     @overrides
     def configure_callbacks(self) -> Union[Sequence[Callback], Callback]:
@@ -213,7 +212,6 @@ class LightningModuleEnhanced(LightningModule):
 
     @overrides
     def test_epoch_end(self, outputs):
-        breakpoint()
         self._run_and_log_metrics_at_epoch_end(self.metrics.keys())
 
     @overrides
@@ -228,6 +226,13 @@ class LightningModuleEnhanced(LightningModule):
             "optimizer": self.optimizer,
             "lr_scheduler": self.scheduler_dict
         }
+
+    def state_dict(self):
+        return {**super().state_dict(), "metadata": self.metadata_logger.metadata}
+
+    def load_state_dict(self, state_dict, *args, **kwargs):
+        self.metadata_logger.metadata = state_dict.pop("metadata")
+        return super().load_state_dict(state_dict, *args, **kwargs)
 
     # Public methods
 
@@ -250,16 +255,14 @@ class LightningModuleEnhanced(LightningModule):
             assert hasattr(layer, "reset_parameters")
             layer.reset_parameters()
 
+    def load_state_from_path(self, path: str):
+        """Loads the state dict from a path"""
+        self.load_state_dict(tr.load(path)["state_dict"])
+
     def setup_module_for_train(self, train_cfg: Dict):
         """Given a train cfg, prepare this module for training, by setting the required information."""
         from .train_setup import TrainSetup
         TrainSetup(self, train_cfg).setup()
-
-    def load_state_from_path(self, path: str):
-        """Loads the state dict from a path"""
-        # if path is remote (gcs) download checkpoint to a temp dir
-        self.load_state_dict(tr.load(path)["state_dict"])
-        return self
 
     # Internal methods
 
@@ -281,7 +284,8 @@ class LightningModuleEnhanced(LightningModule):
             metric_fn.update(metric_output)
             outputs[prefixed_metric_name] = metric_output
             # Log all the numeric batch metrics. Don't show on pbar.
-            self.log(prefixed_metric_name, metric_output, prog_bar=False, on_step=True, batch_size=1)
+            # Don't use any self.log() here. We don't really care about intermediate batch results, only epoch results,
+            #  which are handled down.
         return outputs
 
     # pylint: disable=no-member
@@ -292,6 +296,7 @@ class LightningModuleEnhanced(LightningModule):
             val_logged_metrics = [f"val_{metric_name}" for metric_name in self.logged_metrics]
             metrics_to_log = [*self.logged_metrics, *val_logged_metrics]
         self._run_and_log_metrics_at_epoch_end(metrics_to_log)
+        self.metadata_logger.log("Best model path", self.trainer.checkpoint_callback.best_model_path)
 
     def _run_and_log_metrics_at_epoch_end(self, metrics_to_log: List[str]):
         """Runs and logs a given list of logged metrics. Assume they all exist in self.metrics"""
@@ -300,7 +305,7 @@ class LightningModuleEnhanced(LightningModule):
             # Get the metric's epoch result
             metric_epoch_result = metric_fn.compute()
             # Log the metric at the end of the epoch
-            self.log(metric_name, metric_epoch_result, on_epoch=True)
+            self.log(metric_name, metric_epoch_result, prog_bar=True, on_epoch=True)
             # Reset the metric after storing this epoch's value
             metric_fn.reset()
         self.metadata_logger.save()
@@ -309,8 +314,8 @@ class LightningModuleEnhanced(LightningModule):
         """Clones all the existing metris, by ading a prefix"""
         assert len(prefix) > 0 and prefix[-1] == "_"
         new_metrics = {}
-        for metric_name in self.metrics:
+        for metric_name, metric_fn in self.metrics.items():
             assert not metric_name.startswith(prefix), f"This may be a bug, since metric '{metric_name}'" \
                                                        f"already has prefix '{prefix}'"
-            new_metrics[f"{prefix}{metric_name}"] = deepcopy(self.metrics[metric_name])
+            new_metrics[f"{prefix}{metric_name}"] = deepcopy(metric_fn)
         return new_metrics

@@ -6,6 +6,7 @@ import torch as tr
 
 EpochFnType = Union[str, Callable[[tr.Tensor, tr.Tensor], tr.Tensor]]
 
+
 class TorchMetricWrapper(Metric):
     """Wrapper for a regular callable torch metric"""
     def __init__(self, metric_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor], epoch_fn: EpochFnType = "mean",
@@ -31,12 +32,14 @@ class TorchMetricWrapper(Metric):
         assert isinstance(epoch_fn, Callable)
         return epoch_fn
 
+    # pylint: disable=arguments-differ
     @overrides(check_signature=False)
     def forward(self, preds: tr.Tensor, target: tr.Tensor) -> tr.Tensor:
         """This computes the pre-batch metric. This result is passed to `update` to update the state of the metric"""
         batch_res = self.metric_fn(preds, target)
         return batch_res
 
+    # pylint: disable=arguments-differ
     @overrides(check_signature=False)
     def update(self, batch_res: tr.Tensor) -> None:
         """This is called at each batch end. It must be a number, so .item() works."""
@@ -53,6 +56,10 @@ class TorchMetricWrapper(Metric):
             return self.batch_count
         result = self.epoch_fn(self.batch_results, self.batch_count)
         return result
+
+    def compute_pbar(self) -> tr.Tensor:
+        """This is used to add complex metrics to pbar (and mlflow, if available) automatically"""
+        return self.compute()
 
     @overrides
     def reset(self):
