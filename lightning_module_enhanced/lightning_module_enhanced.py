@@ -54,7 +54,7 @@ class LightningModuleEnhanced(LightningModule):
             "args": args,
             "metadata": {
                 "base_model": base_model.__class__.__name__,
-                "summary": self.summary
+                "summary": str(self.summary)
             },
             **kwargs
         }
