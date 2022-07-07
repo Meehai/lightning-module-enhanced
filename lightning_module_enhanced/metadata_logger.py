@@ -13,14 +13,21 @@ class MetadataLogger:
         self.model = model
         self.log_dir = None
         self.log_file_path = None
+        self.metadata = None
+        self.reset()
+
+    def reset(self):
+        self.metadata
         self.metadata = {
             "epoch_metrics": {},
             "hparams_current": None,
         }
+        self.log_timestamp("create_time")
 
-        # default metadata
+    def log_timestamp(self, key: str):
+        """Logs the timestamp wtih a given key"""
         now = datetime.now()
-        self.log_dict({
+        self.log(key, {
             "timestamp": datetime.timestamp(now),
             "date": str(now)
         })
@@ -40,7 +47,10 @@ class MetadataLogger:
             self.metadata["epoch_metrics"][key] = {}
         if epoch != 0:
             # Epoch 0 can sometimes have a validation sanity check fake epoch
-            assert epoch not in self.metadata["epoch_metrics"][key], f"Cannot overwrite existing epoch metric '{key}'"
+            try:
+                assert epoch not in self.metadata["epoch_metrics"][key], f"Cannot overwrite existing epoch metric '{key}'"
+            except:
+                breakpoint()
         # Apply .tolist(). Every metric should be able to be converted as list, such that it can be stored in a JSON.
         self.metadata["epoch_metrics"][key][epoch] = value.tolist()
 

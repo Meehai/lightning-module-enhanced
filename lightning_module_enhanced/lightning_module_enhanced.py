@@ -227,8 +227,8 @@ class LightningModuleEnhanced(LightningModule):
             "lr_scheduler": self.scheduler_dict
         }
 
-    def state_dict(self):
-        return {**super().state_dict(), "metadata": self.metadata_logger.metadata}
+    def state_dict(self, *args, **kwargs):
+        return {**super().state_dict(*args, **kwargs), "metadata": self.metadata_logger.metadata}
 
     def load_state_dict(self, state_dict, *args, **kwargs):
         self.metadata_logger.metadata = state_dict.pop("metadata")
@@ -252,7 +252,9 @@ class LightningModuleEnhanced(LightningModule):
     def reset_parameters(self):
         """Resets the parameters of the base model"""
         for layer in self.base_model.children():
-            assert hasattr(layer, "reset_parameters")
+            if len(tuple(layer.parameters())) == 0:
+                continue
+            assert hasattr(layer, "reset_parameters"), layer
             layer.reset_parameters()
 
     def load_state_from_path(self, path: str):

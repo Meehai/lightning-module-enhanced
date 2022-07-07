@@ -30,9 +30,12 @@ loc = path.abspath(path.dirname(__file__))
 with open(f"{loc}/README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-with open(f"{loc}/requirements.txt") as f:
-    requirements = f.read().splitlines()
-required, dependency_links = get_reqs(requirements)
+try:
+    with open(f"{loc}/requirements.txt") as f:
+        requirements = f.read().splitlines()
+    required, dependency_links = get_reqs(requirements)
+except:
+    required, dependency_links = [], []
 
 setup(
     name=name,
