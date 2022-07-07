@@ -250,17 +250,23 @@ class LightningModuleEnhanced(LightningModule):
 
     def reset_parameters(self):
         """Resets the parameters of the base model"""
+        num_params = len(tuple(layer.parameters()))
+        if num_params == 0:
+            return
         for layer in self.base_model.children():
             if len(tuple(layer.parameters())) == 0:
                 continue
             if hasattr(layer, "reset_parameters"):
-                return layer.reset_parameters()
+                layer.reset_parameters()
             else:
                 LightningModuleEnhanced(layer).reset_parameters()
 
     def load_state_from_path(self, path: str):
         """Loads the state dict from a path"""
-        self.load_state_dict(tr.load(path)["state_dict"])
+        logger.info(f"Loading weights and hyperparameters from '{path}'")
+        ckpt_data = tr.load(path)
+        self.load_state_dict(ckpt_data["state_dict"])
+        self.save_hyperparameters(ckpt_data["hyper_parameters"])
 
     def setup_module_for_train(self, train_cfg: Dict):
         """Given a train cfg, prepare this module for training, by setting the required information."""

@@ -59,7 +59,7 @@ class MetadataLogger:
         # Always update the current hparams such that, for test modes, we get the loaded stats
         metadata = {**self.metadata, "hparams_current": self.model.hparams}
         with open(self.log_file_path, "w", encoding="utf8") as fp:
-            json.dump(metadata, fp)
+            json.dump(metadata, fp, indent=4)
 
     def setup(self):
         """Called to set the log dir based on the first logger"""
