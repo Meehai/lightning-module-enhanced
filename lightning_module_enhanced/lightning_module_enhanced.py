@@ -253,8 +253,10 @@ class LightningModuleEnhanced(LightningModule):
         for layer in self.base_model.children():
             if len(tuple(layer.parameters())) == 0:
                 continue
-            assert hasattr(layer, "reset_parameters"), layer
-            layer.reset_parameters()
+            if hasattr(layer, "reset_parameters"):
+                return layer.reset_parameters()
+            else:
+                LightningModuleEnhanced(layer).reset_parameters()
 
     def load_state_from_path(self, path: str):
         """Loads the state dict from a path"""
