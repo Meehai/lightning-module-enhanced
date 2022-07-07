@@ -10,7 +10,7 @@ EpochFnType = Union[str, Callable[[tr.Tensor, tr.Tensor], tr.Tensor]]
 class TorchMetricWrapper(Metric):
     """Wrapper for a regular callable torch metric"""
     def __init__(self, metric_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor], epoch_fn: EpochFnType = "mean",
-                 higher_is_better: bool = False):
+                 higher_is_better: bool = False, requires_grad: bool = False):
         super().__init__()
         assert isinstance(metric_fn, Callable)
         epoch_fn = TorchMetricWrapper._get_epoch_fn(epoch_fn)
@@ -19,6 +19,7 @@ class TorchMetricWrapper(Metric):
         self.batch_count = tr.IntTensor([0])
         self.epoch_fn = epoch_fn
         self._higher_is_better = higher_is_better
+        self.requires_grad = requires_grad
 
     @staticmethod
     def _get_epoch_fn(epoch_fn: EpochFnType) -> Callable[[tr.Tensor, tr.Tensor], tr.Tensor]:

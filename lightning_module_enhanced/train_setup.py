@@ -44,6 +44,7 @@ class TrainSetup:
         self.module.scheduler_dict = {"scheduler": scheduler, **self.train_cfg["scheduler"]["optimizer_args"]}
 
     def setup(self):
+        assert self.module.num_trainable_params > 0, "Module has no trainable params!"
         if self.train_cfg is None:
             logger.info("Train cfg is None. Returning early.")
             return

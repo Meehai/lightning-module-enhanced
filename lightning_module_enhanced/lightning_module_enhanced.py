@@ -3,7 +3,7 @@ from typing import Dict, Callable, List, Union, Any, Sequence, Tuple
 from copy import deepcopy
 from overrides import overrides
 import torch as tr
-from torch import optim, nn
+from torch import enable_grad, optim, nn
 from torchinfo import summary, ModelStatistics
 from pytorch_lightning import Callback, LightningModule
 from torchmetrics import Metric
@@ -54,7 +54,6 @@ class LightningModuleEnhanced(LightningModule):
             "args": args,
             "metadata": {
                 "base_model": base_model.__class__.__name__,
-                "summary": str(self.summary)
             },
             **kwargs
         }
@@ -131,8 +130,7 @@ class LightningModuleEnhanced(LightningModule):
                 metric_fn = TorchMetricWrapper(metric_fn, higher_is_better=(min_or_max == "max"))
 
             self._metrics[metric_name] = metric_fn
-        self._metrics["loss"] = TorchMetricWrapper(self.criterion_fn, higher_is_better=False)
-        self._metrics["loss"]._enable_grad = True  # pylint: disable=protected-access
+        self._metrics["loss"] = TorchMetricWrapper(self.criterion_fn, higher_is_better=False, requires_grad=True)
         self.logged_metrics = list(self._metrics.keys())
 
     @property
@@ -231,7 +229,8 @@ class LightningModuleEnhanced(LightningModule):
         return {**super().state_dict(*args, **kwargs), "metadata": self.metadata_logger.metadata}
 
     def load_state_dict(self, state_dict, *args, **kwargs):
-        self.metadata_logger.metadata = state_dict.pop("metadata")
+        if "metadata" in state_dict.keys():
+            self.metadata_logger.metadata = state_dict.pop("metadata")
         return super().load_state_dict(state_dict, *args, **kwargs)
 
     # Public methods
@@ -270,8 +269,9 @@ class LightningModuleEnhanced(LightningModule):
 
     def _generic_batch_step(self, train_batch: Dict, prefix: str = "") -> Dict[str, tr.Tensor]:
         """Generic step for computing the forward pass, loss and metrics."""
-        y = self.forward(train_batch["data"])
-        gt = to_device(to_tensor(train_batch["labels"]), self.device)
+        train_batch = to_device(to_tensor(train_batch), self.device)
+        x, gt = train_batch["data"], train_batch["labels"]
+        y = self.forward(x)
         outputs = self._get_batch_metrics(y, gt, prefix)
         return outputs
 
@@ -282,12 +282,13 @@ class LightningModuleEnhanced(LightningModule):
             prefixed_metric_name = f"{prefix}{metric_name}"
             metric_fn: Metric = self.metrics[prefixed_metric_name]
             # Call the metric and update its state
-            metric_output: tr.Tensor = metric_fn.forward(y, gt)
-            metric_fn.update(metric_output)
+            ctx = tr.no_grad if metric_fn.requires_grad is False else tr.enable_grad
+            with ctx():
+                metric_output: tr.Tensor = metric_fn.forward(y, gt)
+            metric_fn.update(to_device(metric_output, "cpu"))
             outputs[prefixed_metric_name] = metric_output
-            # Log all the numeric batch metrics. Don't show on pbar.
             # Don't use any self.log() here. We don't really care about intermediate batch results, only epoch results,
-            #  which are handled down.
+            #  which are handled at on_epoch_end callbacks.
         return outputs
 
     # pylint: disable=no-member
