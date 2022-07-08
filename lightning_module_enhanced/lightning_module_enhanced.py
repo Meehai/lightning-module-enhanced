@@ -250,7 +250,7 @@ class LightningModuleEnhanced(LightningModule):
 
     def reset_parameters(self):
         """Resets the parameters of the base model"""
-        num_params = len(tuple(layer.parameters()))
+        num_params = len(tuple(self.parameters()))
         if num_params == 0:
             return
         for layer in self.base_model.children():
