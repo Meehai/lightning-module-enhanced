@@ -3,17 +3,16 @@ from typing import Dict, Callable, List, Union, Any, Sequence, Tuple
 from copy import deepcopy
 from overrides import overrides
 import torch as tr
-from torch import enable_grad, optim, nn
+from torch import optim, nn
 from torchinfo import summary, ModelStatistics
 from pytorch_lightning import Callback, LightningModule
 from torchmetrics import Metric
-
 from nwutils.torch import tr_get_data as to_tensor, tr_to_device as to_device
 
 from .logger import logger
 from .metadata_logger import MetadataLogger
 from .torchmetric_wrapper import TorchMetricWrapper
-
+from .train_setup import TrainSetup
 
 # pylint: disable=too-many-ancestors, arguments-differ, unused-argument, abstract-method
 class LightningModuleEnhanced(LightningModule):
@@ -271,7 +270,6 @@ class LightningModuleEnhanced(LightningModule):
 
     def setup_module_for_train(self, train_cfg: Dict):
         """Given a train cfg, prepare this module for training, by setting the required information."""
-        from .train_setup import TrainSetup
         TrainSetup(self, train_cfg).setup()
 
     # Internal methods

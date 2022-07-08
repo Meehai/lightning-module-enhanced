@@ -17,6 +17,7 @@ class MetadataLogger:
         self.reset()
 
     def reset(self):
+        """Resets this metadata logger to initial state"""
         self.metadata = {
             "epoch_metrics": {},
             "hparams_current": None,
@@ -46,10 +47,7 @@ class MetadataLogger:
             self.metadata["epoch_metrics"][key] = {}
         if epoch != 0:
             # Epoch 0 can sometimes have a validation sanity check fake epoch
-            try:
-                assert epoch not in self.metadata["epoch_metrics"][key], f"Cannot overwrite existing epoch metric '{key}'"
-            except:
-                breakpoint()
+            assert epoch not in self.metadata["epoch_metrics"][key], f"Cannot overwrite existing epoch metric '{key}'"
         # Apply .tolist(). Every metric should be able to be converted as list, such that it can be stored in a JSON.
         self.metadata["epoch_metrics"][key][epoch] = value.tolist()
 

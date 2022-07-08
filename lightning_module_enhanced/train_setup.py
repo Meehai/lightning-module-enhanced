@@ -1,12 +1,11 @@
 """Module that implements a standard setup process of the lightning module via a train config file"""
 from typing import Dict
-from .lightning_module_enhanced import LightningModuleEnhanced
 from .logger import logger
 
 from torch import optim
 
 class TrainSetup:
-    def __init__(self, module: LightningModuleEnhanced, train_cfg: Dict):
+    def __init__(self, module: "LightningModuleEnhanced", train_cfg: Dict):
         self.module = module
         self.train_cfg = train_cfg
     

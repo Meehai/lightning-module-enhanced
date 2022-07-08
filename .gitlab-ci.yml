@@ -13,4 +13,4 @@ test:
 
 pylint:
   script:
-  - python -m pylint --rcfile=.pylintrc $(git ls-files "*.py" | grep -v "examples/" | grep -v "test/")
+  - python -m pylint --rcfile=.pylintrc $(git ls-files "*.py" | grep -v "examples/\|test/\|setup.py")

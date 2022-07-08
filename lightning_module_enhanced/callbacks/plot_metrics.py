@@ -10,6 +10,7 @@ class PlotMetrics(Callback):
     def __init__(self):
         self.history: Dict[str, List[float]] = None
 
+    # pylint: disable=protected-access
     def _plot_best_dot(self, pl_module, metric_name):
         """Plot the dot. We require to know if the metric is max or min typed."""
         metric = pl_module.metrics[metric_name]
