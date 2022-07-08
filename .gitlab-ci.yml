@@ -11,6 +11,6 @@ test:
   - cd test/
   - python -m pytest .
 
-# pylint:
-#   script:
-#   - python -m pylint --rcfile=.pylintrc --ignore=.pylintrc nwutils/
+pylint:
+  script:
+  - python -m pylint --rcfile=.pylintrc $(git ls-files "*.py" | grep -v "examples/" | grep -v "test/")
