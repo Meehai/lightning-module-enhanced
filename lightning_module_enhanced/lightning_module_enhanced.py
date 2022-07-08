@@ -168,11 +168,12 @@ class LightningModuleEnhanced(LightningModule):
         if len(self.metrics) == 0:
             self.metrics = {}
 
-        # We need to make a copy for all metrics if we have a validation dataloader, such that the global statistics
-        #  are unique for each of these datasets.
-        new_metrics = self.metrics
+        # We need to remove the val_ metrics, because if .fit() is called twice, this will create too many copies
+        new_metrics = {metric_name: metric_fn for metric_name, metric_fn in self.metrics.items()
+                       if not metric_name.startswith("val_")}
         if self.trainer.enable_validation:
-            val_metrics = self._clone_all_metrics_with_prefix(prefix="val_")
+            # If we use a validation set, clone all the metrics, so that the statistics don't intefere with each other
+            val_metrics = LightningModuleEnhanced._clone_all_metrics_with_prefix(new_metrics, prefix="val_")
             new_metrics = {**new_metrics, **val_metrics}
         self._metrics = new_metrics
         self.metadata_logger.on_fit_start(self)
@@ -303,6 +304,7 @@ class LightningModuleEnhanced(LightningModule):
     def _on_epoch_end(self):
         """Get epoch-level metrics"""
         # If validation is enabled (for train loops), add "val_" metrics for all logged metrics.
+        metrics_to_log = self.logged_metrics
         if self.trainer.enable_validation:
             val_logged_metrics = [f"val_{metric_name}" for metric_name in self.logged_metrics]
             metrics_to_log = [*self.logged_metrics, *val_logged_metrics]
@@ -321,11 +323,12 @@ class LightningModuleEnhanced(LightningModule):
             metric_fn.reset()
         self.metadata_logger.save()
 
-    def _clone_all_metrics_with_prefix(self, prefix: str):
-        """Clones all the existing metris, by ading a prefix"""
-        assert len(prefix) > 0 and prefix[-1] == "_"
+    @staticmethod
+    def _clone_all_metrics_with_prefix(metrics: Dict[str, Metric], prefix: str) -> Dict[str, Metric]:
+        """Clones all the given metrics, by ading a prefix to the name"""
+        assert len(prefix) > 0 and prefix[-1] == "_", "Prefix must be of format 'XXX_'"
         new_metrics = {}
-        for metric_name, metric_fn in self.metrics.items():
+        for metric_name, metric_fn in metrics.items():
             assert not metric_name.startswith(prefix), f"This may be a bug, since metric '{metric_name}'" \
                                                        f"already has prefix '{prefix}'"
             new_metrics[f"{prefix}{metric_name}"] = deepcopy(metric_fn)

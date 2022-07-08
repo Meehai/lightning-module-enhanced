@@ -4,6 +4,10 @@ from copy import deepcopy
 from lightning_module_enhanced import LightningModuleEnhanced
 from torch import nn
 
+# Test todo: parameter with no reset_parameters()
+# class SomeModule:
+#     def __init__(self):
+
 class TestProperties:
     @pytest.fixture(autouse=True)
     def run_around_tests(self):

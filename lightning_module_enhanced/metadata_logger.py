@@ -17,7 +17,6 @@ class MetadataLogger:
         self.reset()
 
     def reset(self):
-        self.metadata
         self.metadata = {
             "epoch_metrics": {},
             "hparams_current": None,
@@ -63,7 +62,7 @@ class MetadataLogger:
 
     def setup(self):
         """Called to set the log dir based on the first logger"""
-        assert self.log_dir is None
+        self.reset()
         log_dir = self.model.loggers[0].log_dir
         self.log_dir = Path(log_dir).absolute()
         self.log_dir.mkdir(parents=True, exist_ok=True)
