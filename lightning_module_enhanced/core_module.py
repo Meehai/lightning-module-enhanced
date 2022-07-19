@@ -3,20 +3,18 @@ from typing import Dict, Callable, List, Union, Any, Sequence, Tuple
 from copy import deepcopy
 from overrides import overrides
 import torch as tr
-from torch import enable_grad, optim, nn
+import pytorch_lightning as pl
+from torch import optim, nn
 from torchinfo import summary, ModelStatistics
-from pytorch_lightning import Callback, LightningModule
-from torchmetrics import Metric
 
-from nwutils.torch import tr_get_data as to_tensor, tr_to_device as to_device
-
+from .metrics import CoreMetric, CallableCoreMetric
 from .logger import logger
-from .metadata_logger import MetadataLogger
-from .torchmetric_wrapper import TorchMetricWrapper
-
+from nwutils.torch import tr_get_data as to_tensor, tr_to_device as to_device
+from .callbacks import MetadataCallback
+from .train_setup import TrainSetup
 
 # pylint: disable=too-many-ancestors, arguments-differ, unused-argument, abstract-method
-class LightningModuleEnhanced(LightningModule):
+class CoreModule(pl.LightningModule):
     """
 
         Generic pytorch-lightning module for predict-ml models.
@@ -28,14 +26,20 @@ class LightningModuleEnhanced(LightningModule):
         all the training/validation/testing logic.
 
         Attributes:
-            base_model: The base :class:`torch.nn.Module`.
-            optimizer: The torch optimizer.
-            scheduler: The torch scheduler.
-            criterion_fn: The model's criterion.
-            metrics: The evaluation metrics as dict `name: torch metric`.
+            base_model: The base :class:`torch.nn.Module`
+            optimizer: The optimizer used for training runs
+            scheduler_dict: The oprimizer scheduler used for training runs, as well as the monitored metric
+            criterion_fn: The criterion function used for training runs
+            metrics: The dictionary (Name => CoreMetric) of all implemented metrics for this module
+            logged_metrics: The subset of metrics used for this run (train or test)
+            callbacks: The list of callbacks for this module
+            summary: A summary including parameters, layers and tensor shapes of this module
+            metadata_callback: The metadata logger for this run
+            device: The torch device this module is residing on
+            trainable_params: The number of trainable parameters of this module
 
         Args:
-            base_model: The base :class:`torch.nn.Module`.
+            base_model: The base :class:`torch.nn.Module`
     """
     def __init__(self, base_model: nn.Module, *args, **kwargs):
         assert isinstance(base_model, nn.Module)
@@ -44,20 +48,14 @@ class LightningModuleEnhanced(LightningModule):
         self.optimizer: optim.Optimizer = None
         self.scheduler_dict: optim.lr_scheduler._LRScheduler = None
         self._criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor] = None
-        self._metrics: Dict[str, Metric] = {}
+        self._metrics: Dict[str, CoreMetric] = {}
         self._logged_metrics: List[str] = []
         self._summary: ModelStatistics = None
-        self.callbacks: List[Callback] = []
-        self.metadata_logger: MetadataLogger = MetadataLogger(self)
+        self.callbacks: List[pl.Callback] = []
+        self._metadata_callback = None
 
-        hyper_parameters = {
-            "args": args,
-            "metadata": {
-                "base_model": base_model.__class__.__name__,
-            },
-            **kwargs
-        }
-        self.save_hyperparameters(hyper_parameters, ignore=["base_model"])
+        # Store initial hyperparameters in the pl_module and the initial shapes/model name in metadata logger
+        self.save_hyperparameters({"args": args, **kwargs}, ignore=["base_model"])
 
     # Getters and setters for properties
 
@@ -109,28 +107,34 @@ class LightningModuleEnhanced(LightningModule):
             self.metrics = {}
 
     @property
-    def metrics(self) -> Dict[str, Metric]:
+    def metrics(self) -> Dict[str, CoreMetric]:
         """Gets the list of metric names"""
         return self._metrics
 
     @metrics.setter
     def metrics(self, metrics: Dict[str, Tuple[Callable, str]]):
         if len(self._metrics) != 0:
-            logger.info(f"Overwriting existing metrics: {list(metrics.keys())}")
+            logger.info(f"Settings metrics to: {list(metrics.keys())}")
         self._metrics = {}
+
         for metric_name, metric_fn in metrics.items():
-            assert isinstance(metric_fn, (Metric, Tuple, Callable)), f"Unknown metric type: '{type(metric_fn)}'. " \
-                   "Expcted torchmetrics.Metric, Tuple[Callable, str] or Callable."
-            if not isinstance(metric_fn, Metric):
-                logger.debug(f"Metric '{metric_name}' is a callable. Converting to torchmetrics.Metric.")
-                min_or_max = "min"
-                if isinstance(metric_fn, Tuple):
-                    metric_fn, min_or_max = metric_fn
-                assert isinstance(metric_fn, Callable) and isinstance(min_or_max, str) and min_or_max in ("min", "max")
-                metric_fn = TorchMetricWrapper(metric_fn, higher_is_better=(min_or_max == "max"))
+            # Our metrics can be a CoreMetric already, a Tuple (callable, min/max) or just a Callable
+            assert isinstance(metric_fn, (CoreMetric, Tuple, Callable)), \
+                   f"Unknown metric type: '{type(metric_fn)}'. " \
+                   "Expcted CoreMetric, Callable or (Callable, \"min\"/\"max\")."
+
+            # If it is not a CoreMetric already (Tuple or Callable), we convert it to CallableCoreMetric
+            if isinstance(metric_fn, Callable) and not isinstance(metric_fn, CoreMetric):
+                metric_fn = (metric_fn, "min")
+
+            if isinstance(metric_fn, Tuple):
+                logger.debug(f"Metric '{metric_name}' is a callable. Converting to CallableCoreMetric.")
+                metric_fn, min_or_max = metric_fn
+                assert min_or_max in ("min", "max"), f"Got '{min_or_max}'"
+                metric_fn = CallableCoreMetric(metric_fn, higher_is_better=(min_or_max == "max"))
 
             self._metrics[metric_name] = metric_fn
-        self._metrics["loss"] = TorchMetricWrapper(self.criterion_fn, higher_is_better=False, requires_grad=True)
+        self._metrics["loss"] = CallableCoreMetric(self.criterion_fn, higher_is_better=False, requires_grad=True)
         self.logged_metrics = list(self._metrics.keys())
 
     @property
@@ -142,26 +146,20 @@ class LightningModuleEnhanced(LightningModule):
     def logged_metrics(self, logged_metrics: List[str]):
         assert "loss" in logged_metrics, "When manually settings logged_metrics, " \
                                          f"loss must be present. Got: {logged_metrics}"
-        logger.info(f"Setting the logged metrics to {logged_metrics}")
+        logger.debug(f"Setting the logged metrics to {logged_metrics}") if len(logged_metrics) > 1 else ()
         diff = set(logged_metrics).difference(self._metrics.keys())
         assert len(diff) == 0, f"Metrics {diff} are not in set metrics: {self._metrics.keys()}"
         self._logged_metrics = logged_metrics
 
     # Overrides on top of the standard pytorch lightning module
-
-    @overrides(check_signature=False)
-    def log(self, name: str, value: Any, *args, **kwargs):
-        assert kwargs["on_epoch"] is True, "We only log metrics at the end of an epoch"
-
-        # Our metrics have a special method that reduces complex metrics to a single number as well.
-        # Some metrics may have a special method that reduces complex metrics to a single number.
-        value_pbar = value
-        if name in self.metrics and hasattr(self.metrics[name], "compute_pbar"):
-            value_pbar = self.metrics[name].compute_pbar()
-        if isinstance(value_pbar, tr.Tensor) and len(value_pbar.shape) == 0:
-            super().log(name, value_pbar, *args, **kwargs)
-        # Call the metadata logger for the full result, since it can handle any sort of metrics, not just raw numbers
-        return self.metadata_logger.save_epoch_metric(name, value, self.trainer.current_epoch)
+    @property
+    def metadata_callback(self):
+        """Returns the metadata callback of this module"""
+        if self._metadata_callback is None:
+            for callback in self.trainer.callbacks:
+                if isinstance(callback, MetadataCallback):
+                    self._metadata_callback = callback
+        return self._metadata_callback
 
     @overrides
     def on_fit_start(self) -> None:
@@ -175,12 +173,10 @@ class LightningModuleEnhanced(LightningModule):
             val_metrics = self._clone_all_metrics_with_prefix(prefix="val_")
             new_metrics = {**new_metrics, **val_metrics}
         self._metrics = new_metrics
-        self.metadata_logger.on_fit_start(self)
         return super().on_fit_start()
 
     @overrides
     def on_test_start(self) -> None:
-        self.metadata_logger.on_test_start(self)
         return super().on_test_start()
 
     @overrides
@@ -200,13 +196,17 @@ class LightningModuleEnhanced(LightningModule):
         return self._generic_batch_step(train_batch)
 
     @overrides
-    def configure_callbacks(self) -> Union[Sequence[Callback], Callback]:
+    def configure_callbacks(self) -> Union[Sequence[pl.Callback], pl.Callback]:
         return self.callbacks
 
     @overrides
     def training_epoch_end(self, outputs):
         """Computes epoch average train loss and metrics for logging."""
-        self._on_epoch_end()
+        # If validation is enabled (for train loops), add "val_" metrics for all logged metrics.
+        if self.trainer.enable_validation:
+            val_logged_metrics = [f"val_{metric_name}" for metric_name in self.logged_metrics]
+            metrics_to_log = [*self.logged_metrics, *val_logged_metrics]
+        self._run_and_log_metrics_at_epoch_end(metrics_to_log)
 
     @overrides
     def test_epoch_end(self, outputs):
@@ -225,14 +225,6 @@ class LightningModuleEnhanced(LightningModule):
             "lr_scheduler": self.scheduler_dict
         }
 
-    def state_dict(self, *args, **kwargs):
-        return {**super().state_dict(*args, **kwargs), "metadata": self.metadata_logger.metadata}
-
-    def load_state_dict(self, state_dict, *args, **kwargs):
-        if "metadata" in state_dict.keys():
-            self.metadata_logger.metadata = state_dict.pop("metadata")
-        return super().load_state_dict(state_dict, *args, **kwargs)
-
     # Public methods
 
     def forward(self, *args, **kwargs):
@@ -250,36 +242,30 @@ class LightningModuleEnhanced(LightningModule):
 
     def reset_parameters(self):
         """Resets the parameters of the base model"""
-        num_params = len(tuple(layer.parameters()))
-        if num_params == 0:
-            return
         for layer in self.base_model.children():
-            if len(tuple(layer.parameters())) == 0:
-                continue
-            if hasattr(layer, "reset_parameters"):
-                layer.reset_parameters()
-            else:
-                LightningModuleEnhanced(layer).reset_parameters()
+            assert hasattr(layer, "reset_parameters")
+            layer.reset_parameters()
 
     def load_state_from_path(self, path: str):
         """Loads the state dict from a path"""
+        # if path is remote (gcs) download checkpoint to a temp dir
         logger.info(f"Loading weights and hyperparameters from '{path}'")
+        # if str(path).startswith("gs"):
+        #     path = update_gcs_path(path)
         ckpt_data = tr.load(path)
         self.load_state_dict(ckpt_data["state_dict"])
         self.save_hyperparameters(ckpt_data["hyper_parameters"])
 
     def setup_module_for_train(self, train_cfg: Dict):
         """Given a train cfg, prepare this module for training, by setting the required information."""
-        from .train_setup import TrainSetup
         TrainSetup(self, train_cfg).setup()
 
     # Internal methods
 
     def _generic_batch_step(self, train_batch: Dict, prefix: str = "") -> Dict[str, tr.Tensor]:
         """Generic step for computing the forward pass, loss and metrics."""
-        train_batch = to_device(to_tensor(train_batch), self.device)
-        x, gt = train_batch["data"], train_batch["labels"]
-        y = self.forward(x)
+        y = self.forward(train_batch["data"])
+        gt = to_device(to_tensor(train_batch["labels"]), self.device)
         outputs = self._get_batch_metrics(y, gt, prefix)
         return outputs
 
@@ -288,38 +274,32 @@ class LightningModuleEnhanced(LightningModule):
         outputs = {}
         for metric_name in self.logged_metrics:
             prefixed_metric_name = f"{prefix}{metric_name}"
-            metric_fn: Metric = self.metrics[prefixed_metric_name]
+            metric_fn: CoreMetric = self.metrics[prefixed_metric_name]
             # Call the metric and update its state
-            ctx = tr.no_grad if metric_fn.requires_grad is False else tr.enable_grad
-            with ctx():
-                metric_output: tr.Tensor = metric_fn.forward(y, gt)
-            metric_fn.update(to_device(metric_output, "cpu"))
+            metric_output: tr.Tensor = metric_fn.forward(y, gt)
+            metric_fn.batch_update(metric_output)
             outputs[prefixed_metric_name] = metric_output
+            # Log all the numeric batch metrics. Don't show on pbar.
             # Don't use any self.log() here. We don't really care about intermediate batch results, only epoch results,
-            #  which are handled at on_epoch_end callbacks.
+            #  which are handled down.
         return outputs
-
-    # pylint: disable=no-member
-    def _on_epoch_end(self):
-        """Get epoch-level metrics"""
-        # If validation is enabled (for train loops), add "val_" metrics for all logged metrics.
-        if self.trainer.enable_validation:
-            val_logged_metrics = [f"val_{metric_name}" for metric_name in self.logged_metrics]
-            metrics_to_log = [*self.logged_metrics, *val_logged_metrics]
-        self._run_and_log_metrics_at_epoch_end(metrics_to_log)
-        self.metadata_logger.log("Best model path", self.trainer.checkpoint_callback.best_model_path)
 
     def _run_and_log_metrics_at_epoch_end(self, metrics_to_log: List[str]):
         """Runs and logs a given list of logged metrics. Assume they all exist in self.metrics"""
         for metric_name in metrics_to_log:
-            metric_fn: Metric = self.metrics[metric_name]
+            metric_fn: CoreMetric = self.metrics[metric_name]
             # Get the metric's epoch result
-            metric_epoch_result = metric_fn.compute()
-            # Log the metric at the end of the epoch
-            self.log(metric_name, metric_epoch_result, prog_bar=True, on_epoch=True)
+            metric_epoch_result = metric_fn.epoch_result()
+            # Log the metric at the end of the epoch. Only log on pbar the val_loss, loss is tracked by default
+            prog_bar = metric_name == "val_loss"
+
+            value_reduced = metric_fn.epoch_result_reduced(metric_epoch_result)
+            if value_reduced is not None:
+                super().log(metric_name, value_reduced, prog_bar=prog_bar, on_epoch=True)
+            # Call the metadata callback for the full result, since it can handle any sort of metrics
+            self.metadata_callback.save_epoch_metric(metric_name, metric_epoch_result, self.trainer.current_epoch)
             # Reset the metric after storing this epoch's value
             metric_fn.reset()
-        self.metadata_logger.save()
 
     def _clone_all_metrics_with_prefix(self, prefix: str):
         """Clones all the existing metris, by ading a prefix"""

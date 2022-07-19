@@ -1,3 +1,3 @@
 """Init module"""
 
-from .lightning_module_enhanced import LightningModuleEnhanced
+from .core_module import CoreModule as LightningModuleEnhanced

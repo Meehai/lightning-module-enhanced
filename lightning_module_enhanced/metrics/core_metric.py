@@ -1,0 +1,77 @@
+"""
+All metrics in CoreModule are a subclass of this class and follow logic describe below. Only epoch results are
+relevant, and batch results are somehow accumulated, such that we minimize the risk of getting invalid results from
+simply averaging them during training.
+
+For example, instead of accumulating accuracies like this:
+    - epoch_accuracy = (batch_accuracy_1 + batch_accuracy_2) / 2
+We do:
+    - epoch_accuracy = sum([[batch_accuracy_item_b1_1, ..., batch_accuracy_item_b1_n],
+                            [batch_accuracy_item_b2_1, ..., batch_accuracy_item_b2_n]]) / (b1_n + b2_n)
+
+Methods logic:
+- forward: Takes one batch of (y, gt) and returns the metric result of that batch
+- batch_update: Takes the batch result from forward(y, gt) and updates the internal state of the current epoch
+- epoch_result: Takes the internal state of the current epoch and returns the epoch result
+- epoch_result_reduced: Takes the epoch result from epoch_result() and returns a reduced variant of the epoch metric
+  that can be logged by basic loggers (MLFlowLogger or TensorBoardLogger) or None. If None, then it is not logged via
+  self.log() in the CoreModule at epoch end
+- reset: Resets the internal state for the next epoch
+"""
+
+from typing import Callable, Optional
+from abc import ABC, abstractmethod
+from overrides import overrides
+from torch import nn
+import torch as tr
+from ..logger import logger
+
+MetricFnType = Callable[[tr.Tensor, tr.Tensor], tr.Tensor]
+
+
+class CoreMetric(nn.Module, ABC):
+    """
+    Generic CoreMetric for a CoreModule.
+    """
+    def __init__(self, higher_is_better: bool = False, requires_grad: bool = False):
+        super().__init__()
+        self.batch_results = None
+        self.batch_count = tr.IntTensor([0])
+        self.higher_is_better: bool = higher_is_better
+        # By default, all metrics do not require gradients. This is updated for loss in CoreModule.
+        self.requires_grad_(requires_grad)
+
+    @abstractmethod
+    @overrides(check_signature=False)
+    def forward(self, y: tr.Tensor, gt: tr.Tensor) -> tr.Tensor:
+        """Computes the batch level metric. The result is passed to `batch_update` to update the state of the metric"""
+
+    @abstractmethod
+    def batch_update(self, batch_result: tr.Tensor) -> None:
+        """Updates the internal state based on the batch result from forward(y, gt)"""
+
+    @abstractmethod
+    def epoch_result(self) -> tr.Tensor:
+        """Called at each epoch end from the CoreModule. Takes the internal state and returns the epoch result"""
+
+    @abstractmethod
+    def reset(self):
+        """This is called at each epoch end after compute(). It resets the state for the next epoch."""
+
+    def epoch_result_reduced(self, epoch_result: tr.Tensor) -> Optional[tr.Tensor]:
+        """
+        Reduces a potentially compelx metric (confusion matrix or multi label accuracy) into a single number.
+        This is used so that other loggers, such as mlflow logger or tensorboard logger can store these without making
+        any transformation (i.e. mlflow logger will sum a confusion matrix into a single number).
+        By default, does nothing. Override this if needed.
+        """
+        epoch_result_reduced = epoch_result
+        assert isinstance(epoch_result_reduced, tr.Tensor), f"Got {type(epoch_result_reduced)}"
+        shape = epoch_result_reduced.shape
+        if not (len(shape) == 0 or (len(shape) == 1 and shape[-1] == 1)):
+            logger.debug(f"Metric '{self}' has a non-number reduced value (shape: {shape})."
+                         "Some loggers might not like this.")
+        return epoch_result_reduced
+
+    def __repr__(self):
+        return str(self)
