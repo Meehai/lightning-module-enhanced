@@ -1,4 +1,5 @@
 """Metadata Callback module"""
+from sys import breakpointhook
 from typing import Dict, Any
 from pathlib import Path
 from datetime import datetime
@@ -14,10 +15,7 @@ class MetadataCallback(pl.Callback):
     def __init__(self):
         self.log_dir = None
         self.log_file_path = None
-        self.metadata = {
-            "epoch_metrics": {},
-            "hparams_current": None,
-        }
+        self.metadata = None
 
     def _log_dict(self, key_val: Dict[str, Any]):
         """Log an entire dictionary of key value, by adding each key to the current metadata"""
@@ -38,30 +36,35 @@ class MetadataCallback(pl.Callback):
         # Apply .tolist(). Every metric should be able to be converted as list, such that it can be stored in a JSON.
         self.metadata["epoch_metrics"][key][epoch] = value.tolist()
 
-    def _setup(self, trainer: "pl.Trainer", pl_module: pl.LightningModule, start_type: str):
-        """Called to set the log dir based on the first logger"""
+    def _setup(self, trainer: "pl.Trainer", pl_module: pl.LightningModule, prefix: str):
+        """Called to set the log dir based on the first logger for train and test modes"""
         assert self.log_dir is None
+        self.metadata = {
+            "epoch_metrics": {},
+            "hparams_current": None,
+        }
+
         log_dir = trainer.log_dir
         self.log_dir = Path(log_dir).absolute()
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.log_file_path = self.log_dir / "metadata.json"
         logger.debug(f"Metadata logger set up to '{self.log_file_path}'")
 
-        self._log_dict({"input_shape": pl_module.base_model.input_shape,
-                        "output_shape": pl_module.base_model.output_shape,
+        self._log_dict({#"input_shape": pl_module.base_model.input_shape,
+                        #"output_shape": pl_module.base_model.output_shape,
                         "base_model": pl_module.base_model.__class__.__name__
                         })
         # default metadata
         now = datetime.now()
         self._log_dict({
-            f"{start_type}_start_timestamp": datetime.timestamp(now),
-            f"{start_type}_start_date": str(now),
-            f"{start_type}_hparams": pl_module.hparams
+            f"{prefix}_start_timestamp": datetime.timestamp(now),
+            f"{prefix}_start_date": str(now),
+            f"{prefix}_hparams": pl_module.hparams
         })
 
     def on_fit_start(self, trainer: "pl.Trainer", pl_module: pl.LightningModule) -> None:
         """At the start of the .fit() loop, add the sizes of all train/validation dataloaders"""
-        self._setup(trainer, pl_module, start_type="fit")
+        self._setup(trainer, pl_module, prefix="fit")
 
         if pl_module.trainer.train_dataloader is not None:
             self._log("train dataset size", len(pl_module.trainer.train_dataloader))
@@ -71,7 +74,7 @@ class MetadataCallback(pl.Callback):
 
     def on_test_start(self, trainer: "pl.Trainer", pl_module: pl.LightningModule) -> None:
         """At the start of the .test() loop, add the sizes of all test dataloaders"""
-        self._setup(trainer, pl_module, start_type="test")
+        self._setup(trainer, pl_module, prefix="test")
         self.metadata["epoch_metrics"] = {}
         self._log("test_start_hparams", pl_module.hparams)
         for i, dataloader in enumerate(pl_module.trainer.test_dataloaders):
@@ -81,17 +84,29 @@ class MetadataCallback(pl.Callback):
         """Saves the metadata as a json on the train dir"""
         # Always update the current hparams such that, for test modes, we get the loaded stats
         self._log("Best model path", trainer.checkpoint_callback.best_model_path)
-        metadata = {**self.metadata, "hparams_current": pl_module.hparams}
-        with open(self.log_file_path, "w", encoding="utf8") as fp:
-            json.dump(metadata, fp, indent=4)
+        self._log("hparams_current", pl_module.hparams)
+        self.save()
+
+    def _on_end(self, prefix: str):
+        """Adds the end timestamp and saves the json on the disk for train and test modes."""
+        now = datetime.now()
+        start_timestamp = datetime.fromtimestamp(self.metadata[f"{prefix}_start_timestamp"])
+        self._log_dict({
+            f"{prefix}_end_timestamp": datetime.timestamp(now),
+            f"{prefix}_end_date": str(now),
+            f"{prefix}_duration": str(now - start_timestamp)
+        })
+        self.save()
 
     def on_train_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
-        now = datetime.now()
-        self._log_dict({
-            "train_end_timestamp": datetime.timestamp(now),
-            "train_end_date": str(now),
-            "train_duration": str(now - datetime.fromtimestamp(self.metadata["fit_start_timestamp"]))
-        })
+        self._on_end("fit")
+
+    def on_test_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
+        self._on_end("test")
+
+    def save(self):
+        with open(self.log_file_path, "w", encoding="utf8") as fp:
+            json.dump(self.metadata, fp, indent=4)
 
     def __str__(self):
         return f"Metadata Callback. Log dir: '{self.log_dir}'"

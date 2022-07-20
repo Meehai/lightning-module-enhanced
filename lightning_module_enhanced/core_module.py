@@ -243,7 +243,9 @@ class CoreModule(pl.LightningModule):
     def reset_parameters(self):
         """Resets the parameters of the base model"""
         for layer in self.base_model.children():
-            assert hasattr(layer, "reset_parameters")
+            if CoreModule(layer).num_params == 0:
+                continue
+            assert hasattr(layer, "reset_parameters"), f"Layer {layer} has params, but no reset_parameters() method"
             layer.reset_parameters()
 
     def load_state_from_path(self, path: str):
