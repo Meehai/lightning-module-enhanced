@@ -51,7 +51,7 @@ class CoreModule(pl.LightningModule):
         self._metrics: Dict[str, CoreMetric] = {}
         self._logged_metrics: List[str] = []
         self._summary: ModelStatistics = None
-        self.callbacks: List[pl.Callback] = []
+        self._callbacks: List[pl.Callback] = [MetadataCallback()]
         self._metadata_callback = None
 
         # Store initial hyperparameters in the pl_module and the initial shapes/model name in metadata logger
@@ -79,6 +79,26 @@ class CoreModule(pl.LightningModule):
         """Prints the summary (layers, num params, size in MB), with the help of torchinfo module."""
         self._summary = summary(self.base_model, verbose=0, **kwargs) if self._summary is None else self._summary
         return self._summary
+
+    @property
+    def callbacks(self) -> List[pl.Callback]:
+        """Gets the callbacks"""
+        return self._callbacks
+
+    @callbacks.setter
+    def callbacks(self, callbacks: List[pl.Callback]):
+        """Sets the callbacks + the default metadata callback"""
+        found = False
+        for callback in callbacks:
+            if isinstance(callback, MetadataCallback):
+                metadata_callback = callback
+                found = True
+        if not found:
+            logger.info("Metadata callback added to the model's callbacks")
+            metadata_callback = MetadataCallback()
+            callbacks.append(metadata_callback)
+        self._metadata_callback = metadata_callback
+        self._callbacks = callbacks
 
     @property
     def trainable_params(self) -> bool:
@@ -171,7 +191,7 @@ class CoreModule(pl.LightningModule):
                        if not metric_name.startswith("val_")}
         if self.trainer.enable_validation:
             # If we use a validation set, clone all the metrics, so that the statistics don't intefere with each other
-            val_metrics = LightningModuleEnhanced._clone_all_metrics_with_prefix(new_metrics, prefix="val_")
+            val_metrics = CoreModule._clone_all_metrics_with_prefix(new_metrics, prefix="val_")
             new_metrics = {**new_metrics, **val_metrics}
         self._metrics = new_metrics
         return super().on_fit_start()
@@ -204,6 +224,7 @@ class CoreModule(pl.LightningModule):
     def training_epoch_end(self, outputs):
         """Computes epoch average train loss and metrics for logging."""
         # If validation is enabled (for train loops), add "val_" metrics for all logged metrics.
+        metrics_to_log = self.logged_metrics
         if self.trainer.enable_validation:
             val_logged_metrics = [f"val_{metric_name}" for metric_name in self.logged_metrics]
             metrics_to_log = [*self.logged_metrics, *val_logged_metrics]
@@ -308,11 +329,11 @@ class CoreModule(pl.LightningModule):
             metric_fn.reset()
 
     @staticmethod
-    def _clone_all_metrics_with_prefix(metrics: Dict[str, Metric], prefix: str) -> Dict[str, Metric]:
+    def _clone_all_metrics_with_prefix(metrics: Dict[str, CoreMetric], prefix: str) -> Dict[str, CoreMetric]:
         """Clones all the given metrics, by ading a prefix to the name"""
         assert len(prefix) > 0 and prefix[-1] == "_", "Prefix must be of format 'XXX_'"
         new_metrics = {}
-        for metric_name, metric_fn in self.metrics.items():
+        for metric_name, metric_fn in metrics.items():
             if metric_name.startswith(prefix):
                 logger.warning(f"This may be a bug, since metric '{metric_name}' already has prefix '{prefix}'")
                 continue

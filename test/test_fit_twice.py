@@ -47,8 +47,8 @@ def test_fit_twice_with_validation_only_once_2():
     assert model.trainer.current_epoch == 10
     assert len(model.metrics) == 2
     # This should start from epoch 0 towards epoch 10, basically from scratch, but with pretrained weights
-    assert list(model.metadata_logger.metadata["epoch_metrics"]["loss"].keys())[0] == 0
-    assert len(model.metadata_logger.metadata["epoch_metrics"]["loss"]) == 10
+    assert list(model.metadata_callback.metadata["epoch_metrics"]["loss"].keys())[0] == 0
+    assert len(model.metadata_callback.metadata["epoch_metrics"]["loss"]) == 10
 
 def test_fit_twice_from_ckpt():
     model = LightningModuleEnhanced(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
@@ -59,8 +59,8 @@ def test_fit_twice_from_ckpt():
     Trainer(max_epochs=10).fit(model, DataLoader(Reader()), DataLoader(Reader()),
                                ckpt_path=trainer1.checkpoint_callback.best_model_path)
     # This should start from epoch 5 towards epoch 10
-    assert list(model.metadata_logger.metadata["epoch_metrics"]["loss"].keys())[0] == 5
-    assert len(model.metadata_logger.metadata["epoch_metrics"]["loss"]) == 5
+    assert list(model.metadata_callback.metadata["epoch_metrics"]["loss"].keys())[0] == 5
+    assert len(model.metadata_callback.metadata["epoch_metrics"]["loss"]) == 5
     assert model.trainer.current_epoch == 10
     assert len(model.metrics) == 2
 
