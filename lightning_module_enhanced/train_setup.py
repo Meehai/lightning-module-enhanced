@@ -50,6 +50,3 @@ class TrainSetup:
             return
         self._setup_optimizer()
         self._setup_scheduler()
-
-        # TODO: make this better
-        self.module.callbacks.append(MetadataCallback())
