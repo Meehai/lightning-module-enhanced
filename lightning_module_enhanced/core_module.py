@@ -166,11 +166,12 @@ class CoreModule(pl.LightningModule):
         if len(self.metrics) == 0:
             self.metrics = {}
 
-        # We need to make a copy for all metrics if we have a validation dataloader, such that the global statistics
-        #  are unique for each of these datasets.
-        new_metrics = self.metrics
+        # We need to remove the val_ metrics, because if .fit() is called twice, this will create too many copies
+        new_metrics = {metric_name: metric_fn for metric_name, metric_fn in self.metrics.items()
+                       if not metric_name.startswith("val_")}
         if self.trainer.enable_validation:
-            val_metrics = self._clone_all_metrics_with_prefix(prefix="val_")
+            # If we use a validation set, clone all the metrics, so that the statistics don't intefere with each other
+            val_metrics = LightningModuleEnhanced._clone_all_metrics_with_prefix(new_metrics, prefix="val_")
             new_metrics = {**new_metrics, **val_metrics}
         self._metrics = new_metrics
         return super().on_fit_start()
@@ -242,6 +243,9 @@ class CoreModule(pl.LightningModule):
 
     def reset_parameters(self):
         """Resets the parameters of the base model"""
+        num_params = len(tuple(self.parameters()))
+        if num_params == 0:
+            return
         for layer in self.base_model.children():
             if CoreModule(layer).num_params == 0:
                 continue
@@ -303,9 +307,10 @@ class CoreModule(pl.LightningModule):
             # Reset the metric after storing this epoch's value
             metric_fn.reset()
 
-    def _clone_all_metrics_with_prefix(self, prefix: str):
-        """Clones all the existing metris, by ading a prefix"""
-        assert len(prefix) > 0 and prefix[-1] == "_"
+    @staticmethod
+    def _clone_all_metrics_with_prefix(metrics: Dict[str, Metric], prefix: str) -> Dict[str, Metric]:
+        """Clones all the given metrics, by ading a prefix to the name"""
+        assert len(prefix) > 0 and prefix[-1] == "_", "Prefix must be of format 'XXX_'"
         new_metrics = {}
         for metric_name, metric_fn in self.metrics.items():
             if metric_name.startswith(prefix):

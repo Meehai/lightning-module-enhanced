@@ -11,7 +11,8 @@ class PlotCallbackGeneric(Callback):
     def __init__(self, plot_callback: Callable):
         self.plot_callback = plot_callback
 
-    def get_out_dir(self, trainer: Trainer, dir_name: str) -> Path:
+    @staticmethod
+    def _get_out_dir(trainer: Trainer, dir_name: str) -> Path:
         """Gets the output directory as '/path/to/log_dir/pngs/train_or_val/epoch_N/' """
         logger = trainer.loggers[0]
         out_dir = Path(f"{logger.log_dir}/pngs/{dir_name}/{trainer.current_epoch}")
@@ -21,7 +22,7 @@ class PlotCallbackGeneric(Callback):
     def _do_call(self, trainer, pl_module, batch, batch_idx, key):
         if batch_idx != 0:
             return
-        out_dir = self.get_out_dir(trainer, key)
+        out_dir = PlotCallbackGeneric._get_out_dir(trainer, key)
         with tr.no_grad():
             y = pl_module.forward(batch)
         self.plot_callback(model=pl_module, batch=batch, y=y, out_dir=out_dir)
@@ -44,7 +45,7 @@ class PlotCallback(PlotCallbackGeneric):
     def _do_call(self, trainer, pl_module, batch, batch_idx, key):
         if batch_idx != 0:
             return
-        out_dir = self.get_out_dir(trainer, key)
+        out_dir = PlotCallbackGeneric._get_out_dir(trainer, key)
 
         x, gt = batch["data"], batch["labels"]
         with tr.no_grad():
