@@ -1,5 +1,4 @@
 """Metadata Callback module"""
-from sys import breakpointhook
 from typing import Dict, Any
 from pathlib import Path
 from datetime import datetime
@@ -38,7 +37,6 @@ class MetadataCallback(pl.Callback):
 
     def _setup(self, trainer: "pl.Trainer", pl_module: pl.LightningModule, prefix: str):
         """Called to set the log dir based on the first logger for train and test modes"""
-        assert self.log_dir is None
         self.metadata = {
             "epoch_metrics": {},
             "hparams_current": None,
@@ -105,6 +103,7 @@ class MetadataCallback(pl.Callback):
         self._on_end("test")
 
     def save(self):
+        """Saves the file on disk"""
         with open(self.log_file_path, "w", encoding="utf8") as fp:
             json.dump(self.metadata, fp, indent=4)
 

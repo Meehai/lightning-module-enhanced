@@ -6,10 +6,10 @@ import torch as tr
 import pytorch_lightning as pl
 from torch import optim, nn
 from torchinfo import summary, ModelStatistics
+from nwutils.torch import tr_get_data as to_tensor, tr_to_device as to_device
 
 from .metrics import CoreMetric, CallableCoreMetric
 from .logger import logger
-from nwutils.torch import tr_get_data as to_tensor, tr_to_device as to_device
 from .callbacks import MetadataCallback
 from .train_setup import TrainSetup
 
@@ -308,7 +308,8 @@ class CoreModule(pl.LightningModule):
         assert len(prefix) > 0 and prefix[-1] == "_"
         new_metrics = {}
         for metric_name, metric_fn in self.metrics.items():
-            assert not metric_name.startswith(prefix), f"This may be a bug, since metric '{metric_name}'" \
-                                                       f"already has prefix '{prefix}'"
+            if metric_name.startswith(prefix):
+                logger.warning(f"This may be a bug, since metric '{metric_name}' already has prefix '{prefix}'")
+                continue
             new_metrics[f"{prefix}{metric_name}"] = deepcopy(metric_fn)
         return new_metrics
