@@ -1,5 +1,5 @@
 """Module to create a plot callback for train and/or validation for a Lightning Module"""
-from typing import Callable, Any
+from typing import Callable
 from pathlib import Path
 from overrides import overrides
 from pytorch_lightning import Trainer, LightningModule
@@ -29,10 +29,12 @@ class PlotCallbackGeneric(Callback):
 
     @overrides
     # pylint: disable=unused-argument
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch: Any, batch_idx: int, *args, **kwargs):
+    def on_validation_batch_end(self, trainer: Trainer, pl_module: LightningModule,
+                                outputs, batch, batch_idx: int, dataloader_idx, unused: int = 0):
         self._do_call(trainer, pl_module, batch, batch_idx, "validation")
 
     @overrides
+    # pylint: disable=unused-argument
     def on_train_batch_end(self, trainer: Trainer, pl_module: LightningModule,
                                 outputs, batch, batch_idx: int, unused: int = 0):
         self._do_call(trainer, pl_module, batch, batch_idx, "train")

@@ -14,15 +14,9 @@ class PlotMetrics(Callback):
     def _plot_best_dot(self, pl_module, metric_name):
         """Plot the dot. We require to know if the metric is max or min typed."""
         metric = pl_module.metrics[metric_name]
-        higher_is_better = False
-        if type(metric).higher_is_better is not None:
-            higher_is_better = type(metric).higher_is_better
-        else:
-            if hasattr(metric, "_higher_is_better"):
-                higher_is_better = metric._higher_is_better
         metric_history = self.history[metric_name]
         scores = metric_history["val"] if metric_history["val"][0] is not None else metric_history["train"]
-        metric_x = np.argmax(scores) if higher_is_better else np.argmin(scores)
+        metric_x = np.argmax(scores) if metric.higher_is_better else np.argmin(scores)
         metric_y = scores[metric_x]
         plt.annotate(f"Epoch {metric_x + 1}\nMax {metric_y:.2f}", xy=(metric_x + 1, metric_y))
         plt.plot([metric_x + 1], [metric_y], "o")

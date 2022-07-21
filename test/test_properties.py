@@ -34,4 +34,3 @@ class TestProperties:
         assert self.module.trainable_params == False
         self.module.trainable_params = True
         assert self.module.trainable_params == True
-
