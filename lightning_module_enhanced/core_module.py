@@ -57,6 +57,14 @@ class CoreModule(pl.LightningModule):
         # Store initial hyperparameters in the pl_module and the initial shapes/model name in metadata logger
         self.save_hyperparameters({"args": args, **kwargs}, ignore=["base_model"])
 
+        if hasattr(self.base_model, "criterion_fn"):
+            logger.info("Base model has criterion_fn attribute. Using these by default")
+            self.criterion_fn = self.base_model.criterion_fn
+        if hasattr(self.base_model, "metrics"):
+            assert hasattr(self.base_model, "criterion_fn"), "For now, we need both or just criterion_fn to be set"
+            logger.info("Base model has metrics attribute. Using these by default")
+            self.metrics = self.base_model.metrics
+
     # Getters and setters for properties
 
     @property

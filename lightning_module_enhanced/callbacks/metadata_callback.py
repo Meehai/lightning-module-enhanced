@@ -59,6 +59,7 @@ class MetadataCallback(pl.Callback):
             f"{prefix}_start_date": str(now),
             f"{prefix}_hparams": pl_module.hparams
         })
+        self.save()
 
     def on_fit_start(self, trainer: "pl.Trainer", pl_module: pl.LightningModule) -> None:
         """At the start of the .fit() loop, add the sizes of all train/validation dataloaders"""

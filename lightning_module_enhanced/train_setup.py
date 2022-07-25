@@ -1,15 +1,15 @@
 """Module that implements a standard setup process of the lightning module via a train config file"""
 from typing import Dict
-from .logger import logger
-from .callbacks import MetadataCallback
-
 from torch import optim
 
+from .logger import logger
+
 class TrainSetup:
+    """Train Setup class"""
     def __init__(self, module: "LightningModuleEnhanced", train_cfg: Dict):
         self.module = module
         self.train_cfg = train_cfg
-    
+
     def _setup_optimizer(self):
         if "optimizer" not in self.train_cfg:
             logger.debug("Optimizer not defined in train_cfg. Skipping.")
@@ -39,14 +39,18 @@ class TrainSetup:
         if not "optimizer_args" in self.train_cfg["scheduler"]:
             logger.debug("Scheduler set, but no optimizer args. Adding a default to track 'val_loss'")
             self.train_cfg["scheduler"]["optimizer_args"] = {"monitor": "val_loss"}
-        
+
         logger.info(f"Setting scheduler to {scheduler}")
         self.module.scheduler_dict = {"scheduler": scheduler, **self.train_cfg["scheduler"]["optimizer_args"]}
 
     def setup(self):
+        """The main function of this class"""
         assert self.module.num_trainable_params > 0, "Module has no trainable params!"
         if self.train_cfg is None:
             logger.info("Train cfg is None. Returning early.")
             return
         self._setup_optimizer()
         self._setup_scheduler()
+
+    def __call__(self):
+        return self.setup()
