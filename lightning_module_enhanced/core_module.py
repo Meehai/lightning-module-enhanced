@@ -6,12 +6,12 @@ import torch as tr
 import pytorch_lightning as pl
 from torch import optim, nn
 from torchinfo import summary, ModelStatistics
-from nwutils.torch import tr_get_data as to_tensor, tr_to_device as to_device
 
 from .metrics import CoreMetric, CallableCoreMetric
 from .logger import logger
 from .callbacks import MetadataCallback
 from .train_setup import TrainSetup
+from .utils import to_tensor, to_device
 
 # pylint: disable=too-many-ancestors, arguments-differ, unused-argument, abstract-method
 class CoreModule(pl.LightningModule):
