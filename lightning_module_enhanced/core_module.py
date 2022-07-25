@@ -183,14 +183,12 @@ class CoreModule(pl.LightningModule):
 
     @overrides
     def on_fit_start(self) -> None:
-        if hasattr(self.base_model, "criterion_fn"):
+        if hasattr(self.base_model, "criterion_fn") and self.base_model.criterion_fn is not None:
             logger.info("Base model has criterion_fn attribute. Using these by default")
-            # assert self.criterion_fn is None or self.criterion_fn == self.base_model.criterion_fn
             self.criterion_fn = self.base_model.criterion_fn
-        if hasattr(self.base_model, "metrics"):
+        if hasattr(self.base_model, "metrics") and self.base_model.metrics is not None:
             assert hasattr(self.base_model, "criterion_fn"), "For now, we need both or just criterion_fn to be set"
             logger.info("Base model has metrics attribute. Using these by default")
-            # assert self.metrics is None or self.metrics == self.base_model.metrics
             self.metrics = self.base_model.metrics
 
         if len(self.metrics) == 0:
