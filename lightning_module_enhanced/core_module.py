@@ -57,14 +57,6 @@ class CoreModule(pl.LightningModule):
         # Store initial hyperparameters in the pl_module and the initial shapes/model name in metadata logger
         self.save_hyperparameters({"args": args, **kwargs}, ignore=["base_model"])
 
-        if hasattr(self.base_model, "criterion_fn"):
-            logger.info("Base model has criterion_fn attribute. Using these by default")
-            self.criterion_fn = self.base_model.criterion_fn
-        if hasattr(self.base_model, "metrics"):
-            assert hasattr(self.base_model, "criterion_fn"), "For now, we need both or just criterion_fn to be set"
-            logger.info("Base model has metrics attribute. Using these by default")
-            self.metrics = self.base_model.metrics
-
     # Getters and setters for properties
 
     @property
@@ -129,7 +121,7 @@ class CoreModule(pl.LightningModule):
 
     @criterion_fn.setter
     def criterion_fn(self, criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor]):
-        assert isinstance(criterion_fn, Callable)
+        assert isinstance(criterion_fn, Callable), f"Got '{criterion_fn}'"
         self._criterion_fn = criterion_fn
         if len(self.metrics) == 0:
             self.metrics = {}
@@ -191,6 +183,16 @@ class CoreModule(pl.LightningModule):
 
     @overrides
     def on_fit_start(self) -> None:
+        if hasattr(self.base_model, "criterion_fn"):
+            logger.info("Base model has criterion_fn attribute. Using these by default")
+            # assert self.criterion_fn is None or self.criterion_fn == self.base_model.criterion_fn
+            self.criterion_fn = self.base_model.criterion_fn
+        if hasattr(self.base_model, "metrics"):
+            assert hasattr(self.base_model, "criterion_fn"), "For now, we need both or just criterion_fn to be set"
+            logger.info("Base model has metrics attribute. Using these by default")
+            # assert self.metrics is None or self.metrics == self.base_model.metrics
+            self.metrics = self.base_model.metrics
+
         if len(self.metrics) == 0:
             self.metrics = {}
 
@@ -290,6 +292,12 @@ class CoreModule(pl.LightningModule):
         ckpt_data = tr.load(path)
         self.load_state_dict(ckpt_data["state_dict"])
         self.save_hyperparameters(ckpt_data["hyper_parameters"])
+
+    def state_dict(self):
+        return self.base_model.state_dict()
+
+    def load_state_dict(self, state_dict: Dict[str, Any], strict: bool = True):
+        return self.base_model.load_state_dict(state_dict, strict)
 
     def setup_module_for_train(self, train_cfg: Dict):
         """Given a train cfg, prepare this module for training, by setting the required information."""

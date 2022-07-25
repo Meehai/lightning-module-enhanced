@@ -15,14 +15,15 @@ class TrainSetup:
             logger.debug("Optimizer not defined in train_cfg. Skipping.")
             return
 
+        str_optimizer_type = self.train_cfg["optimizer"]["type"]
         optimizer_type = {
             "adamw": optim.AdamW,
             "adam": optim.Adam,
             "sgd": optim.SGD,
             "rmsprop": optim.RMSprop
-        }[self.train_cfg["optimizer"]["type"]]
+        }[str_optimizer_type]
         self.module.optimizer = optimizer_type(self.module.parameters(), **self.train_cfg["optimizer"]["args"])
-        logger.info(f"Setting optimizer to {self.module.optimizer}")
+        logger.info(f"Setting optimizer to '{str_optimizer_type}' (params: {self.train_cfg['optimizer']['args']})")
 
     def _setup_scheduler(self):
         """Setup the scheduler following Pytorch Lightning's requirements."""
@@ -45,6 +46,9 @@ class TrainSetup:
 
     def setup(self):
         """The main function of this class"""
+        if hasattr(self.module.base_model, "setup_model_for_train"):
+            logger.info(f"Model {self.module.base_model} has setup_model_for_train() method. Calling it first.")
+            self.module.base_model.setup_model_for_train(self.train_cfg)
         assert self.module.num_trainable_params > 0, "Module has no trainable params!"
         if self.train_cfg is None:
             logger.info("Train cfg is None. Returning early.")
