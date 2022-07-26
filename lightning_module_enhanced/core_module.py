@@ -122,6 +122,7 @@ class CoreModule(pl.LightningModule):
     @criterion_fn.setter
     def criterion_fn(self, criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor]):
         assert isinstance(criterion_fn, Callable), f"Got '{criterion_fn}'"
+        logger.debug(f"Setting criterion to '{criterion_fn}'")
         self._criterion_fn = criterion_fn
         if len(self.metrics) == 0:
             self.metrics = {}
