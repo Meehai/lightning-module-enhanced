@@ -38,6 +38,7 @@ class CoreMetric(nn.Module, ABC):
         self.batch_results = None
         self.batch_count = tr.IntTensor([0])
         self.higher_is_better: bool = higher_is_better
+        self.requires_grad = requires_grad
         # By default, all metrics do not require gradients. This is updated for loss in CoreModule.
         self.requires_grad_(requires_grad)
 
@@ -73,5 +74,7 @@ class CoreMetric(nn.Module, ABC):
                          "Some loggers might not like this.")
         return epoch_result_reduced
 
-    def __repr__(self):
-        return str(self)
+    def __str__(self):
+        str_type =  str(type(self)).split(".")[-1][0:-2]
+        f_str = f"[{str_type}]. Higher is beter: {self.higher_is_better}. Grad: {self.requires_grad}"
+        return f_str
