@@ -313,7 +313,9 @@ class CoreModule(pl.LightningModule):
             prefixed_metric_name = f"{prefix}{metric_name}"
             metric_fn: CoreMetric = self.metrics[prefixed_metric_name]
             # Call the metric and update its state
-            metric_output: tr.Tensor = metric_fn.forward(y, gt)
+            state = tr.enable_grad if metric_fn.requires_grad else tr.no_grad
+            with state():
+                metric_output: tr.Tensor = metric_fn.forward(y, gt)
             metric_fn.batch_update(metric_output)
             outputs[prefixed_metric_name] = metric_output
             # Log all the numeric batch metrics. Don't show on pbar.
