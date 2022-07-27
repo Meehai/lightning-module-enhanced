@@ -44,6 +44,20 @@ class TrainSetup:
         logger.info(f"Setting scheduler to {scheduler}")
         self.module.scheduler_dict = {"scheduler": scheduler, **self.train_cfg["scheduler"]["optimizer_args"]}
 
+    def _setup_criterion(self):
+        """Checks if the base model has the 'criterion_fn' property, and if True, uses this."""
+        if hasattr(self.module.base_model, "criterion_fn") and self.module.base_model.criterion_fn is not None:
+            logger.info("Base model has criterion_fn attribute. Using these by default")
+            self.module.criterion_fn = self.module.base_model.criterion_fn
+
+    def _setup_metrics(self):
+        """Checks if the base model has the 'metrics' property, and if True, uses it."""
+        if hasattr(self.module.base_model, "metrics") and self.module.base_model.metrics is not None:
+            assert hasattr(self.module.base_model, "criterion_fn"), \
+                "For now, we need both or just criterion_fn to be set"
+            logger.info("Base model has metrics attribute. Using these by default")
+            self.module.metrics = self.module.base_model.metrics
+
     def setup(self):
         """The main function of this class"""
         if hasattr(self.module.base_model, "setup_model_for_train"):
@@ -55,6 +69,8 @@ class TrainSetup:
             return
         self._setup_optimizer()
         self._setup_scheduler()
+        self._setup_criterion()
+        self._setup_metrics()
 
     def __call__(self):
         return self.setup()
