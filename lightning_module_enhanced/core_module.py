@@ -135,6 +135,7 @@ class CoreModule(pl.LightningModule):
 
     @metrics.setter
     def metrics(self, metrics: Dict[str, Tuple[Callable, str]]):
+        assert self.criterion_fn is not None, "Criterion must be set before metrics (for now...)."
         if len(self._metrics) != 0:
             logger.info(f"Settings metrics to: {list(metrics.keys())}")
         self._metrics = {}
@@ -318,7 +319,6 @@ class CoreModule(pl.LightningModule):
                 metric_output: tr.Tensor = metric_fn.forward(y, gt)
             metric_fn.batch_update(metric_output)
             outputs[prefixed_metric_name] = metric_output
-            # Log all the numeric batch metrics. Don't show on pbar.
             # Don't use any self.log() here. We don't really care about intermediate batch results, only epoch results,
             #  which are handled down.
         return outputs

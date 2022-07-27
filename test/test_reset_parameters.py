@@ -12,8 +12,9 @@ def test_reset_parameters_1():
     for p1, p2 in zip(params, new_params):
         assert not tr.allclose(p1, p2)
 
-def test_reset_parameters_2():
+def test_r_reset_parameters_1():
     """
+    Regression test.
     This tests that if we have parameters(), but no reset_parameters(), then we'll try to recursively call
     reset_parameters(), by first converting the model to a LME.
     """
@@ -24,7 +25,7 @@ def test_reset_parameters_2():
     for p1, p2 in zip(params, new_params):
         assert not tr.allclose(p1, p2)
 
-def test_reset_parameters_3():
+def test_reset_parameters_2():
     """
     Same as above, but deeper. Fails for bigger values tho. Seems torch related somehow.
     """
