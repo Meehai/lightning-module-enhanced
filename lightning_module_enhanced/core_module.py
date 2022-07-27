@@ -1,4 +1,5 @@
 """Generic Pytorch Lightning Graph module on top of a Graph module"""
+from __future__ import annotations
 from typing import Dict, Callable, List, Union, Any, Sequence, Tuple
 from copy import deepcopy
 from overrides import overrides
@@ -271,7 +272,9 @@ class CoreModule(pl.LightningModule):
         for layer in self.base_model.children():
             if CoreModule(layer).num_params == 0:
                 continue
-            assert hasattr(layer, "reset_parameters"), f"Layer {layer} has params, but no reset_parameters() method"
+            if not hasattr(layer, "reset_parameters"):
+                logger.debug(f"Layer {layer} has params, but no reset_parameters() method. Trying recursively")
+                layer = CoreModule(layer)
             layer.reset_parameters()
 
     def load_state_from_path(self, path: str):
