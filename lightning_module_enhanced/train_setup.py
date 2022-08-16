@@ -1,6 +1,7 @@
 """Module that implements a standard setup process of the lightning module via a train config file"""
 from typing import Dict
 from torch import optim
+from .schedulers import ReduceLROnPlateauWithBurnIn
 
 from .logger import logger
 
@@ -33,7 +34,8 @@ class TrainSetup:
 
         assert self.module.optimizer is not None, "Cannot setup scheduler before optimizer."
         scheduler_type = {
-            "ReduceLROnPlateau": optim.lr_scheduler.ReduceLROnPlateau
+            "ReduceLROnPlateau": optim.lr_scheduler.ReduceLROnPlateau,
+            "ReduceLROnPlateauWithBurnIn": ReduceLROnPlateauWithBurnIn
         }[self.train_cfg["scheduler"]["type"]]
         scheduler = scheduler_type(optimizer=self.module.optimizer, **self.train_cfg["scheduler"]["args"])
 
