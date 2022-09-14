@@ -50,7 +50,8 @@ class CoreModule(pl.LightningModule):
         self.scheduler_dict: optim.lr_scheduler._LRScheduler = None
         self._criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor] = None
         self._metrics: Dict[str, CoreMetric] = {}
-        self._logged_metrics: List[str] = []
+        self._prefixed_metrics: Dict[str, Dict[str, CoreMetric]] = {}
+        self._logged_metrics: List[str] = None
         self._summary: ModelStatistics = None
         self._callbacks: List[pl.Callback] = [MetadataCallback()]
         self._metadata_callback = None
@@ -116,7 +117,7 @@ class CoreModule(pl.LightningModule):
         self._summary = None
 
     @property
-    def criterion_fn(self) -> Callable[[tr.Tensor, tr.Tensor], tr.Tensor]:
+    def criterion_fn(self) -> Callable:
         """Get the criterion function loss(y, gt) -> backpropagable tensor"""
         return self._criterion_fn
 
@@ -124,9 +125,8 @@ class CoreModule(pl.LightningModule):
     def criterion_fn(self, criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor]):
         assert isinstance(criterion_fn, Callable), f"Got '{criterion_fn}'"
         logger.debug(f"Setting criterion to '{criterion_fn}'")
-        self._criterion_fn = criterion_fn
-        if len(self.metrics) == 0:
-            self.metrics = {}
+        self._criterion_fn = CallableCoreMetric(criterion_fn, higher_is_better=False, requires_grad=True)
+        self.metrics = {**self.metrics, "loss": self.criterion_fn}
 
     @property
     def metrics(self) -> Dict[str, CoreMetric]:
@@ -135,9 +135,8 @@ class CoreModule(pl.LightningModule):
 
     @metrics.setter
     def metrics(self, metrics: Dict[str, Tuple[Callable, str]]):
-        assert self.criterion_fn is not None, "Criterion must be set before metrics (for now...)."
         if len(self._metrics) != 0:
-            logger.info(f"Settings metrics to: {list(metrics.keys())}")
+            logger.info(f"Overwriting existing metrics {list(self.metrics.keys())} to {list(metrics.keys())}")
         self._metrics = {}
 
         for metric_name, metric_fn in metrics.items():
@@ -145,6 +144,9 @@ class CoreModule(pl.LightningModule):
             assert isinstance(metric_fn, (CoreMetric, Tuple, Callable)), \
                    f"Unknown metric type: '{type(metric_fn)}'. " \
                    "Expcted CoreMetric, Callable or (Callable, \"min\"/\"max\")."
+            assert not metric_name.startswith("val_"), "metrics cannot start with val_"
+            if metric_name == "loss":
+                assert isinstance(metric_fn, CallableCoreMetric) and metric_fn.requires_grad is True
 
             # If it is not a CoreMetric already (Tuple or Callable), we convert it to CallableCoreMetric
             if isinstance(metric_fn, Callable) and not isinstance(metric_fn, CoreMetric):
@@ -154,24 +156,25 @@ class CoreModule(pl.LightningModule):
                 logger.debug(f"Metric '{metric_name}' is a callable. Converting to CallableCoreMetric.")
                 metric_fn, min_or_max = metric_fn
                 assert min_or_max in ("min", "max"), f"Got '{min_or_max}'"
-                metric_fn = CallableCoreMetric(metric_fn, higher_is_better=(min_or_max == "max"))
-
+                metric_fn = CallableCoreMetric(metric_fn, higher_is_better=(min_or_max == "max"), requires_grad=False)
             self._metrics[metric_name] = metric_fn
-        self._metrics["loss"] = CallableCoreMetric(self.criterion_fn, higher_is_better=False, requires_grad=True)
-        self.logged_metrics = list(self._metrics.keys())
+        if self.criterion_fn is not None:
+            self._metrics["loss"] = self.criterion_fn
+        logger.info(f"Set module metrics: {list(self.metrics.keys())} ({len(self.metrics)})")
 
     @property
     def logged_metrics(self) -> List[str]:
         """Return the list of logged metrics out of all the defined ones"""
+        if self._logged_metrics is None:
+            logger.debug("Logged metrics is not set, defaulting to all metrics")
+            return list(self.metrics.keys())
         return self._logged_metrics
 
     @logged_metrics.setter
     def logged_metrics(self, logged_metrics: List[str]):
-        assert "loss" in logged_metrics, "When manually settings logged_metrics, " \
-                                         f"loss must be present. Got: {logged_metrics}"
-        logger.debug(f"Setting the logged metrics to {logged_metrics}") if len(logged_metrics) > 1 else ()
-        diff = set(logged_metrics).difference(self._metrics.keys())
-        assert len(diff) == 0, f"Metrics {diff} are not in set metrics: {self._metrics.keys()}"
+        logger.debug(f"Setting the logged metrics to {logged_metrics}")
+        diff = set(logged_metrics).difference(self.metrics.keys())
+        assert len(diff) == 0, f"Metrics {diff} are not in set metrics: {self.metrics.keys()}"
         self._logged_metrics = logged_metrics
 
     # Overrides on top of the standard pytorch lightning module
@@ -186,18 +189,16 @@ class CoreModule(pl.LightningModule):
 
     @overrides
     def on_fit_start(self) -> None:
-        if len(self.metrics) == 0:
-            self.metrics = {}
-
         # We need to remove the val_ metrics, because if .fit() is called twice, this will create too many copies
-        new_metrics = {metric_name: metric_fn for metric_name, metric_fn in self.metrics.items()
-                       if not metric_name.startswith("val_")}
+        self._prefixed_metrics[""] = self.metrics
         if self.trainer.enable_validation:
             # If we use a validation set, clone all the metrics, so that the statistics don't intefere with each other
-            val_metrics = CoreModule._clone_all_metrics_with_prefix(new_metrics, prefix="val_")
-            new_metrics = {**new_metrics, **val_metrics}
-        self._metrics = new_metrics
+            self._prefixed_metrics["val_"] = CoreModule._clone_all_metrics_with_prefix(self.metrics, prefix="val_")
         return super().on_fit_start()
+
+    @overrides
+    def on_fit_end(self):
+        self._prefixed_metrics = {}
 
     @overrides
     def on_test_start(self) -> None:
@@ -228,9 +229,6 @@ class CoreModule(pl.LightningModule):
         """Computes epoch average train loss and metrics for logging."""
         # If validation is enabled (for train loops), add "val_" metrics for all logged metrics.
         metrics_to_log = self.logged_metrics
-        if self.trainer.enable_validation:
-            val_logged_metrics = [f"val_{metric_name}" for metric_name in self.logged_metrics]
-            metrics_to_log = [*self.logged_metrics, *val_logged_metrics]
         self._run_and_log_metrics_at_epoch_end(metrics_to_log)
 
     @overrides
@@ -282,8 +280,6 @@ class CoreModule(pl.LightningModule):
         """Loads the state dict from a path"""
         # if path is remote (gcs) download checkpoint to a temp dir
         logger.info(f"Loading weights and hyperparameters from '{path}'")
-        # if str(path).startswith("gs"):
-        #     path = update_gcs_path(path)
         ckpt_data = tr.load(path)
         self.load_state_dict(ckpt_data["state_dict"])
         self.save_hyperparameters(ckpt_data["hyper_parameters"])
@@ -312,7 +308,7 @@ class CoreModule(pl.LightningModule):
         outputs = {}
         for metric_name in self.logged_metrics:
             prefixed_metric_name = f"{prefix}{metric_name}"
-            metric_fn: CoreMetric = self.metrics[prefixed_metric_name]
+            metric_fn: CoreMetric = self._prefixed_metrics[prefix][prefixed_metric_name]
             # Call the metric and update its state
             state = tr.enable_grad if metric_fn.requires_grad else tr.no_grad
             with state():
@@ -325,20 +321,24 @@ class CoreModule(pl.LightningModule):
 
     def _run_and_log_metrics_at_epoch_end(self, metrics_to_log: List[str]):
         """Runs and logs a given list of logged metrics. Assume they all exist in self.metrics"""
+        all_prefixes = self._prefixed_metrics.keys()
         for metric_name in metrics_to_log:
-            metric_fn: CoreMetric = self.metrics[metric_name]
-            # Get the metric's epoch result
-            metric_epoch_result = metric_fn.epoch_result()
-            # Log the metric at the end of the epoch. Only log on pbar the val_loss, loss is tracked by default
-            prog_bar = metric_name == "val_loss"
+            for prefix in all_prefixes:
+                prefixed_metric = f"{prefix}{metric_name}"
+                metric_fn: CoreMetric = self._prefixed_metrics[prefix][prefixed_metric]
+                # Get the metric's epoch result
+                metric_epoch_result = metric_fn.epoch_result()
+                # Log the metric at the end of the epoch. Only log on pbar the val_loss, loss is tracked by default
+                prog_bar = metric_name == "val_loss"
 
-            value_reduced = metric_fn.epoch_result_reduced(metric_epoch_result)
-            if value_reduced is not None:
-                super().log(metric_name, value_reduced, prog_bar=prog_bar, on_epoch=True)
-            # Call the metadata callback for the full result, since it can handle any sort of metrics
-            self.metadata_callback.save_epoch_metric(metric_name, metric_epoch_result, self.trainer.current_epoch)
-            # Reset the metric after storing this epoch's value
-            metric_fn.reset()
+                value_reduced = metric_fn.epoch_result_reduced(metric_epoch_result)
+                if value_reduced is not None:
+                    super().log(metric_name, value_reduced, prog_bar=prog_bar, on_epoch=True)
+                # Call the metadata callback for the full result, since it can handle any sort of metrics
+                self.metadata_callback.save_epoch_metric(prefixed_metric, metric_epoch_result,
+                                                         self.trainer.current_epoch)
+                # Reset the metric after storing this epoch's value
+                metric_fn.reset()
 
     @staticmethod
     def _clone_all_metrics_with_prefix(metrics: Dict[str, CoreMetric], prefix: str) -> Dict[str, CoreMetric]:
