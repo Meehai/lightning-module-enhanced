@@ -1,6 +1,5 @@
 """Generic Pytorch Lightning Graph module on top of a Graph module"""
 from __future__ import annotations
-from ftplib import all_errors
 from typing import Dict, Callable, List, Union, Any, Sequence, Tuple
 from copy import deepcopy
 from overrides import overrides
@@ -147,7 +146,7 @@ class CoreModule(pl.LightningModule):
                    "Expcted CoreMetric, Callable or (Callable, \"min\"/\"max\")."
             assert not metric_name.startswith("val_"), "metrics cannot start with val_"
             if metric_name == "loss":
-                assert isinstance(metric_fn, CallableCoreMetric) and metric_fn.requires_grad == True
+                assert isinstance(metric_fn, CallableCoreMetric) and metric_fn.requires_grad is True
 
             # If it is not a CoreMetric already (Tuple or Callable), we convert it to CallableCoreMetric
             if isinstance(metric_fn, Callable) and not isinstance(metric_fn, CoreMetric):
@@ -167,7 +166,7 @@ class CoreModule(pl.LightningModule):
     def logged_metrics(self) -> List[str]:
         """Return the list of logged metrics out of all the defined ones"""
         if self._logged_metrics is None:
-            logger.debug(f"Logged metrics is not set, defaulting to all metrics")
+            logger.debug("Logged metrics is not set, defaulting to all metrics")
             return list(self.metrics.keys())
         return self._logged_metrics
 
@@ -196,7 +195,7 @@ class CoreModule(pl.LightningModule):
             # If we use a validation set, clone all the metrics, so that the statistics don't intefere with each other
             self._prefixed_metrics["val_"] = CoreModule._clone_all_metrics_with_prefix(self.metrics, prefix="val_")
         return super().on_fit_start()
-    
+
     @overrides
     def on_fit_end(self):
         self._prefixed_metrics = {}
@@ -336,7 +335,8 @@ class CoreModule(pl.LightningModule):
                 if value_reduced is not None:
                     super().log(metric_name, value_reduced, prog_bar=prog_bar, on_epoch=True)
                 # Call the metadata callback for the full result, since it can handle any sort of metrics
-                self.metadata_callback.save_epoch_metric(prefixed_metric, metric_epoch_result, self.trainer.current_epoch)
+                self.metadata_callback.save_epoch_metric(prefixed_metric, metric_epoch_result,
+                                                         self.trainer.current_epoch)
                 # Reset the metric after storing this epoch's value
                 metric_fn.reset()
 
