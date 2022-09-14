@@ -46,19 +46,19 @@ class TestProperties:
         self.module.metrics = {
             "metric1": lambda y, gt: (y - gt).mean()
         }
-        assert len(self.module.metrics) == 1
+        assert len(self.module.metrics) == 2
 
     def test_set_metrics_after_criterion(self):
         self.module.metrics = {
             "metric1": lambda y, gt: (y - gt).mean()
         }
         self.module.criterion_fn = lambda y, gt: (y - gt).mean()
-        assert len(self.module.metrics) == 1
+        assert len(self.module.metrics) == 2
 
     def test_set_criterion_1(self):
         self.module.criterion_fn = lambda y, gt: (y - gt).mean()
         assert self.module.criterion_fn is not None
-        assert len(self.module.metrics) == 0
+        assert len(self.module.metrics) == 1
 
 if __name__ == "__main__":
     p =TestProperties()
