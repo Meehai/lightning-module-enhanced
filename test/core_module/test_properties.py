@@ -34,3 +34,33 @@ class TestProperties:
         assert self.module.trainable_params == False
         self.module.trainable_params = True
         assert self.module.trainable_params == True
+
+    def test_set_metrics_1(self):
+        self.module.metrics = {
+            "metric1": lambda y, gt: (y - gt).mean()
+        }
+        assert len(self.module.metrics) == 1
+
+    def test_set_metrics_before_criterion(self):
+        self.module.criterion_fn = lambda y, gt: (y - gt).mean()
+        self.module.metrics = {
+            "metric1": lambda y, gt: (y - gt).mean()
+        }
+        assert len(self.module.metrics) == 1
+
+    def test_set_metrics_after_criterion(self):
+        self.module.metrics = {
+            "metric1": lambda y, gt: (y - gt).mean()
+        }
+        self.module.criterion_fn = lambda y, gt: (y - gt).mean()
+        assert len(self.module.metrics) == 1
+
+    def test_set_criterion_1(self):
+        self.module.criterion_fn = lambda y, gt: (y - gt).mean()
+        assert self.module.criterion_fn is not None
+        assert len(self.module.metrics) == 0
+
+if __name__ == "__main__":
+    p =TestProperties()
+    p.module = LightningModuleEnhanced(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    p.test_set_criterion_1()

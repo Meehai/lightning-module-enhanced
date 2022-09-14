@@ -116,7 +116,7 @@ class CoreModule(pl.LightningModule):
         self._summary = None
 
     @property
-    def criterion_fn(self) -> Callable[[tr.Tensor, tr.Tensor], tr.Tensor]:
+    def criterion_fn(self) -> CoreMetric:
         """Get the criterion function loss(y, gt) -> backpropagable tensor"""
         return self._criterion_fn
 
@@ -124,9 +124,7 @@ class CoreModule(pl.LightningModule):
     def criterion_fn(self, criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor]):
         assert isinstance(criterion_fn, Callable), f"Got '{criterion_fn}'"
         logger.debug(f"Setting criterion to '{criterion_fn}'")
-        self._criterion_fn = criterion_fn
-        if len(self.metrics) == 0:
-            self.metrics = {}
+        self._criterion_fn = CallableCoreMetric(criterion_fn, higher_is_better=False, requires_grad=True)
 
     @property
     def metrics(self) -> Dict[str, CoreMetric]:
@@ -135,9 +133,8 @@ class CoreModule(pl.LightningModule):
 
     @metrics.setter
     def metrics(self, metrics: Dict[str, Tuple[Callable, str]]):
-        assert self.criterion_fn is not None, "Criterion must be set before metrics (for now...)."
         if len(self._metrics) != 0:
-            logger.info(f"Settings metrics to: {list(metrics.keys())}")
+            logger.info(f"Overwriting existing metrics {list(self.metrics.keys())} to {list(metrics.keys())}")
         self._metrics = {}
 
         for metric_name, metric_fn in metrics.items():
@@ -145,6 +142,7 @@ class CoreModule(pl.LightningModule):
             assert isinstance(metric_fn, (CoreMetric, Tuple, Callable)), \
                    f"Unknown metric type: '{type(metric_fn)}'. " \
                    "Expcted CoreMetric, Callable or (Callable, \"min\"/\"max\")."
+            assert metric_name != "loss", "'loss' metric name cannot be used. It is reserved for self.criterion_fn."
 
             # If it is not a CoreMetric already (Tuple or Callable), we convert it to CallableCoreMetric
             if isinstance(metric_fn, Callable) and not isinstance(metric_fn, CoreMetric):
@@ -154,24 +152,28 @@ class CoreModule(pl.LightningModule):
                 logger.debug(f"Metric '{metric_name}' is a callable. Converting to CallableCoreMetric.")
                 metric_fn, min_or_max = metric_fn
                 assert min_or_max in ("min", "max"), f"Got '{min_or_max}'"
-                metric_fn = CallableCoreMetric(metric_fn, higher_is_better=(min_or_max == "max"))
-
+                metric_fn = CallableCoreMetric(metric_fn, higher_is_better=(min_or_max == "max"), requires_grad=False)
             self._metrics[metric_name] = metric_fn
-        self._metrics["loss"] = CallableCoreMetric(self.criterion_fn, higher_is_better=False, requires_grad=True)
-        self.logged_metrics = list(self._metrics.keys())
+        logger.info(f"Set module metrics: {list(self.metrics.keys())} ({len(self.metrics)})")
+
+    @property
+    def metrics_plus_loss(self) -> Dict[str, CoreMetric]:
+        """Property that combined the loss function and the metrics"""
+        return {**self.metrics, "loss": self.criterion_fn}
 
     @property
     def logged_metrics(self) -> List[str]:
         """Return the list of logged metrics out of all the defined ones"""
+        if self._logged_metrics is None:
+            logger.debug(f"Logged metrics is not set, defaulting to all metrics")
+            return list(self.metrics_plus_loss.keys())
         return self._logged_metrics
 
     @logged_metrics.setter
     def logged_metrics(self, logged_metrics: List[str]):
-        assert "loss" in logged_metrics, "When manually settings logged_metrics, " \
-                                         f"loss must be present. Got: {logged_metrics}"
         logger.debug(f"Setting the logged metrics to {logged_metrics}") if len(logged_metrics) > 1 else ()
-        diff = set(logged_metrics).difference(self._metrics.keys())
-        assert len(diff) == 0, f"Metrics {diff} are not in set metrics: {self._metrics.keys()}"
+        diff = set(logged_metrics).difference(self.metrics_plus_loss.keys())
+        assert len(diff) == 0, f"Metrics {diff} are not in set metrics: {self.metrics_plus_loss.keys()}"
         self._logged_metrics = logged_metrics
 
     # Overrides on top of the standard pytorch lightning module
@@ -186,15 +188,13 @@ class CoreModule(pl.LightningModule):
 
     @overrides
     def on_fit_start(self) -> None:
-        if len(self.metrics) == 0:
-            self.metrics = {}
-
         # We need to remove the val_ metrics, because if .fit() is called twice, this will create too many copies
         new_metrics = {metric_name: metric_fn for metric_name, metric_fn in self.metrics.items()
                        if not metric_name.startswith("val_")}
         if self.trainer.enable_validation:
             # If we use a validation set, clone all the metrics, so that the statistics don't intefere with each other
             val_metrics = CoreModule._clone_all_metrics_with_prefix(new_metrics, prefix="val_")
+            breakpoint()
             new_metrics = {**new_metrics, **val_metrics}
         self._metrics = new_metrics
         return super().on_fit_start()
