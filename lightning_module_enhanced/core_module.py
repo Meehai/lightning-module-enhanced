@@ -178,9 +178,10 @@ class CoreModule(pl.LightningModule):
         self._logged_metrics = logged_metrics
 
     @property
-    def optimizer(self):
+    def optimizer(self) -> optim.Optimizer:
+        """Returns the optimizer"""
         return self._optimizer
-    
+
     @optimizer.setter
     def optimizer(self, optimizer: optim.Optimizer):
         assert isinstance(optimizer, optim.Optimizer)
@@ -188,13 +189,15 @@ class CoreModule(pl.LightningModule):
         self._optimizer = optimizer
 
     @property
-    def scheduler_dict(self):
+    def scheduler_dict(self) -> Dict:
+        """Returns the scheduler dict"""
         return self._scheduler_dict
 
     @scheduler_dict.setter
     def scheduler_dict(self, scheduler_dict: Dict):
         assert isinstance(scheduler_dict, Dict)
         assert "scheduler" in scheduler_dict
+        # pylint: disable=protected-access
         assert isinstance(scheduler_dict["scheduler"], optim.lr_scheduler._LRScheduler)
         logger.debug(f"Set the scheduler to {scheduler_dict}")
         self._scheduler_dict = scheduler_dict
