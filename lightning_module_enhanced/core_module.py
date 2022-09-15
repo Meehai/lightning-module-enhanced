@@ -46,8 +46,8 @@ class CoreModule(pl.LightningModule):
         assert isinstance(base_model, nn.Module)
         super().__init__()
         self.base_model = base_model
-        self.optimizer: optim.Optimizer = None
-        self.scheduler_dict: optim.lr_scheduler._LRScheduler = None
+        self._optimizer: optim.Optimizer = None
+        self._scheduler_dict: Dict[str, Union[optim.lr_scheduler._LRScheduler, Any]] = None
         self._criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor] = None
         self._metrics: Dict[str, CoreMetric] = {}
         self._prefixed_metrics: Dict[str, Dict[str, CoreMetric]] = {}
@@ -166,7 +166,7 @@ class CoreModule(pl.LightningModule):
     def logged_metrics(self) -> List[str]:
         """Return the list of logged metrics out of all the defined ones"""
         if self._logged_metrics is None:
-            logger.debug("Logged metrics is not set, defaulting to all metrics")
+            logger.debug2("Logged metrics is not set, defaulting to all metrics")
             return list(self.metrics.keys())
         return self._logged_metrics
 
@@ -176,6 +176,28 @@ class CoreModule(pl.LightningModule):
         diff = set(logged_metrics).difference(self.metrics.keys())
         assert len(diff) == 0, f"Metrics {diff} are not in set metrics: {self.metrics.keys()}"
         self._logged_metrics = logged_metrics
+
+    @property
+    def optimizer(self):
+        return self._optimizer
+    
+    @optimizer.setter
+    def optimizer(self, optimizer: optim.Optimizer):
+        assert isinstance(optimizer, optim.Optimizer)
+        logger.debug("Set the optimizer to {optimizer}")
+        self._optimizer = optimizer
+
+    @property
+    def scheduler_dict(self):
+        return self._scheduler_dict
+
+    @scheduler_dict.setter
+    def scheduler_dict(self, scheduler_dict: Dict):
+        assert isinstance(scheduler_dict, Dict)
+        assert "scheduler" in scheduler_dict
+        assert isinstance(scheduler_dict["scheduler"], optim.lr_scheduler._LRScheduler)
+        logger.debug(f"Set the scheduler to {scheduler_dict}")
+        self._scheduler_dict = scheduler_dict
 
     # Overrides on top of the standard pytorch lightning module
     @property
@@ -189,7 +211,9 @@ class CoreModule(pl.LightningModule):
 
     @overrides
     def on_fit_start(self) -> None:
-        # We need to remove the val_ metrics, because if .fit() is called twice, this will create too many copies
+        TrainSetup(self, {}).setup()
+        if self.criterion_fn is None:
+            raise ValueError("Criterion must be set before calling trainer.fit()")
         self._prefixed_metrics[""] = self.metrics
         if self.trainer.enable_validation:
             # If we use a validation set, clone all the metrics, so that the statistics don't intefere with each other
@@ -202,6 +226,9 @@ class CoreModule(pl.LightningModule):
 
     @overrides
     def on_test_start(self) -> None:
+        TrainSetup(self, {}).setup()
+        if self.criterion_fn is None:
+            raise ValueError("Criterion must be set before calling trainer.test()")
         return super().on_test_start()
 
     @overrides
@@ -238,7 +265,10 @@ class CoreModule(pl.LightningModule):
     @overrides
     def configure_optimizers(self) -> Dict:
         """Configure the optimizer/scheduler/monitor."""
-        assert self.optimizer is not None, "No optimizer has been provided. Set a torch optimizer first."
+        TrainSetup(self, {}).setup()
+        if self.optimizer is None:
+            raise ValueError("No optimizer has been set. Use model.optimizer=optim.XXX or add an optimizer "
+                             "property in base model")
 
         if self.scheduler_dict is None:
             return {"optimizer": self.optimizer}
@@ -253,7 +283,8 @@ class CoreModule(pl.LightningModule):
     def forward(self, *args, **kwargs):
         tr_args = to_device(args, self.device)
         tr_kwargs = to_device(kwargs, self.device)
-        return self.base_model.forward(*tr_args, **tr_kwargs)
+        res = self.base_model.forward(*tr_args, **tr_kwargs)
+        return res
 
     def np_forward(self, *args, **kwargs):
         """Forward numpy data to the model, returns whatever the model returns, usually torch data"""
