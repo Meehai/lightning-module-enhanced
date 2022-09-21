@@ -45,8 +45,6 @@ class PlotMetrics(Callback):
             self.history = {metric: {"train": [], "val": []} for metric in non_val_metrics}
 
         for metric_name in non_val_metrics:
-            if metric_name == "CF matrix":
-                breakpoint()
             self.history[metric_name]["train"].append(relevant_metrics[metric_name].item())
             val_number = relevant_metrics[f"val_{metric_name}"].item() if trainer.enable_validation else None
             self.history[metric_name]["val"].append(val_number)

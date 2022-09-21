@@ -191,8 +191,7 @@ class CoreModule(pl.LightningModule):
     def scheduler_dict(self, scheduler_dict: Dict):
         assert isinstance(scheduler_dict, Dict)
         assert "scheduler" in scheduler_dict
-        # pylint: disable=protected-access
-        assert hasattr(scheduler_dict["scheduler"], "step"), f"Scheduler does not hgave a step method"
+        assert hasattr(scheduler_dict["scheduler"], "step"), "Scheduler does not have a step method"
         logger.debug(f"Set the scheduler to {scheduler_dict}")
         self._scheduler_dict = scheduler_dict
 
@@ -248,12 +247,11 @@ class CoreModule(pl.LightningModule):
     def training_epoch_end(self, outputs):
         """Computes epoch average train loss and metrics for logging."""
         # If validation is enabled (for train loops), add "val_" metrics for all logged metrics.
-        metrics_to_log = self.logged_metrics
-        self._run_and_log_metrics_at_epoch_end(metrics_to_log)
+        self._run_and_log_metrics_at_epoch_end(self.logged_metrics)
 
     @overrides
     def test_epoch_end(self, outputs):
-        self._run_and_log_metrics_at_epoch_end(self.metrics.keys())
+        self._run_and_log_metrics_at_epoch_end(self.logged_metrics)
 
     @overrides
     def configure_optimizers(self) -> Dict:
@@ -340,7 +338,7 @@ class CoreModule(pl.LightningModule):
             metric_fn.batch_update(metric_output)
             outputs[prefixed_metric_name] = metric_output
             # Don't use any self.log() here. We don't really care about intermediate batch results, only epoch results,
-            #  which are handled down.
+            #  which are handled in self._run_and_log_metrics_at_epoch_end(metrics).
         return outputs
 
     def _run_and_log_metrics_at_epoch_end(self, metrics_to_log: List[str]):
