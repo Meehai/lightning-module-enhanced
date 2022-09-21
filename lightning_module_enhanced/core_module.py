@@ -53,8 +53,9 @@ class CoreModule(pl.LightningModule):
         self._prefixed_metrics: Dict[str, Dict[str, CoreMetric]] = {}
         self._logged_metrics: List[str] = None
         self._summary: ModelStatistics = None
-        self._callbacks: List[pl.Callback] = [MetadataCallback()]
-        self._metadata_callback = None
+        # The unique instance of metadata callback. Cannot over overwriten.
+        self._metadata_callback = MetadataCallback()
+        self._callbacks: List[pl.Callback] = [self._metadata_callback]
 
         # Store initial hyperparameters in the pl_module and the initial shapes/model name in metadata logger
         self.save_hyperparameters({"args": args, **kwargs}, ignore=["base_model"])
@@ -90,16 +91,9 @@ class CoreModule(pl.LightningModule):
     @callbacks.setter
     def callbacks(self, callbacks: List[pl.Callback]):
         """Sets the callbacks + the default metadata callback"""
-        found = False
         for callback in callbacks:
-            if isinstance(callback, MetadataCallback):
-                metadata_callback = callback
-                found = True
-        if not found:
-            logger.info("Metadata callback added to the model's callbacks")
-            metadata_callback = MetadataCallback()
-            callbacks.append(metadata_callback)
-        self._metadata_callback = metadata_callback
+            assert not isinstance(callback, MetadataCallback), "Metadata callback cannot be overwriten."
+        callbacks.append(self._metadata_callback)
         self._callbacks = callbacks
 
     @property
@@ -198,7 +192,7 @@ class CoreModule(pl.LightningModule):
         assert isinstance(scheduler_dict, Dict)
         assert "scheduler" in scheduler_dict
         # pylint: disable=protected-access
-        assert isinstance(scheduler_dict["scheduler"], optim.lr_scheduler._LRScheduler)
+        assert hasattr(scheduler_dict["scheduler"], "step"), f"Scheduler does not hgave a step method"
         logger.debug(f"Set the scheduler to {scheduler_dict}")
         self._scheduler_dict = scheduler_dict
 
@@ -206,10 +200,6 @@ class CoreModule(pl.LightningModule):
     @property
     def metadata_callback(self):
         """Returns the metadata callback of this module"""
-        if self._metadata_callback is None:
-            for callback in self.trainer.callbacks:
-                if isinstance(callback, MetadataCallback):
-                    self._metadata_callback = callback
         return self._metadata_callback
 
     @overrides
@@ -367,7 +357,7 @@ class CoreModule(pl.LightningModule):
 
                 value_reduced = metric_fn.epoch_result_reduced(metric_epoch_result)
                 if value_reduced is not None:
-                    super().log(metric_name, value_reduced, prog_bar=prog_bar, on_epoch=True)
+                    self.log(prefixed_metric, value_reduced, prog_bar=prog_bar, on_epoch=True)
                 # Call the metadata callback for the full result, since it can handle any sort of metrics
                 self.metadata_callback.save_epoch_metric(prefixed_metric, metric_epoch_result,
                                                          self.trainer.current_epoch)

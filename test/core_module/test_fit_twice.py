@@ -1,5 +1,5 @@
 from lightning_module_enhanced import LightningModuleEnhanced
-from pytorch_lightning import Trainer, Callback
+from pytorch_lightning import Trainer
 from torch.utils.data import DataLoader
 from torch import nn, optim
 import torch as tr
