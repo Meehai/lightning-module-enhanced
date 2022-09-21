@@ -45,7 +45,7 @@ class MetadataCallback(pl.Callback):
         log_dir = trainer.log_dir
         self.log_dir = Path(log_dir).absolute()
         self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.log_file_path = self.log_dir / "metadata.json"
+        self.log_file_path = self.log_dir / f"{prefix}_metadata.json"
         logger.debug(f"Metadata logger set up to '{self.log_file_path}'")
 
         self._log_dict({#"input_shape": pl_module.base_model.input_shape,

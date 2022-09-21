@@ -56,8 +56,8 @@ class TrainSetup:
 
             self.module.scheduler_dict = {"scheduler": scheduler, **self.train_cfg["scheduler"]["optimizer_args"]}
 
-        # Last hope is adding optimizer from base model
-        if hasattr(self.module.base_model, "scheduler_dict") and self.module.scheduler_dict is not None:
+        # Last hope is adding scheduler from base model
+        if hasattr(self.module.base_model, "scheduler_dict") and self.module.base_model.scheduler_dict is not None:
             logger.debug2("Scheduler set from base model")
             self.module.scheduler_dict = self.module.base_model.scheduler_dict
 
@@ -73,7 +73,7 @@ class TrainSetup:
 
     def _setup_metrics(self):
         """Checks if the base model has the 'metrics' property, and if True, uses it."""
-        if len(self.module.metrics) >= 1:
+        if len(self.module.metrics) > 1:
             logger.debug2("Metrics were already set. Returning early.")
             return
 

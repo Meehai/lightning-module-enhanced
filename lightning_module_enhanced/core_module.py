@@ -43,7 +43,7 @@ class CoreModule(pl.LightningModule):
             base_model: The base :class:`torch.nn.Module`
     """
     def __init__(self, base_model: nn.Module, *args, **kwargs):
-        assert isinstance(base_model, nn.Module)
+        assert isinstance(base_model, nn.Module), f"Expected a nn.Module, got {type(base_model)}"
         super().__init__()
         self.base_model = base_model
         self._optimizer: optim.Optimizer = None
@@ -53,11 +53,15 @@ class CoreModule(pl.LightningModule):
         self._prefixed_metrics: Dict[str, Dict[str, CoreMetric]] = {}
         self._logged_metrics: List[str] = None
         self._summary: ModelStatistics = None
-        self._callbacks: List[pl.Callback] = [MetadataCallback()]
-        self._metadata_callback = None
+        # The unique instance of metadata callback. Cannot over overwriten.
+        self._metadata_callback = MetadataCallback()
+        self._callbacks: List[pl.Callback] = [self._metadata_callback]
 
         # Store initial hyperparameters in the pl_module and the initial shapes/model name in metadata logger
         self.save_hyperparameters({"args": args, **kwargs}, ignore=["base_model"])
+
+        # Call TrainSetup with a none config, in case the base model has some attributes.
+        TrainSetup(self, {}).setup()
 
     # Getters and setters for properties
 
@@ -90,16 +94,9 @@ class CoreModule(pl.LightningModule):
     @callbacks.setter
     def callbacks(self, callbacks: List[pl.Callback]):
         """Sets the callbacks + the default metadata callback"""
-        found = False
         for callback in callbacks:
-            if isinstance(callback, MetadataCallback):
-                metadata_callback = callback
-                found = True
-        if not found:
-            logger.info("Metadata callback added to the model's callbacks")
-            metadata_callback = MetadataCallback()
-            callbacks.append(metadata_callback)
-        self._metadata_callback = metadata_callback
+            assert not isinstance(callback, MetadataCallback), "Metadata callback cannot be overwriten."
+        callbacks.append(self._metadata_callback)
         self._callbacks = callbacks
 
     @property
@@ -197,8 +194,7 @@ class CoreModule(pl.LightningModule):
     def scheduler_dict(self, scheduler_dict: Dict):
         assert isinstance(scheduler_dict, Dict)
         assert "scheduler" in scheduler_dict
-        # pylint: disable=protected-access
-        assert isinstance(scheduler_dict["scheduler"], optim.lr_scheduler._LRScheduler)
+        assert hasattr(scheduler_dict["scheduler"], "step"), "Scheduler does not have a step method"
         logger.debug(f"Set the scheduler to {scheduler_dict}")
         self._scheduler_dict = scheduler_dict
 
@@ -206,15 +202,10 @@ class CoreModule(pl.LightningModule):
     @property
     def metadata_callback(self):
         """Returns the metadata callback of this module"""
-        if self._metadata_callback is None:
-            for callback in self.trainer.callbacks:
-                if isinstance(callback, MetadataCallback):
-                    self._metadata_callback = callback
         return self._metadata_callback
 
     @overrides
     def on_fit_start(self) -> None:
-        TrainSetup(self, {}).setup()
         if self.criterion_fn is None:
             raise ValueError("Criterion must be set before calling trainer.fit()")
         self._prefixed_metrics[""] = self.metrics
@@ -229,7 +220,7 @@ class CoreModule(pl.LightningModule):
 
     @overrides
     def on_test_start(self) -> None:
-        TrainSetup(self, {}).setup()
+        self._prefixed_metrics[""] = self.metrics
         if self.criterion_fn is None:
             raise ValueError("Criterion must be set before calling trainer.test()")
         return super().on_test_start()
@@ -258,17 +249,15 @@ class CoreModule(pl.LightningModule):
     def training_epoch_end(self, outputs):
         """Computes epoch average train loss and metrics for logging."""
         # If validation is enabled (for train loops), add "val_" metrics for all logged metrics.
-        metrics_to_log = self.logged_metrics
-        self._run_and_log_metrics_at_epoch_end(metrics_to_log)
+        self._run_and_log_metrics_at_epoch_end(self.logged_metrics)
 
     @overrides
     def test_epoch_end(self, outputs):
-        self._run_and_log_metrics_at_epoch_end(self.metrics.keys())
+        self._run_and_log_metrics_at_epoch_end(self.logged_metrics)
 
     @overrides
     def configure_optimizers(self) -> Dict:
         """Configure the optimizer/scheduler/monitor."""
-        TrainSetup(self, {}).setup()
         if self.optimizer is None:
             raise ValueError("No optimizer has been set. Use model.optimizer=optim.XXX or add an optimizer "
                              "property in base model")
@@ -310,13 +299,14 @@ class CoreModule(pl.LightningModule):
                 layer = CoreModule(layer)
             layer.reset_parameters()
 
-    def load_state_from_path(self, path: str):
+    def load_state_from_path(self, path: str) -> CoreModule:
         """Loads the state dict from a path"""
         # if path is remote (gcs) download checkpoint to a temp dir
         logger.info(f"Loading weights and hyperparameters from '{path}'")
         ckpt_data = tr.load(path)
         self.load_state_dict(ckpt_data["state_dict"])
         self.save_hyperparameters(ckpt_data["hyper_parameters"])
+        return self
 
     def state_dict(self):
         return self.base_model.state_dict()
@@ -350,7 +340,7 @@ class CoreModule(pl.LightningModule):
             metric_fn.batch_update(metric_output)
             outputs[prefixed_metric_name] = metric_output
             # Don't use any self.log() here. We don't really care about intermediate batch results, only epoch results,
-            #  which are handled down.
+            #  which are handled in self._run_and_log_metrics_at_epoch_end(metrics).
         return outputs
 
     def _run_and_log_metrics_at_epoch_end(self, metrics_to_log: List[str]):
@@ -367,7 +357,7 @@ class CoreModule(pl.LightningModule):
 
                 value_reduced = metric_fn.epoch_result_reduced(metric_epoch_result)
                 if value_reduced is not None:
-                    super().log(metric_name, value_reduced, prog_bar=prog_bar, on_epoch=True)
+                    self.log(prefixed_metric, value_reduced, prog_bar=prog_bar, on_epoch=True)
                 # Call the metadata callback for the full result, since it can handle any sort of metrics
                 self.metadata_callback.save_epoch_metric(prefixed_metric, metric_epoch_result,
                                                          self.trainer.current_epoch)

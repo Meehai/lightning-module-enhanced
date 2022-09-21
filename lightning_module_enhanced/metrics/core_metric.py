@@ -24,6 +24,7 @@ from abc import ABC, abstractmethod
 from overrides import overrides
 from torch import nn
 import torch as tr
+
 from ..logger import logger
 
 MetricFnType = Callable[[tr.Tensor, tr.Tensor], tr.Tensor]
@@ -66,12 +67,12 @@ class CoreMetric(nn.Module, ABC):
         any transformation (i.e. mlflow logger will sum a confusion matrix into a single number).
         By default, does nothing. Override this if needed.
         """
-        epoch_result_reduced = epoch_result
-        assert isinstance(epoch_result_reduced, tr.Tensor), f"Got {type(epoch_result_reduced)}"
+        assert isinstance(epoch_result, tr.Tensor), f"Got {type(epoch_result)}"
+        epoch_result_reduced = epoch_result.squeeze()
         shape = epoch_result_reduced.shape
         if not (len(shape) == 0 or (len(shape) == 1 and shape[-1] == 1)):
-            logger.debug(f"Metric '{self}' has a non-number reduced value (shape: {shape})."
-                         "Some loggers might not like this.")
+            logger.debug2(f"Metric '{self}' has a non-number reduced value (shape: {shape}). Returning None.")
+            return None
         return epoch_result_reduced
 
     def __str__(self):
