@@ -43,7 +43,7 @@ class CoreModule(pl.LightningModule):
             base_model: The base :class:`torch.nn.Module`
     """
     def __init__(self, base_model: nn.Module, *args, **kwargs):
-        assert isinstance(base_model, nn.Module)
+        assert isinstance(base_model, nn.Module), f"Expected a nn.Module, got {type(base_model)}"
         super().__init__()
         self.base_model = base_model
         self._optimizer: optim.Optimizer = None
@@ -59,6 +59,9 @@ class CoreModule(pl.LightningModule):
 
         # Store initial hyperparameters in the pl_module and the initial shapes/model name in metadata logger
         self.save_hyperparameters({"args": args, **kwargs}, ignore=["base_model"])
+
+        # Call TrainSetup with a none config, in case the base model has some attributes.
+        TrainSetup(self, {}).setup()
 
     # Getters and setters for properties
 
@@ -203,7 +206,6 @@ class CoreModule(pl.LightningModule):
 
     @overrides
     def on_fit_start(self) -> None:
-        TrainSetup(self, {}).setup()
         if self.criterion_fn is None:
             raise ValueError("Criterion must be set before calling trainer.fit()")
         self._prefixed_metrics[""] = self.metrics
@@ -218,7 +220,6 @@ class CoreModule(pl.LightningModule):
 
     @overrides
     def on_test_start(self) -> None:
-        TrainSetup(self, {}).setup()
         self._prefixed_metrics[""] = self.metrics
         if self.criterion_fn is None:
             raise ValueError("Criterion must be set before calling trainer.test()")
@@ -257,7 +258,6 @@ class CoreModule(pl.LightningModule):
     @overrides
     def configure_optimizers(self) -> Dict:
         """Configure the optimizer/scheduler/monitor."""
-        TrainSetup(self, {}).setup()
         if self.optimizer is None:
             raise ValueError("No optimizer has been set. Use model.optimizer=optim.XXX or add an optimizer "
                              "property in base model")
