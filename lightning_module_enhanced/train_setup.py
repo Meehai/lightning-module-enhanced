@@ -73,7 +73,7 @@ class TrainSetup:
 
     def _setup_metrics(self):
         """Checks if the base model has the 'metrics' property, and if True, uses it."""
-        if len(self.module.metrics) >= 1:
+        if len(self.module.metrics) > 1:
             logger.debug2("Metrics were already set. Returning early.")
             return
 

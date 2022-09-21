@@ -37,10 +37,10 @@ class Model(nn.Module):
 
 def test_fit_and_test_good():
     model = LightningModuleEnhanced(Model())
-    breakpoint()
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
-
     res = Trainer().test(model, DataLoader(Reader()))
+    assert len(res) == 1
+    assert sorted(res[0].keys()) == ["loss", "metric1", "metric2"], res[0].keys()
 
 if __name__ == "__main__":
     test_fit_and_test_good()
