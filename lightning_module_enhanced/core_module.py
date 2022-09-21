@@ -219,6 +219,7 @@ class CoreModule(pl.LightningModule):
     @overrides
     def on_test_start(self) -> None:
         TrainSetup(self, {}).setup()
+        self._prefixed_metrics[""] = self.metrics
         if self.criterion_fn is None:
             raise ValueError("Criterion must be set before calling trainer.test()")
         return super().on_test_start()
@@ -298,13 +299,14 @@ class CoreModule(pl.LightningModule):
                 layer = CoreModule(layer)
             layer.reset_parameters()
 
-    def load_state_from_path(self, path: str):
+    def load_state_from_path(self, path: str) -> CoreModule:
         """Loads the state dict from a path"""
         # if path is remote (gcs) download checkpoint to a temp dir
         logger.info(f"Loading weights and hyperparameters from '{path}'")
         ckpt_data = tr.load(path)
         self.load_state_dict(ckpt_data["state_dict"])
         self.save_hyperparameters(ckpt_data["hyper_parameters"])
+        return self
 
     def state_dict(self):
         return self.base_model.state_dict()
