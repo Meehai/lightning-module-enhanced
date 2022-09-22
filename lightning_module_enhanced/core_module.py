@@ -182,7 +182,7 @@ class CoreModule(pl.LightningModule):
     @optimizer.setter
     def optimizer(self, optimizer: optim.Optimizer):
         assert isinstance(optimizer, optim.Optimizer)
-        logger.debug("Set the optimizer to {optimizer}")
+        logger.debug(f"Set the optimizer to {optimizer}")
         self._optimizer = optimizer
 
     @property
@@ -224,6 +224,10 @@ class CoreModule(pl.LightningModule):
         if self.criterion_fn is None:
             raise ValueError("Criterion must be set before calling trainer.test()")
         return super().on_test_start()
+
+    @overrides
+    def on_test_end(self):
+        self._prefixed_metrics = {}
 
     @overrides
     def training_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs) -> Union[tr.Tensor, Dict[str, Any]]:

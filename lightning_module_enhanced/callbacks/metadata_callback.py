@@ -16,12 +16,12 @@ class MetadataCallback(pl.Callback):
         self.log_file_path = None
         self.metadata = None
 
-    def _log_dict(self, key_val: Dict[str, Any]):
+    def log_metadata_dict(self, key_val: Dict[str, Any]):
         """Log an entire dictionary of key value, by adding each key to the current metadata"""
         for key, val in key_val.items():
-            self._log(key, val)
+            self.log_metadata(key, val)
 
-    def _log(self, key: str, value: Any):
+    def log_metadata(self, key: str, value: Any):
         """Adds a key->value pair to the current metadata"""
         self.metadata[key] = value
 
@@ -48,13 +48,13 @@ class MetadataCallback(pl.Callback):
         self.log_file_path = self.log_dir / f"{prefix}_metadata.json"
         logger.debug(f"Metadata logger set up to '{self.log_file_path}'")
 
-        self._log_dict({#"input_shape": pl_module.base_model.input_shape,
+        self.log_metadata_dict({#"input_shape": pl_module.base_model.input_shape,
                         #"output_shape": pl_module.base_model.output_shape,
                         "base_model": pl_module.base_model.__class__.__name__
                         })
         # default metadata
         now = datetime.now()
-        self._log_dict({
+        self.log_metadata_dict({
             f"{prefix}_start_timestamp": datetime.timestamp(now),
             f"{prefix}_start_date": str(now),
             f"{prefix}_hparams": pl_module.hparams
@@ -66,31 +66,31 @@ class MetadataCallback(pl.Callback):
         self._setup(trainer, pl_module, prefix="fit")
 
         if pl_module.trainer.train_dataloader is not None:
-            self._log("train dataset size", len(pl_module.trainer.train_dataloader))
+            self.log_metadata("train dataset size", len(pl_module.trainer.train_dataloader))
         if pl_module.trainer.val_dataloaders is not None:
             for i, dataloader in enumerate(pl_module.trainer.val_dataloaders):
-                self._log(f"val dataset {i} size", len(dataloader.dataset))
+                self.log_metadata(f"val dataset {i} size", len(dataloader.dataset))
 
     def on_test_start(self, trainer: "pl.Trainer", pl_module: pl.LightningModule) -> None:
         """At the start of the .test() loop, add the sizes of all test dataloaders"""
         self._setup(trainer, pl_module, prefix="test")
         self.metadata["epoch_metrics"] = {}
-        self._log("test_start_hparams", pl_module.hparams)
+        self.log_metadata("test_start_hparams", pl_module.hparams)
         for i, dataloader in enumerate(pl_module.trainer.test_dataloaders):
-            self._log(f"test dataset {i} size", len(dataloader.dataset))
+            self.log_metadata(f"test dataset {i} size", len(dataloader.dataset))
 
     def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: pl.LightningModule) -> None:
         """Saves the metadata as a json on the train dir"""
         # Always update the current hparams such that, for test modes, we get the loaded stats
-        self._log("Best model path", trainer.checkpoint_callback.best_model_path)
-        self._log("hparams_current", pl_module.hparams)
+        self.log_metadata("Best model path", trainer.checkpoint_callback.best_model_path)
+        self.log_metadata("hparams_current", pl_module.hparams)
         self.save()
 
-    def _on_end(self, prefix: str):
+    def _on_end(self, trainer: "pl.Trainer", pl_module: pl.LightningModule, prefix: str):
         """Adds the end timestamp and saves the json on the disk for train and test modes."""
         now = datetime.now()
         start_timestamp = datetime.fromtimestamp(self.metadata[f"{prefix}_start_timestamp"])
-        self._log_dict({
+        self.log_metadata_dict({
             f"{prefix}_end_timestamp": datetime.timestamp(now),
             f"{prefix}_end_date": str(now),
             f"{prefix}_duration": str(now - start_timestamp)
@@ -98,10 +98,17 @@ class MetadataCallback(pl.Callback):
         self.save()
 
     def on_train_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
-        self._on_end("fit")
+        best_checkpoint = Path(trainer.checkpoint_callback.best_model_path)
+        assert best_checkpoint.exists() and best_checkpoint.is_file(), "Best checkpoint does not exist."
+        best_model = tr.load(best_checkpoint)
+        best_hparams = best_model["hyper_parameters"]
+        self.log_metadata("Best model path", trainer.checkpoint_callback.best_model_path)
+        self.log_metadata("hparams_best", best_hparams)
+
+        self._on_end(trainer, pl_module, "fit")
 
     def on_test_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
-        self._on_end("test")
+        self._on_end(trainer, pl_module, "test")
 
     def save(self):
         """Saves the file on disk"""
