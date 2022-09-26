@@ -81,6 +81,16 @@ class TrainSetup:
             logger.info("Base model has metrics attribute. Using these by default")
             self.module.metrics = self.module.base_model.metrics
 
+    def _setup_callbacks(self):
+        """Checks if the base model has the 'callbacks' property, and if True, uses it."""
+        if len(self.module.callbacks) > 1:
+            logger.debug2("Callbacks were already set. Returning early.")
+            return
+
+        if hasattr(self.module.base_model, "callbacks") and self.module.base_model.callbacks is not None:
+            logger.info("Base model has callbacks attribute. Using these by default")
+            self.module.callbacks = self.module.base_model.callbacks
+
     def setup(self):
         """The main function of this class"""
         if hasattr(self.module.base_model, "setup_model_for_train"):
@@ -94,6 +104,7 @@ class TrainSetup:
         self._setup_scheduler()
         self._setup_criterion()
         self._setup_metrics()
+        self._setup_callbacks()
 
     def __call__(self):
         return self.setup()
