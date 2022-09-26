@@ -86,6 +86,7 @@ class MetadataCallback(pl.Callback):
         self.log_metadata("hparams_current", pl_module.hparams)
         self.save()
 
+    # pylint: disable=unused-argument
     def _on_end(self, trainer: "pl.Trainer", pl_module: pl.LightningModule, prefix: str):
         """Adds the end timestamp and saves the json on the disk for train and test modes."""
         now = datetime.now()
@@ -99,6 +100,9 @@ class MetadataCallback(pl.Callback):
 
     def on_train_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         best_checkpoint = Path(trainer.checkpoint_callback.best_model_path)
+        if not (best_checkpoint.exists() and best_checkpoint.is_file()):
+            logger.warning("No best model path exists. Probably trained without validation set. Using last.")
+            best_checkpoint = Path(trainer.checkpoint_callback.last_model_path)
         assert best_checkpoint.exists() and best_checkpoint.is_file(), "Best checkpoint does not exist."
         best_model = tr.load(best_checkpoint)
         best_hparams = best_model["hyper_parameters"]
