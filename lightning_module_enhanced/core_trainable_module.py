@@ -11,6 +11,7 @@ from .callbacks import MetadataCallback
 from .logger import logger
 from .train_setup import TrainSetup
 
+# pylint: disable=abstract-method
 class CoreTrainableModule(nn.Module):
     """CoreTrainableModule mixin class implementation"""
     def __init__(self):
