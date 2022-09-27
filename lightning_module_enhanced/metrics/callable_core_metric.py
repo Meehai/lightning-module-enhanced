@@ -59,3 +59,6 @@ class CallableCoreMetric(CoreMetric):
 
     def __repr__(self):
         return str(self)
+
+    def __deepcopy__(self, memo):
+        return type(self)(self.metric_fn, self.higher_is_better, self.requires_grad)
