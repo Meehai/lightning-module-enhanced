@@ -1,8 +1,8 @@
 """
-CoreTrainableModule is a standalone mixin class used to add the necessary properties to train a model:
+TrainableModule is a standalone mixin class used to add the necessary properties to train a model:
     criterion_fn, metrics, optimizer, scheduler & callbacks. It is comaptible with TrainSetup class.
 """
-from typing import Dict, Union, Any, Callable, List, Tuple
+from typing import Dict, Union, Any, Callable, List, Tuple, Type
 from torch import optim, nn
 import torch as tr
 import pytorch_lightning as pl
@@ -12,8 +12,8 @@ from .logger import logger
 from .train_setup import TrainSetup
 
 # pylint: disable=abstract-method
-class CoreTrainableModule(nn.Module):
-    """CoreTrainableModule mixin class implementation"""
+class TrainableModule(nn.Module):
+    """TrainableModule mixin class implementation"""
     def __init__(self):
         super().__init__()
         self._optimizer: optim.Optimizer = None
@@ -87,6 +87,22 @@ class CoreTrainableModule(nn.Module):
         if self.criterion_fn is not None:
             self._metrics["loss"] = self.criterion_fn
         logger.info(f"Set module metrics: {list(self.metrics.keys())} ({len(self.metrics)})")
+
+    @property
+    def optimizer(self) -> optim.Optimizer:
+        """Returns the optimizer"""
+        return self._optimizer
+
+    @optimizer.setter
+    def optimizer(self, optimizer: optim.Optimizer):
+        assert isinstance(optimizer, optim.Optimizer)
+        logger.debug(f"Set the optimizer to {optimizer}")
+        self._optimizer = optimizer
+
+    @property
+    def optimizer_type(self) -> Type[optim.Optimizer]:
+        """Returns the optimizer type, instead of the optimizer itself"""
+        return type(self.optimizer)
 
     def setup_module_for_train(self, train_cfg: Dict):
         """Given a train cfg, prepare this module for training, by setting the required information."""

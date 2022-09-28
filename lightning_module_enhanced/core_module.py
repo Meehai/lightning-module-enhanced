@@ -5,16 +5,16 @@ from copy import deepcopy
 from overrides import overrides
 import torch as tr
 import pytorch_lightning as pl
-from torch import optim, nn
+from torch import nn
 from torchinfo import summary, ModelStatistics
 
-from .core_trainable_module import CoreTrainableModule
+from .trainable_module import TrainableModule
 from .metrics import CoreMetric
 from .logger import logger
 from .utils import to_tensor, to_device
 
 # pylint: disable=too-many-ancestors, arguments-differ, unused-argument, abstract-method
-class CoreModule(CoreTrainableModule, pl.LightningModule):
+class CoreModule(TrainableModule, pl.LightningModule):
     """
 
         Generic pytorch-lightning module for predict-ml models.
@@ -104,17 +104,6 @@ class CoreModule(CoreTrainableModule, pl.LightningModule):
         diff = set(logged_metrics).difference(self.metrics.keys())
         assert len(diff) == 0, f"Metrics {diff} are not in set metrics: {self.metrics.keys()}"
         self._logged_metrics = logged_metrics
-
-    @property
-    def optimizer(self) -> optim.Optimizer:
-        """Returns the optimizer"""
-        return self._optimizer
-
-    @optimizer.setter
-    def optimizer(self, optimizer: optim.Optimizer):
-        assert isinstance(optimizer, optim.Optimizer)
-        logger.debug(f"Set the optimizer to {optimizer}")
-        self._optimizer = optimizer
 
     @property
     def scheduler_dict(self) -> Dict:
