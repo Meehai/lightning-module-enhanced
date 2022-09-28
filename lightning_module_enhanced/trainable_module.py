@@ -2,6 +2,7 @@
 TrainableModule is a standalone mixin class used to add the necessary properties to train a model:
     criterion_fn, metrics, optimizer, scheduler & callbacks. It is comaptible with TrainSetup class.
 """
+from abc import ABC, abstractmethod
 from typing import Dict, Union, Any, Callable, List, Tuple, Type
 from torch import optim, nn
 import torch as tr
@@ -11,8 +12,35 @@ from .callbacks import MetadataCallback
 from .logger import logger
 from .train_setup import TrainSetup
 
+class TrainableModule(nn.Module, ABC):
+    """Trainable module abstract class"""
+    @property
+    @abstractmethod
+    def callbacks(self) -> List[pl.Callback]:
+        """The callbacks"""
+
+    @property
+    @abstractmethod
+    def criterion_fn(self) -> Callable:
+        """Get the criterion function loss(y, gt) -> backpropagable tensor"""
+
+    @property
+    @abstractmethod
+    def metrics(self) -> Dict[str, CoreMetric]:
+        """Gets the list of metric names"""
+
+    @property
+    @abstractmethod
+    def optimizer(self) -> optim.Optimizer:
+        """Returns the optimizer"""
+
+    @property
+    @abstractmethod
+    def scheduler_dict(self) -> Dict:
+        """Returns the scheduler dict"""
+
 # pylint: disable=abstract-method
-class TrainableModule(nn.Module):
+class TrainableModuleMixin(TrainableModule):
     """TrainableModule mixin class implementation"""
     def __init__(self):
         super().__init__()
@@ -103,6 +131,20 @@ class TrainableModule(nn.Module):
     def optimizer_type(self) -> Type[optim.Optimizer]:
         """Returns the optimizer type, instead of the optimizer itself"""
         return type(self.optimizer)
+
+    @property
+    def scheduler_dict(self) -> Dict:
+        """Returns the scheduler dict"""
+        return self._scheduler_dict
+
+    @scheduler_dict.setter
+    def scheduler_dict(self, scheduler_dict: Dict):
+        assert isinstance(scheduler_dict, Dict)
+        assert "scheduler" in scheduler_dict
+        assert hasattr(scheduler_dict["scheduler"], "step"), "Scheduler does not have a step method"
+        logger.debug(f"Set the scheduler to {scheduler_dict}")
+        self._scheduler_dict = scheduler_dict
+
 
     def setup_module_for_train(self, train_cfg: Dict):
         """Given a train cfg, prepare this module for training, by setting the required information."""

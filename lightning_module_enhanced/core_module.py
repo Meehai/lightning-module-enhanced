@@ -8,13 +8,13 @@ import pytorch_lightning as pl
 from torch import nn
 from torchinfo import summary, ModelStatistics
 
-from .trainable_module import TrainableModule
+from .trainable_module import TrainableModuleMixin
 from .metrics import CoreMetric
 from .logger import logger
 from .utils import to_tensor, to_device
 
 # pylint: disable=too-many-ancestors, arguments-differ, unused-argument, abstract-method
-class CoreModule(TrainableModule, pl.LightningModule):
+class CoreModule(TrainableModuleMixin, pl.LightningModule):
     """
 
         Generic pytorch-lightning module for predict-ml models.
@@ -104,19 +104,6 @@ class CoreModule(TrainableModule, pl.LightningModule):
         diff = set(logged_metrics).difference(self.metrics.keys())
         assert len(diff) == 0, f"Metrics {diff} are not in set metrics: {self.metrics.keys()}"
         self._logged_metrics = logged_metrics
-
-    @property
-    def scheduler_dict(self) -> Dict:
-        """Returns the scheduler dict"""
-        return self._scheduler_dict
-
-    @scheduler_dict.setter
-    def scheduler_dict(self, scheduler_dict: Dict):
-        assert isinstance(scheduler_dict, Dict)
-        assert "scheduler" in scheduler_dict
-        assert hasattr(scheduler_dict["scheduler"], "step"), "Scheduler does not have a step method"
-        logger.debug(f"Set the scheduler to {scheduler_dict}")
-        self._scheduler_dict = scheduler_dict
 
     # Overrides on top of the standard pytorch lightning module
     @overrides
