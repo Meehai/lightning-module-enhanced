@@ -123,7 +123,7 @@ class TrainableModuleMixin(TrainableModule):
 
     @optimizer.setter
     def optimizer(self, optimizer: optim.Optimizer):
-        assert isinstance(optimizer, optim.Optimizer)
+        assert isinstance(optimizer, optim.Optimizer), f"Got {optimizer} (type {type(optimizer)})"
         logger.debug(f"Set the optimizer to {optimizer}")
         self._optimizer = optimizer
 
