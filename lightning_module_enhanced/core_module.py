@@ -1,21 +1,20 @@
 """Generic Pytorch Lightning Graph module on top of a Graph module"""
 from __future__ import annotations
-from typing import Dict, Callable, List, Union, Any, Sequence, Tuple
+from typing import Dict, List, Union, Any, Sequence
 from copy import deepcopy
 from overrides import overrides
 import torch as tr
 import pytorch_lightning as pl
-from torch import optim, nn
+from torch import nn
 from torchinfo import summary, ModelStatistics
 
-from .metrics import CoreMetric, CallableCoreMetric
+from .trainable_module import TrainableModule
+from .metrics import CoreMetric
 from .logger import logger
-from .callbacks import MetadataCallback
-from .train_setup import TrainSetup
 from .utils import to_tensor, to_device
 
 # pylint: disable=too-many-ancestors, arguments-differ, unused-argument, abstract-method
-class CoreModule(pl.LightningModule):
+class CoreModule(TrainableModule, pl.LightningModule):
     """
 
         Generic pytorch-lightning module for predict-ml models.
@@ -46,22 +45,13 @@ class CoreModule(pl.LightningModule):
         assert isinstance(base_model, nn.Module), f"Expected a nn.Module, got {type(base_model)}"
         super().__init__()
         self.base_model = base_model
-        self._optimizer: optim.Optimizer = None
-        self._scheduler_dict: Dict[str, Union[optim.lr_scheduler._LRScheduler, Any]] = None
-        self._criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor] = None
-        self._metrics: Dict[str, CoreMetric] = {}
         self._prefixed_metrics: Dict[str, Dict[str, CoreMetric]] = {}
         self._logged_metrics: List[str] = None
         self._summary: ModelStatistics = None
-        # The unique instance of metadata callback. Cannot over overwriten.
-        self._metadata_callback = MetadataCallback()
-        self._callbacks: List[pl.Callback] = [self._metadata_callback]
 
         # Store initial hyperparameters in the pl_module and the initial shapes/model name in metadata logger
         self.save_hyperparameters({"args": args, **kwargs}, ignore=["base_model"])
-
-        # Call TrainSetup with a none config, in case the base model has some attributes.
-        TrainSetup(self, {}).setup()
+        self.setup_module_for_train({})
 
     # Getters and setters for properties
 
@@ -87,19 +77,6 @@ class CoreModule(pl.LightningModule):
         return self._summary
 
     @property
-    def callbacks(self) -> List[pl.Callback]:
-        """Gets the callbacks"""
-        return self._callbacks
-
-    @callbacks.setter
-    def callbacks(self, callbacks: List[pl.Callback]):
-        """Sets the callbacks + the default metadata callback"""
-        for callback in callbacks:
-            assert not isinstance(callback, MetadataCallback), "Metadata callback cannot be overwriten."
-        callbacks.append(self._metadata_callback)
-        self._callbacks = callbacks
-
-    @property
     def trainable_params(self) -> bool:
         """Checks if the module is trainable"""
         return self.num_trainable_params > 0
@@ -112,52 +89,6 @@ class CoreModule(pl.LightningModule):
             param.requires_grad_(value)
         # Reset summary such that it is recomputted if necessary (like for counting num trainable params)
         self._summary = None
-
-    @property
-    def criterion_fn(self) -> Callable:
-        """Get the criterion function loss(y, gt) -> backpropagable tensor"""
-        return self._criterion_fn
-
-    @criterion_fn.setter
-    def criterion_fn(self, criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor]):
-        assert isinstance(criterion_fn, Callable), f"Got '{criterion_fn}'"
-        logger.debug(f"Setting criterion to '{criterion_fn}'")
-        self._criterion_fn = CallableCoreMetric(criterion_fn, higher_is_better=False, requires_grad=True)
-        self.metrics = {**self.metrics, "loss": self.criterion_fn}
-
-    @property
-    def metrics(self) -> Dict[str, CoreMetric]:
-        """Gets the list of metric names"""
-        return self._metrics
-
-    @metrics.setter
-    def metrics(self, metrics: Dict[str, Tuple[Callable, str]]):
-        if len(self._metrics) != 0:
-            logger.info(f"Overwriting existing metrics {list(self.metrics.keys())} to {list(metrics.keys())}")
-        self._metrics = {}
-
-        for metric_name, metric_fn in metrics.items():
-            # Our metrics can be a CoreMetric already, a Tuple (callable, min/max) or just a Callable
-            assert isinstance(metric_fn, (CoreMetric, Tuple, Callable)), \
-                   f"Unknown metric type: '{type(metric_fn)}'. " \
-                   "Expcted CoreMetric, Callable or (Callable, \"min\"/\"max\")."
-            assert not metric_name.startswith("val_"), "metrics cannot start with val_"
-            if metric_name == "loss":
-                assert isinstance(metric_fn, CallableCoreMetric) and metric_fn.requires_grad is True
-
-            # If it is not a CoreMetric already (Tuple or Callable), we convert it to CallableCoreMetric
-            if isinstance(metric_fn, Callable) and not isinstance(metric_fn, CoreMetric):
-                metric_fn = (metric_fn, "min")
-
-            if isinstance(metric_fn, Tuple):
-                logger.debug(f"Metric '{metric_name}' is a callable. Converting to CallableCoreMetric.")
-                metric_fn, min_or_max = metric_fn
-                assert min_or_max in ("min", "max"), f"Got '{min_or_max}'"
-                metric_fn = CallableCoreMetric(metric_fn, higher_is_better=(min_or_max == "max"), requires_grad=False)
-            self._metrics[metric_name] = metric_fn
-        if self.criterion_fn is not None:
-            self._metrics["loss"] = self.criterion_fn
-        logger.info(f"Set module metrics: {list(self.metrics.keys())} ({len(self.metrics)})")
 
     @property
     def logged_metrics(self) -> List[str]:
@@ -175,17 +106,6 @@ class CoreModule(pl.LightningModule):
         self._logged_metrics = logged_metrics
 
     @property
-    def optimizer(self) -> optim.Optimizer:
-        """Returns the optimizer"""
-        return self._optimizer
-
-    @optimizer.setter
-    def optimizer(self, optimizer: optim.Optimizer):
-        assert isinstance(optimizer, optim.Optimizer)
-        logger.debug(f"Set the optimizer to {optimizer}")
-        self._optimizer = optimizer
-
-    @property
     def scheduler_dict(self) -> Dict:
         """Returns the scheduler dict"""
         return self._scheduler_dict
@@ -199,11 +119,6 @@ class CoreModule(pl.LightningModule):
         self._scheduler_dict = scheduler_dict
 
     # Overrides on top of the standard pytorch lightning module
-    @property
-    def metadata_callback(self):
-        """Returns the metadata callback of this module"""
-        return self._metadata_callback
-
     @overrides
     def on_fit_start(self) -> None:
         if self.criterion_fn is None:
@@ -317,10 +232,6 @@ class CoreModule(pl.LightningModule):
 
     def load_state_dict(self, state_dict: Dict[str, Any], strict: bool = True):
         return self.base_model.load_state_dict(state_dict, strict)
-
-    def setup_module_for_train(self, train_cfg: Dict):
-        """Given a train cfg, prepare this module for training, by setting the required information."""
-        TrainSetup(self, train_cfg).setup()
 
     # Internal methods
 
