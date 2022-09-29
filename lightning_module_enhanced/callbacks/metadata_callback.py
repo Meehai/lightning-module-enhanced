@@ -48,10 +48,8 @@ class MetadataCallback(pl.Callback):
         self.log_file_path = self.log_dir / f"{prefix}_metadata.json"
         logger.debug(f"Metadata logger set up to '{self.log_file_path}'")
 
-        self.log_metadata_dict({#"input_shape": pl_module.base_model.input_shape,
-                        #"output_shape": pl_module.base_model.output_shape,
-                        "base_model": pl_module.base_model.__class__.__name__
-                        })
+        self.log_metadata("base_model", pl_module.base_model.__class__.__name__)
+        self.log_metadata("summary", str(pl_module.summary))
         # default metadata
         now = datetime.now()
         self.log_metadata_dict({
