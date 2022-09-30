@@ -168,13 +168,25 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
             raise ValueError("No optimizer has been set. Use model.optimizer=optim.XXX or add an optimizer "
                              "property in base model")
 
-        if self.scheduler_dict is None:
-            return {"optimizer": self.optimizer}
+        if isinstance(self.optimizer, list):
+            res = [{"optimizer": o} for o in self.optimizer]
+        else:
+            res = [{"optimizer": self.optimizer}]
 
-        return {
-            "optimizer": self.optimizer,
-            "lr_scheduler": self.scheduler_dict
-        }
+        if self.scheduler_dict is None:
+            return res
+
+        if isinstance(self.scheduler_dict, list):
+            res_scheduler = [{"lr_scheduler": s} for s in self.scheduler_dict]
+        else:
+            res_scheduler = [{"lr_scheduler": self.scheduler_dict}]
+
+        assert len(res) == len(res_scheduler), "Something is messed up in your configs. Num optimizer: " \
+            f"{res} ({len(res)}), schedulers: {res_scheduler} ({len(res_scheduler)})"
+
+        for i in range(len(res)):
+            res[i] = {**res[i], **res_scheduler[i]}
+        return res
 
     # Public methods
 
@@ -192,8 +204,10 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
             y_tr = self.forward(*tr_args, **tr_kwargs)
         return y_tr
 
-    def reset_parameters(self):
+    def reset_parameters(self, seed: int = None):
         """Resets the parameters of the base model"""
+        if seed is not None:
+            tr.manual_seed(seed)
         num_params = len(tuple(self.parameters()))
         if num_params == 0:
             return
