@@ -26,6 +26,7 @@ class TrainSetup:
                 "sgd": optim.SGD,
                 "rmsprop": optim.RMSprop
             }[str_optimizer_type]
+            assert self.module.num_trainable_params > 0, "Module has no trainable params!"
             self.module.optimizer = optimizer_type(self.module.parameters(), **self.train_cfg["optimizer"]["args"])
             return
 
@@ -96,7 +97,6 @@ class TrainSetup:
         if hasattr(self.module.base_model, "setup_model_for_train"):
             logger.info(f"Model {self.module.base_model} has setup_model_for_train() method. Calling it first.")
             self.module.base_model.setup_model_for_train(self.train_cfg)
-        assert self.module.num_trainable_params > 0, "Module has no trainable params!"
         if self.train_cfg is None:
             logger.info("Train cfg is None. Returning early.")
             return
