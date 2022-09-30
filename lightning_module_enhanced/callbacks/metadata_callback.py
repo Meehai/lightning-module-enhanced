@@ -69,6 +69,11 @@ class MetadataCallback(pl.Callback):
             for i, dataloader in enumerate(pl_module.trainer.val_dataloaders):
                 self.log_metadata(f"val dataset {i} size", len(dataloader.dataset))
 
+        optimizer = pl_module.optimizer
+        optimizer = [o.state_dict() for o in optimizer] if isinstance(optimizer, list) else [optimizer.state_dict()]
+        optimizer_lrs = [o["param_groups"][0]["lr"] for o in optimizer]
+        self.log_metadata("start optimizer lr", optimizer_lrs)
+
     def on_test_start(self, trainer: "pl.Trainer", pl_module: pl.LightningModule) -> None:
         """At the start of the .test() loop, add the sizes of all test dataloaders"""
         self._setup(trainer, pl_module, prefix="test")
@@ -106,6 +111,9 @@ class MetadataCallback(pl.Callback):
         best_hparams = best_model["hyper_parameters"]
         self.log_metadata("Best model path", trainer.checkpoint_callback.best_model_path)
         self.log_metadata("hparams_best", best_hparams)
+
+        optimizer_lrs = [o["param_groups"][0]["lr"] for o in best_model["optimizer_states"]]
+        self.log_metadata("best optimizer lr", optimizer_lrs)
 
         self._on_end(trainer, pl_module, "fit")
 
