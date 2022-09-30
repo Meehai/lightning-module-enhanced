@@ -12,6 +12,9 @@ from .callbacks import MetadataCallback
 from .logger import logger
 from .train_setup import TrainSetup
 
+OptimizerType = Union[optim.Optimizer, List[optim.Optimizer]]
+SchedulerType = Union[Dict, List[Dict]]
+
 class TrainableModule(nn.Module, ABC):
     """Trainable module abstract class"""
     @property
@@ -31,7 +34,7 @@ class TrainableModule(nn.Module, ABC):
 
     @property
     @abstractmethod
-    def optimizer(self) -> optim.Optimizer:
+    def optimizer(self) -> OptimizerType:
         """Returns the optimizer"""
 
     @property
@@ -90,7 +93,7 @@ class TrainableModuleMixin(TrainableModule):
     @metrics.setter
     def metrics(self, metrics: Dict[str, Tuple[Callable, str]]):
         if len(self._metrics) != 0:
-            logger.info(f"Overwriting existing metrics {list(self.metrics.keys())} to {list(metrics.keys())}")
+            logger.debug(f"Overwriting existing metrics {list(self.metrics.keys())} to {list(metrics.keys())}")
         self._metrics = {}
 
         for metric_name, metric_fn in metrics.items():
@@ -114,16 +117,22 @@ class TrainableModuleMixin(TrainableModule):
             self._metrics[metric_name] = metric_fn
         if self.criterion_fn is not None:
             self._metrics["loss"] = self.criterion_fn
-        logger.info(f"Set module metrics: {list(self.metrics.keys())} ({len(self.metrics)})")
+        logger.debug(f"Set module metrics: {list(self.metrics.keys())} ({len(self.metrics)})")
 
     @property
-    def optimizer(self) -> optim.Optimizer:
+    def optimizer(self) -> OptimizerType:
         """Returns the optimizer"""
-        return self._optimizer
+        res = self._optimizer
+        if res is not None and len(res) == 1:
+            return res[0]
+        return res
 
     @optimizer.setter
-    def optimizer(self, optimizer: optim.Optimizer):
-        assert isinstance(optimizer, optim.Optimizer), f"Got {optimizer} (type {type(optimizer)})"
+    def optimizer(self, optimizer: OptimizerType):
+        if isinstance(optimizer, optim.Optimizer):
+            optimizer = [optimizer]
+        for o in optimizer:
+            assert isinstance(o, optim.Optimizer), f"Got {o} (type {type(o)})"
         logger.debug(f"Set the optimizer to {optimizer}")
         self._optimizer = optimizer
 
@@ -133,15 +142,21 @@ class TrainableModuleMixin(TrainableModule):
         return type(self.optimizer)
 
     @property
-    def scheduler_dict(self) -> Dict:
+    def scheduler_dict(self) -> SchedulerType:
         """Returns the scheduler dict"""
-        return self._scheduler_dict
+        res =  self._scheduler_dict
+        if res is not None and len(res) == 1:
+            return res[0]
+        return res
 
     @scheduler_dict.setter
-    def scheduler_dict(self, scheduler_dict: Dict):
-        assert isinstance(scheduler_dict, Dict)
-        assert "scheduler" in scheduler_dict
-        assert hasattr(scheduler_dict["scheduler"], "step"), "Scheduler does not have a step method"
+    def scheduler_dict(self, scheduler_dict: SchedulerType):
+        assert isinstance(scheduler_dict, (dict, list))
+        if isinstance(scheduler_dict, Dict):
+            scheduler_dict = [scheduler_dict]
+        for i in range(len(scheduler_dict)):
+            assert "scheduler" in scheduler_dict[i]
+            assert hasattr(scheduler_dict[i]["scheduler"], "step"), "Scheduler does not have a step method"
         logger.debug(f"Set the scheduler to {scheduler_dict}")
         self._scheduler_dict = scheduler_dict
 

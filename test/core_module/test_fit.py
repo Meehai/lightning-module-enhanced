@@ -62,4 +62,4 @@ def test_fit_explicit_over_implicit_2():
     assert isinstance(model.optimizer, optim.Adam)
 
 if __name__ == "__main__":
-    test_fit_good_implicit()
+    test_fit_explicit_over_implicit_2()

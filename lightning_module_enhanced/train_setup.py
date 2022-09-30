@@ -11,6 +11,16 @@ class TrainSetup:
         assert isinstance(train_cfg, Dict), f"Got {type(train_cfg)}"
         self.module = module
         self.train_cfg = train_cfg
+        if not hasattr(self.module, "optimizer"):
+            self.module.optimizer = None
+        if not hasattr(self.module, "scheduler_dict"):
+            self.module.scheduler_dict = None
+        if not hasattr(self.module, "criterion_fn"):
+            self.module.criterion_fn = None
+        if not hasattr(self.module, "metrics"):
+            self.module.metrics = None
+        if not hasattr(self.module, "callbacks"):
+            self.module.calbacks = None
 
     def _setup_optimizer(self):
         if self.module.optimizer is not None:
@@ -26,7 +36,7 @@ class TrainSetup:
                 "sgd": optim.SGD,
                 "rmsprop": optim.RMSprop
             }[str_optimizer_type]
-            assert self.module.num_trainable_params > 0, "Module has no trainable params!"
+            # assert self.module.num_trainable_params > 0, "Module has no trainable params!"
             self.module.optimizer = optimizer_type(self.module.parameters(), **self.train_cfg["optimizer"]["args"])
             return
 
@@ -56,6 +66,7 @@ class TrainSetup:
                 self.train_cfg["scheduler"]["optimizer_args"] = {"monitor": "val_loss"}
 
             self.module.scheduler_dict = {"scheduler": scheduler, **self.train_cfg["scheduler"]["optimizer_args"]}
+            return
 
         # Last hope is adding scheduler from base model
         if hasattr(self.module.base_model, "scheduler_dict") and self.module.base_model.scheduler_dict is not None:
@@ -69,7 +80,7 @@ class TrainSetup:
             return
 
         if hasattr(self.module.base_model, "criterion_fn") and self.module.base_model.criterion_fn is not None:
-            logger.info("Base model has criterion_fn attribute. Using these by default")
+            logger.debug("Base model has criterion_fn attribute. Using these by default")
             self.module.criterion_fn = self.module.base_model.criterion_fn
 
     def _setup_metrics(self):
@@ -79,7 +90,7 @@ class TrainSetup:
             return
 
         if hasattr(self.module.base_model, "metrics") and self.module.base_model.metrics is not None:
-            logger.info("Base model has metrics attribute. Using these by default")
+            logger.debug("Base model has metrics attribute. Using these by default")
             self.module.metrics = self.module.base_model.metrics
 
     def _setup_callbacks(self):
@@ -89,16 +100,16 @@ class TrainSetup:
             return
 
         if hasattr(self.module.base_model, "callbacks") and self.module.base_model.callbacks is not None:
-            logger.info("Base model has callbacks attribute. Using these by default")
+            logger.debug("Base model has callbacks attribute. Using these by default")
             self.module.callbacks = self.module.base_model.callbacks
 
     def setup(self):
         """The main function of this class"""
         if hasattr(self.module.base_model, "setup_model_for_train"):
-            logger.info(f"Model {self.module.base_model} has setup_model_for_train() method. Calling it first.")
+            logger.debug(f"Model {self.module.base_model} has setup_model_for_train() method. Calling it first.")
             self.module.base_model.setup_model_for_train(self.train_cfg)
         if self.train_cfg is None:
-            logger.info("Train cfg is None. Returning early.")
+            logger.debug("Train cfg is None. Returning early.")
             return
         self._setup_optimizer()
         self._setup_scheduler()
