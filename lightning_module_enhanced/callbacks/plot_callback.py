@@ -29,7 +29,7 @@ class PlotCallbackGeneric(Callback):
 
     @overrides
     # pylint: disable=unused-argument
-    def on_validation_batch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule",
+    def on_validation_batch_end(self, trainer: Trainer, pl_module: LightningModule,
                                 outputs, batch, batch_idx: int, dataloader_idx: int) -> None:
         self._do_call(trainer, pl_module, batch, batch_idx, "validation")
 
@@ -38,6 +38,11 @@ class PlotCallbackGeneric(Callback):
     def on_train_batch_end(self, trainer: Trainer, pl_module: LightningModule,
                            outputs, batch, batch_idx: int, unused: int = 0):
         self._do_call(trainer, pl_module, batch, batch_idx, "train")
+
+    @overrides
+    def on_test_batch_end(self, trainer: Trainer, pl_module: LightningModule,
+                          outputs, batch, batch_idx: int, dataloader_idx: int) -> None:
+        self._do_call(trainer, pl_module, batch, batch_idx, "test")
 
 class PlotCallback(PlotCallbackGeneric):
     """Above implementation + assumption about data/labels keys"""
