@@ -95,7 +95,7 @@ class TrainSetup:
 
     def _setup_callbacks(self):
         """Checks if the base model has the 'callbacks' property, and if True, uses it."""
-        if len(self.module.callbacks) > len(self.module._default_callbacks):
+        if len(self.module.callbacks) > len(self.module._default_callbacks): # pylint: disable=protected-access
             logger.debug2("Callbacks were already set. Returning early.")
             return
 
