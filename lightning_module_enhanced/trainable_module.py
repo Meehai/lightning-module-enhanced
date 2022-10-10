@@ -8,7 +8,7 @@ from torch import optim, nn
 import torch as tr
 import pytorch_lightning as pl
 from .metrics import CoreMetric, CallableCoreMetric
-from .callbacks import MetadataCallback
+from .callbacks import MetadataCallback, CopyBestCheckpoint
 from .logger import logger
 from .train_setup import TrainSetup
 
@@ -51,9 +51,10 @@ class TrainableModuleMixin(TrainableModule):
         self._scheduler_dict: Dict[str, Union[optim.lr_scheduler._LRScheduler, Any]] = None
         self._criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor] = None
         self._metrics: Dict[str, CoreMetric] = {}
-        # The unique instance of metadata callback. Cannot over overwriten.
-        self._metadata_callback = MetadataCallback()
-        self._callbacks: List[pl.Callback] = [self._metadata_callback]
+        # The default callbacks that are singletons. Cannot be overwritten and only one instance must exist.
+        self._default_callbacks = [MetadataCallback(), CopyBestCheckpoint()]
+        self._callbacks: List[pl.Callback] = [*self._default_callbacks]
+        self._metadata_callback = self._default_callbacks[0]
 
     @property
     def metadata_callback(self):
@@ -68,10 +69,13 @@ class TrainableModuleMixin(TrainableModule):
     @callbacks.setter
     def callbacks(self, callbacks: List[pl.Callback]):
         """Sets the callbacks + the default metadata callback"""
+        res = [*self._default_callbacks]
         for callback in callbacks:
-            assert not isinstance(callback, MetadataCallback), "Metadata callback cannot be overwriten."
-        callbacks.append(self._metadata_callback)
-        self._callbacks = callbacks
+            for default_callback in self._default_callbacks:
+                assert not isinstance(callback, type(default_callback)), \
+                    "Default callaback {default_callback} cannot be overwritten."
+            res.append(callback)
+        self._callbacks = res
 
     @property
     def criterion_fn(self) -> Callable:
