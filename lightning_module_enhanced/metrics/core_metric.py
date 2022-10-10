@@ -79,6 +79,3 @@ class CoreMetric(nn.Module, ABC):
         str_type =  str(type(self)).split(".")[-1][0:-2]
         f_str = f"[{str_type}]. Higher is beter: {self.higher_is_better}. Grad: {self.requires_grad}"
         return f_str
-
-    def __deepcopy__(self, memo):
-        return type(self)(self.higher_is_better, self.requires_grad)

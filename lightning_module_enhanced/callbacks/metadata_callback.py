@@ -7,6 +7,7 @@ import pytorch_lightning as pl
 import torch as tr
 
 from ..logger import logger
+from ..utils import json_encode_val
 
 
 class MetadataCallback(pl.Callback):
@@ -106,14 +107,26 @@ class MetadataCallback(pl.Callback):
         if not (best_checkpoint.exists() and best_checkpoint.is_file()):
             logger.warning("No best model path exists. Probably trained without validation set. Using last.")
             best_checkpoint = Path(trainer.checkpoint_callback.last_model_path)
-        assert best_checkpoint.exists() and best_checkpoint.is_file(), "Best checkpoint does not exist."
-        best_model = tr.load(best_checkpoint)
-        best_hparams = best_model["hyper_parameters"]
-        self.log_metadata("Best model path", trainer.checkpoint_callback.best_model_path)
-        self.log_metadata("hparams_best", best_hparams)
 
-        optimizer_lrs = [o["param_groups"][0]["lr"] for o in best_model["optimizer_states"]]
-        self.log_metadata("best optimizer lr", optimizer_lrs)
+        # Store the best model dict key to have metadata about that particular checkpoint as well
+        assert best_checkpoint.exists() and best_checkpoint.is_file(), "Best checkpoint does not exist."
+        best_model_pkl = tr.load(best_checkpoint)
+        best_model_dict = {
+            "Hyper parameters": best_model_pkl["hyper_parameters"],
+            "Optimizers LR":  [o["param_groups"][0]["lr"] for o in best_model_pkl["optimizer_states"]]
+        }
+        best_model_dict["Model Checkpoint"] = {}
+        for k, v in trainer.checkpoint_callback.state_dict().items():
+            # we can give None to monitor (which is the default)
+            _v = "val_loss" if k == "monitor" and v is None else json_encode_val(v)
+            best_model_dict["Model Checkpoint"][k] = _v
+
+        if "lr_schedulers" in best_model_pkl.keys():
+            schedulers = []
+            for scheduler_dict in best_model_pkl["lr_schedulers"]:
+                schedulers.append({k: json_encode_val(v) for k, v in scheduler_dict.items()})
+            best_model_dict["Schedulers"] = schedulers
+        self.log_metadata("Best Model", best_model_dict)
 
         self._on_end(trainer, pl_module, "fit")
 
@@ -127,3 +140,9 @@ class MetadataCallback(pl.Callback):
 
     def __str__(self):
         return f"Metadata Callback. Log dir: '{self.log_dir}'"
+
+    def state_dict(self) -> Dict[str, Any]:
+        return json.dumps(self.metadata)
+
+    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
+        self.metadata = json.loads(state_dict)
