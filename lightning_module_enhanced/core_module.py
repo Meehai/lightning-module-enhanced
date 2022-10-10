@@ -289,5 +289,8 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
             if metric_name.startswith(prefix):
                 logger.warning(f"This may be a bug, since metric '{metric_name}' already has prefix '{prefix}'")
                 continue
-            new_metrics[f"{prefix}{metric_name}"] = deepcopy(metric_fn)
+            cloned_metric: CoreMetric = deepcopy(metric_fn)
+            cloned_metric.reset()
+            new_metrics[f"{prefix}{metric_name}"] = cloned_metric
+
         return new_metrics
