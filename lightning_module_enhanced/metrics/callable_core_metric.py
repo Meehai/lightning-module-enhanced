@@ -51,7 +51,8 @@ class CallableCoreMetric(CoreMetric):
     def reset(self):
         """This is called at each epoch end after compute(). It resets the state for the next epoch."""
         super().reset()
-        self.batch_results *= 0
+        if self.batch_results is not None:
+            self.batch_results *= 0
         self.batch_count *= 0
 
     def __str__(self):

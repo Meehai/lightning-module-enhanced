@@ -1,5 +1,6 @@
 """Utils module"""
-from typing import T
+from typing import T, Any
+import json
 import torch as tr
 import numpy as np
 from torch import nn
@@ -67,3 +68,12 @@ def to_device(data: T, device: tr.device) -> T: #pylint: disable=no-member
 
     logger.debug(f"Got unknown type {type(data)}. Returning as is.")
     return data
+
+def json_encode_val(value: Any) -> str:
+    """Given a potentially unencodable json value (but stringable), convert to string if needed"""
+    try:
+        _ = json.dumps(value)
+        encodable_value = value
+    except TypeError:
+        encodable_value = str(value)
+    return encodable_value
