@@ -1,5 +1,5 @@
 """Utils module"""
-from typing import T, Any
+from typing import T, Any, Tuple, Optional
 import json
 import torch as tr
 import numpy as np
@@ -77,3 +77,19 @@ def json_encode_val(value: Any) -> str:
     except TypeError:
         encodable_value = str(value)
     return encodable_value
+
+def accelerator_params_from_module(module: nn.Module) -> Tuple[str, Optional[int]]:
+    """Some pytorch lightning madness"""
+    # Assume the device based on this.
+    device = next(module.parameters()).device
+    if device.type == "cuda":
+        accelerator = "gpu"
+        # cuda:5 => "gpu" and [5]. "cuda" => "gpu" and [0]
+        index = [device.index] if isinstance(device.index, int) else [0]
+    elif device.type == "cpu":
+        # cpu:XX => "cpu" and None
+        accelerator = "cpu"
+        index = None
+    else:
+        assert False, f"Unknown device type: {device}"
+    return accelerator, index
