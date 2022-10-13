@@ -34,10 +34,17 @@ class CallableCoreMetric(CoreMetric):
 
     @overrides
     def batch_update(self, batch_result: tr.Tensor) -> None:
+        assert isinstance(batch_result, (tr.Tensor, list)), "Only a single tensor or a list of batch tensors accepted"
+        if isinstance(batch_result, list):
+            for item_batch_result in batch_result:
+                assert isinstance(item_batch_result, tr.Tensor), "No list nesting allowed"
+                self.batch_update(item_batch_result)
+            return
+        # If tensor, just do regular update
         batch_result = batch_result.detach().cpu()
         if self.batch_results is None:
             self.batch_results = batch_result * 0
-        self.batch_results += batch_result.detach().cpu()
+        self.batch_results += batch_result
         self.batch_count += 1
 
     @overrides
