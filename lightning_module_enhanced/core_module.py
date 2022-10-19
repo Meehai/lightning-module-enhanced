@@ -5,6 +5,7 @@ from copy import deepcopy
 from overrides import overrides
 import torch as tr
 import pytorch_lightning as pl
+from pytorch_lightning.utilities.seed import seed_everything
 from torch import nn
 from torchinfo import summary, ModelStatistics
 
@@ -207,17 +208,20 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
     def reset_parameters(self, seed: int = None):
         """Resets the parameters of the base model"""
         if seed is not None:
-            tr.manual_seed(seed)
+            seed_everything(seed)
         num_params = len(tuple(self.parameters()))
         if num_params == 0:
             return
         for layer in self.base_model.children():
             if CoreModule(layer).num_params == 0:
                 continue
+
             if not hasattr(layer, "reset_parameters"):
                 logger.debug(f"Layer {layer} has params, but no reset_parameters() method. Trying recursively")
                 layer = CoreModule(layer)
-            layer.reset_parameters()
+                layer.reset_parameters(seed)
+            else:
+                layer.reset_parameters()
 
     def load_state_from_path(self, path: str) -> CoreModule:
         """Loads the state dict from a path"""
