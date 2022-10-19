@@ -4,10 +4,23 @@ from pathlib import Path
 from datetime import datetime
 import json
 import pytorch_lightning as pl
+from pytorch_lightning.callbacks import EarlyStopping
 import torch as tr
 
 from ..logger import logger
-from ..utils import json_encode_val
+
+def parsed_str_type(item: Any) -> str:
+    """Given an object with a type of the format: <class 'A.B.C.D'>, parse it and return 'A.B.C.D'"""
+    return str(type(item)).rsplit(".", maxsplit=1)[-1][0:-2]
+
+def json_encode_val(value: Any) -> str:
+    """Given a potentially unencodable json value (but stringable), convert to string if needed"""
+    try:
+        _ = json.dumps(value)
+        encodable_value = value
+    except TypeError:
+        encodable_value = str(value)
+    return encodable_value
 
 
 class MetadataCallback(pl.Callback):
@@ -36,12 +49,14 @@ class MetadataCallback(pl.Callback):
         # Apply .tolist(). Every metric should be able to be converted as list, such that it can be stored in a JSON.
         self.metadata["epoch_metrics"][key][epoch] = value.tolist()
 
-    def _setup(self, trainer: "pl.Trainer", pl_module: pl.LightningModule, prefix: str):
+    def _setup(self, trainer: pl.Trainer, pl_module: pl.LightningModule, prefix: str):
         """Called to set the log dir based on the first logger for train and test modes"""
+
         self.metadata = {
             "epoch_metrics": {},
             "hparams_current": None,
         }
+
 
         log_dir = trainer.log_dir
         self.log_dir = Path(log_dir).absolute()
@@ -60,7 +75,7 @@ class MetadataCallback(pl.Callback):
         })
         self.save()
 
-    def on_fit_start(self, trainer: "pl.Trainer", pl_module: pl.LightningModule) -> None:
+    def on_fit_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         """At the start of the .fit() loop, add the sizes of all train/validation dataloaders"""
         self._setup(trainer, pl_module, prefix="fit")
 
@@ -70,12 +85,48 @@ class MetadataCallback(pl.Callback):
             for i, dataloader in enumerate(pl_module.trainer.val_dataloaders):
                 self.log_metadata(f"val dataset {i} size", len(dataloader.dataset))
 
+        # optimizer metadata at fit start
         optimizer = pl_module.optimizer
-        optimizer = [o.state_dict() for o in optimizer] if isinstance(optimizer, list) else [optimizer.state_dict()]
-        optimizer_lrs = [o["param_groups"][0]["lr"] for o in optimizer]
-        self.log_metadata("start optimizer lr", optimizer_lrs)
+        optimizer_sd = [o.state_dict() for o in optimizer] if isinstance(optimizer, list) else [optimizer.state_dict()]
+        optimizer_lrs = [o["param_groups"][0]["lr"] for o in optimizer_sd]
+        optimizer_dict = {
+            "Type": parsed_str_type(optimizer),
+            "Starting LR": optimizer_lrs
+        }
+        self.log_metadata("Optimizer", optimizer_dict)
 
-    def on_test_start(self, trainer: "pl.Trainer", pl_module: pl.LightningModule) -> None:
+        # scheduler metadata at fit start
+        if pl_module.scheduler_dict is not None:
+            scheduler = pl_module.scheduler_dict["scheduler"]
+            scheduler_metadata = {
+                "Type": parsed_str_type(scheduler),
+                **{k: v for k, v in pl_module.scheduler_dict.items() if k != "scheduler"}
+            }
+            if hasattr(scheduler, "mode"):
+                scheduler_metadata["mode"] = scheduler.mode
+            if hasattr(scheduler, "factor"):
+                scheduler_metadata["factor"] = scheduler.factor
+            if hasattr(scheduler, "patience"):
+                scheduler_metadata["patience"] = scheduler.patience
+            self.log_metadata("Scheduler", scheduler_metadata)
+
+        # early stopping at fit start
+        early_stoppings = list(filter(lambda x: isinstance(x, EarlyStopping), trainer.callbacks))
+        if len(early_stoppings) > 0:
+            assert len(early_stoppings) == 1
+            es_dict = {
+                "monitor": early_stoppings[0].monitor,
+                "mode": early_stoppings[0].mode,
+                "patience": early_stoppings[0].patience
+            }
+            self.log_metadata("Early Stopping", es_dict)
+
+        # model checkpoint metadata at fit start
+        model_checkpoint_dict = {"monitor": trainer.checkpoint_callback.monitor,
+                                 "mode": trainer.checkpoint_callback.mode}
+        self.log_metadata("Model Checkpoint", model_checkpoint_dict)
+
+    def on_test_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         """At the start of the .test() loop, add the sizes of all test dataloaders"""
         self._setup(trainer, pl_module, prefix="test")
         self.metadata["epoch_metrics"] = {}
@@ -83,7 +134,7 @@ class MetadataCallback(pl.Callback):
         for i, dataloader in enumerate(pl_module.trainer.test_dataloaders):
             self.log_metadata(f"test dataset {i} size", len(dataloader.dataset))
 
-    def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: pl.LightningModule) -> None:
+    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         """Saves the metadata as a json on the train dir"""
         # Always update the current hparams such that, for test modes, we get the loaded stats
         self.log_metadata("Best model path", trainer.checkpoint_callback.best_model_path)
@@ -91,7 +142,7 @@ class MetadataCallback(pl.Callback):
         self.save()
 
     # pylint: disable=unused-argument
-    def _on_end(self, trainer: "pl.Trainer", pl_module: pl.LightningModule, prefix: str):
+    def _on_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule, prefix: str):
         """Adds the end timestamp and saves the json on the disk for train and test modes."""
         now = datetime.now()
         start_timestamp = datetime.fromtimestamp(self.metadata[f"{prefix}_start_timestamp"])
@@ -102,7 +153,7 @@ class MetadataCallback(pl.Callback):
         })
         self.save()
 
-    def on_train_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
+    def on_train_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         best_checkpoint = Path(trainer.checkpoint_callback.best_model_path)
         if not (best_checkpoint.exists() and best_checkpoint.is_file()):
             logger.warning("No best model path exists. Probably trained without validation set. Using last.")
@@ -110,33 +161,32 @@ class MetadataCallback(pl.Callback):
 
         # Store the best model dict key to have metadata about that particular checkpoint as well
         assert best_checkpoint.exists() and best_checkpoint.is_file(), "Best checkpoint does not exist."
-        best_model_pkl = tr.load(best_checkpoint)
+        best_model_pkl = tr.load(best_checkpoint, map_location="cpu")
         best_model_dict = {
             "Hyper parameters": best_model_pkl["hyper_parameters"],
-            "Optimizers LR":  [o["param_groups"][0]["lr"] for o in best_model_pkl["optimizer_states"]]
+            "Optimizers LR": [o["param_groups"][0]["lr"] for o in best_model_pkl["optimizer_states"]]
         }
-        best_model_dict["Model Checkpoint"] = {}
-        for k, v in trainer.checkpoint_callback.state_dict().items():
-            # we can give None to monitor (which is the default)
-            _v = "val_loss" if k == "monitor" and v is None else json_encode_val(v)
-            best_model_dict["Model Checkpoint"][k] = _v
+        if pl_module.scheduler_dict is not None and hasattr(pl_module.scheduler_dict["scheduler"], "factor"):
+            first_lr = self.metadata["Optimizer"]["Starting LR"][0]
+            last_lr = best_model_dict["Optimizers LR"][0]
+            factor = pl_module.scheduler_dict["scheduler"].factor
+            num_reduces = 0 if first_lr == last_lr else int((last_lr / first_lr) / factor)
+            best_model_dict["Scheduler num LR reduces"] = num_reduces
 
-        if "lr_schedulers" in best_model_pkl.keys():
-            schedulers = []
-            for scheduler_dict in best_model_pkl["lr_schedulers"]:
-                schedulers.append({k: json_encode_val(v) for k, v in scheduler_dict.items()})
-            best_model_dict["Schedulers"] = schedulers
         self.log_metadata("Best Model", best_model_dict)
 
         self._on_end(trainer, pl_module, "fit")
 
-    def on_test_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
+    def on_test_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         self._on_end(trainer, pl_module, "test")
 
     def save(self):
         """Saves the file on disk"""
+        # Force epoch metrics to be at the end for viewing purposes.
+        metadata = {k: v for k, v in self.metadata.items() if k != "epoch_metrics"}
+        metadata["epoch_metrics"] = self.metadata["epoch_metrics"]
         with open(self.log_file_path, "w", encoding="utf8") as fp:
-            json.dump(self.metadata, fp, indent=4)
+            json.dump(metadata, fp, indent=4)
 
     def __str__(self):
         return f"Metadata Callback. Log dir: '{self.log_dir}'"

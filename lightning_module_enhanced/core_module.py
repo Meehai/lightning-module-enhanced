@@ -223,7 +223,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         """Loads the state dict from a path"""
         # if path is remote (gcs) download checkpoint to a temp dir
         logger.info(f"Loading weights and hyperparameters from '{path}'")
-        ckpt_data = tr.load(path)
+        ckpt_data = tr.load(path, map_location="cpu")
         self.load_state_dict(ckpt_data["state_dict"])
         self.save_hyperparameters(ckpt_data["hyper_parameters"])
         return self
