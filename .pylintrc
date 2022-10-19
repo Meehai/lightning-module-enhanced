@@ -360,6 +360,8 @@ good-names=
            fp,
            fd,
            xp,
+           ls,
+           cb,
 
 # Include a hint for the correct naming format with invalid-name.
 include-naming-hint=no
