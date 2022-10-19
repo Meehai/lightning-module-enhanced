@@ -26,16 +26,17 @@ class SubsetExperiment:
 
     def _do_plot(self, res, n_total: int):
         ls = np.linspace(1 / self.num_subsets, 1, self.num_subsets)[0: len(res)]
-        losses = [_res[0]["loss"] for _res in res]
-        x = np.arange(len(losses))
-        plt.scatter(x, losses)
-        plt.plot(x, losses)
-        plt.xticks(x, [f"{x*100:.2f}%" for x in ls])
-        plt.xlabel("Percent used")
-        plt.ylabel("Validation loss")
-        plt.title(f"Subset experiment for {n_total} data points")
-        out_file = f"{self.trainer.logger.log_dir}/subset_val_loss.png"
-        plt.savefig(out_file)
+        x = np.arange(len(res))
+        for metric in res[0][0].keys():
+            losses = [_res[0][metric] for _res in res]
+            plt.scatter(x, losses)
+            plt.plot(x, losses)
+            plt.xticks(x, [f"{x*100:.2f}%" for x in ls])
+            plt.xlabel("Percent used")
+            plt.ylabel(f"Validation {metric}")
+            plt.title(f"Subset experiment for {n_total} train size")
+            out_file = f"{self.trainer.logger.log_dir}/subset_val_{metric}.png"
+            plt.savefig(out_file)
 
     def fit(self, model, train_dataloaders, val_dataloaders, *args, **kwargs):
         """The main function, uses same args as a regular pl.Trainer"""
