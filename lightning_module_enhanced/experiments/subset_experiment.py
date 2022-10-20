@@ -2,12 +2,10 @@
 Subset experiment module. Wrapper on top of a regular trainer to train the model n times with increasing sizes
 of the original dataset
 """
-from copy import deepcopy
-from overrides import overrides
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader, Subset
+import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 

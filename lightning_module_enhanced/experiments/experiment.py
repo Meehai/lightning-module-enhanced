@@ -10,6 +10,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader
 
 class Experiment(ABC):
+    """Experiment class implementation"""
     def __init__(self, trainer: Union[Trainer, Experiment]):
         self._trainer = trainer
         self.done = False
@@ -22,12 +23,15 @@ class Experiment(ABC):
 
     @property
     def trainer(self):
+        """The trainer of this eperiment. Might be overwritten during the experiment, but will stay as the original one
+        before/after .fit() is called
+        """
         res = self._trainer
         assert res is not None
         return res
 
     @trainer.setter
-    def trainer(self, trainer):
+    def trainer(self, trainer: Union[Trainer, Experiment]):
         self._trainer = trainer
 
     @property
@@ -50,11 +54,13 @@ class Experiment(ABC):
         return str(type(self)).split(".")[-1][0:-2]
 
     def test(self, *args, **kwargs):
+        """Test wrapper to call the original trainer's test()"""
         assert self.done is True
         return self.trainer.test(*args, **kwargs)
 
-    def do_one_iteration(self, ix: int, model: LightnimgModule, dataloader: Dataloader,
+    def do_one_iteration(self, ix: int, model: LightningModule, dataloader: DataLoader,
                          val_dataloaders: List[DataLoader], *args, **kwargs) -> Dict[str, float]:
+        """The main function of this experiment. Does all the rewriting logger logic and starts the experiment."""
         # Seed
         seed_everything(ix)
         # Copy old trainer and update the current one
