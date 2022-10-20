@@ -28,6 +28,6 @@ class CopyBestCheckpoint(Callback):
         if in_file == "":
             logger.warning("No best model was stored, just last model path (probably no validation set used).")
             in_file = self.model_checkpoint_loss_callback.last_model_path
-        assert not out_file.exists(), f"Out file '{out_file}' already exists..."
+        # assert not out_file.exists(), f"Out file '{out_file}' already exists..."
         in_file = Path(in_file).absolute()
         shutil.copyfile(in_file, out_file)
