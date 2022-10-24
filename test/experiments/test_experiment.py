@@ -46,7 +46,7 @@ class Model(nn.Module):
 
 def test_experiment_1():
     trainer = Trainer()
-    e = MyExperiment(trainer)
+    e = MyExperiment(trainer, 5)
     assert e is not None
 
 def test_experiment_2():

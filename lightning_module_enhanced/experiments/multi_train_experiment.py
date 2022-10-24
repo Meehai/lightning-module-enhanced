@@ -15,11 +15,8 @@ class MultiTrainExperiment(Experiment):
         super().__init__(trainer)
         self.num_experiments = num_experiments
 
-    def on_before_iteration(self, ix: int):
-        breakpoint()
-
     def on_after_iteration(self, ix: int):
-        breakpoint()
+        pd.DataFrame(self.fit_metrics).to_csv(f"{self.trainer.log_dir}/results.csv")
 
     # @overrides
     # def fit(self, model, train_dataloaders, val_dataloaders, *args, **kwargs):

@@ -137,7 +137,11 @@ class Experiment(ABC):
         # Seed
         seed_everything(ix + len(self))
         version_prefix = f"{self.trainer.logger.version}/" if self.trainer.logger.version != "" else ""
-        version_prefix = f"version_{version_prefix}" if not version_prefix.startswith("version") else version_prefix
+        try:
+            _ = int(self.trainer.logger.version)
+            version_prefix = f"version_{version_prefix}"
+        except ValueError:
+            pass
         # [{prev-experiment}_]{current-experiment}_{id}
         id = self.ix_to_id[ix]
         version = f"{version_prefix}{self.experiment_dir_name}_{id}"
