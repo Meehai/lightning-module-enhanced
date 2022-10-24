@@ -2,6 +2,7 @@
 MultiTrain experiment module. Wrapper on top of a regular trainer to train the model n times and pick the best result
 plus statistics about them
 """
+from overrides import overrides
 import pandas as pd
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -14,28 +15,24 @@ class MultiTrainExperiment(Experiment):
         super().__init__(trainer)
         self.num_experiments = num_experiments
 
-        # post fit stuff
-        self.df_res = None
-        self.ix = None
+    def on_before_iteration(self, ix: int):
+        breakpoint()
 
-    def fit(self, model, train_dataloaders, val_dataloaders, *args, **kwargs):
-        """The main function, uses same args as a regular pl.Trainer"""
-        assert self.done is False, "Cannot fit twice"
+    def on_after_iteration(self, ix: int):
+        breakpoint()
 
-        for cb in model.configure_callbacks():
-            assert not isinstance(cb, ModelCheckpoint), "Subset experiment cannot have another ModelCheckpoint"
+    # @overrides
+    # def fit(self, model, train_dataloaders, val_dataloaders, *args, **kwargs):
+    #     """The main function, uses same args as a regular pl.Trainer"""
+    #     assert self.done is False, "Cannot fit twice"
+    #     super().fit_setup(model, train_dataloaders, val_dataloaders)
 
-        for i in range(self.num_experiments):
-            self.do_one_iteration(i, model, train_dataloaders, val_dataloaders, *args, **kwargs)
-            pd.DataFrame(self.fit_metrics).to_csv(f"{self.trainer.log_dir}/results.csv")
-        self.done = True
-        self.df_fit_metrics = pd.DataFrame(self.fit_metrics)
-        self.ix = self.df_fit_metrics["loss"].argmin()
-
-    @property
-    def checkpoint_callback(self):
-        assert self.done is True
-        return self.fit_trainers[self.ix].checkpoint_callback
+    #     for i in range(self.num_experiments):
+    #         self.do_one_iteration(i, model, train_dataloaders, val_dataloaders, *args, **kwargs)
+    #         pd.DataFrame(self.fit_metrics).to_csv(f"{self.trainer.log_dir}/results.csv")
+    #     self.done = True
+    #     self.df_fit_metrics = pd.DataFrame(self.fit_metrics)
+    #     self.ix = self.df_fit_metrics["loss"].argmin()
 
     def __len__(self):
         return self.num_experiments
