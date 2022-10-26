@@ -128,6 +128,8 @@ class Experiment(ABC):
         if self._res_path.exists():
             results = np.load(self._res_path, allow_pickle=True).item()
             self.fit_metrics = results["fit_metrics"]
+            ids = list(results['fit_metrics'].keys())
+            lme_logger.info(f"Loading previously done experiments (ids: {ids}) from '{self._res_path}'")
             model_checkpoints = {k: ModelCheckpoint() for k in results["checkpoint_callbacks_state"].keys()}
             for k, v in results["checkpoint_callbacks_state"].items():
                 model_checkpoints[k].load_state_dict(v)
@@ -143,7 +145,6 @@ class Experiment(ABC):
     def _do_one_iteration(self, ix: int, model: LightningModule, dataloader: DataLoader,
                           val_dataloaders: List[DataLoader]) -> Dict[str, float]:
         """The main function of this experiment. Does all the rewriting logger logic and starts the experiment."""
-        self.on_iteration_start(ix)
         # Copy old trainer and update the current one
         old_trainer = deepcopy(self.trainer)
         iter_model = deepcopy(model)
@@ -151,6 +152,7 @@ class Experiment(ABC):
         # Seed
         seed_everything(ix + len(self))
         version_prefix = f"{self.trainer.logger.version}/" if self.trainer.logger.version != "" else ""
+        # add "version_" only if it is a regular version stored as number (default of Pytorch Lightning)
         try:
             _ = int(self.trainer.logger.version)
             version_prefix = f"version_{version_prefix}"
@@ -176,8 +178,6 @@ class Experiment(ABC):
         # Cleanup. Remove the model, restore old trainer and return the experiment's metrics
         del iter_model
         self.trainer = old_trainer
-        self.on_iteration_end(ix)
-        self._after_iteration()
         return res
 
     def fit(self, model, train_dataloaders, val_dataloaders, **kwargs):
@@ -191,7 +191,10 @@ class Experiment(ABC):
                 assert self.ix_to_id[i] in self.checkpoint_callbacks
                 lme_logger.debug(f"Experimnt id '{self.ix_to_id[i]}' already exists. Returning early.")
                 continue
+            self.on_iteration_start(i)
             self._do_one_iteration(i, self._model, self._train_dataloaders, self._val_dataloaders)
+            self.on_iteration_end(i)
+            self._after_iteration()
         self.on_experiment_end()
 
         self.done = True
