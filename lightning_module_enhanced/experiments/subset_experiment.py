@@ -40,7 +40,7 @@ class SubsetExperiment(Experiment):
             plt.close()
 
     @overrides
-    def on_fit_start(self):
+    def on_experiment_start(self):
         ls = np.linspace(1 / self.subsets, 1, self.subsets) if isinstance(self.subsets, int) else self.subsets
         subset_lens = [int(len(self._train_dataset) * x) for x in ls]
         indices = [np.random.choice(len(self._train_dataset), x, replace=False) for x in subset_lens]
@@ -49,7 +49,7 @@ class SubsetExperiment(Experiment):
         self.tmp_train_dataloader = self._train_dataloaders
 
     @overrides
-    def on_fit_end(self):
+    def on_experiment_end(self):
         self._train_dataloaders = self.tmp_train_dataloader
 
     @overrides
