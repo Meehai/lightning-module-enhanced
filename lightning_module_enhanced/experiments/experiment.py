@@ -96,10 +96,10 @@ class Experiment(ABC):
     def on_iteration_end(self, ix: int):
         """Callback called at the end of each iteration"""
 
-    def on_fit_start(self):
+    def on_experiment_start(self):
         """Callback called at the start of the experiment"""
 
-    def on_fit_end(self):
+    def on_experiment_end(self):
         """Callback called at the end of the experiment"""
 
     def test(self, *args, **kwargs):
@@ -143,6 +143,7 @@ class Experiment(ABC):
     def _do_one_iteration(self, ix: int, model: LightningModule, dataloader: DataLoader,
                           val_dataloaders: List[DataLoader]) -> Dict[str, float]:
         """The main function of this experiment. Does all the rewriting logger logic and starts the experiment."""
+        self.on_iteration_start(ix)
         # Copy old trainer and update the current one
         old_trainer = deepcopy(self.trainer)
         iter_model = deepcopy(model)
@@ -162,16 +163,6 @@ class Experiment(ABC):
                                        name=self.trainer.logger.name, version=version)
         self.trainer.logger = new_logger
 
-        # See if the experiment was already done and return early if so
-        out_path = Path(self.trainer.logger.save_dir) / self.trainer.logger.name / version
-        if out_path.exists():
-            assert eid in self.fit_metrics, f"Experiment id '{eid}' not in fit_metrics, but dir '{out_path}' exists"
-            assert eid in self.checkpoint_callbacks
-            lme_logger.debug(f"Experimnt id '{eid}' already exists. Returning early.")
-            del iter_model
-            self.trainer = old_trainer
-            return None
-
         # Train on train
         self.trainer.fit(iter_model, dataloader, val_dataloaders, **self._fit_params)
 
@@ -185,21 +176,23 @@ class Experiment(ABC):
         # Cleanup. Remove the model, restore old trainer and return the experiment's metrics
         del iter_model
         self.trainer = old_trainer
+        self.on_iteration_end(ix)
+        self._after_iteration()
         return res
 
     def fit(self, model, train_dataloaders, val_dataloaders, **kwargs):
         """The main function, uses same args as a regular pl.Trainer"""
         assert self.done is False, "Cannot fit twice"
         self._fit_setup(model, train_dataloaders, val_dataloaders, **kwargs)
-        self.on_fit_start()
+        self.on_experiment_start()
 
         for i in range(len(self)):
-            self.on_iteration_start(i)
-            _ = self._do_one_iteration(i, self._model, self._train_dataloaders, self._val_dataloaders)
-            self.on_iteration_end(i)
-
-            self._after_iteration()
-        self.on_fit_end()
+            if self.ix_to_id[i] in self.fit_metrics:
+                assert self.ix_to_id[i] in self.checkpoint_callbacks
+                lme_logger.debug(f"Experimnt id '{self.ix_to_id[i]}' already exists. Returning early.")
+                continue
+            self._do_one_iteration(i, self._model, self._train_dataloaders, self._val_dataloaders)
+        self.on_experiment_end()
 
         self.done = True
         self.best_id = self.df_fit_metrics.iloc[self.df_fit_metrics["loss"].argmin()].name

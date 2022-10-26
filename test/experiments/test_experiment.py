@@ -12,9 +12,13 @@ class MyExperiment(Experiment):
     def __init__(self, trainer, n_experiments: int):
         super().__init__(trainer)
         self.n_experiments = n_experiments
+        self.cnt = 0
 
     def __len__(self):
         return self.n_experiments
+
+    def on_iteration_start(self, ix: int):
+        self.cnt += 1
 
 class Reader:
     def __init__(self, n_data: int, n_dims: int):
@@ -48,6 +52,7 @@ def test_experiment_1():
     trainer = Trainer()
     e = MyExperiment(trainer, 5)
     assert e is not None
+    assert e.cnt == 0
 
 def test_experiment_2():
     train_data = Reader(n_data=100, n_dims=3)
@@ -58,22 +63,29 @@ def test_experiment_2():
     save_dir = "save_dir_exp_2" if __name__ == "__main__" else TemporaryDirectory().name
 
     trainer = Trainer(max_epochs=3, logger=TensorBoardLogger(save_dir=save_dir, name="", version=0))
-    MyExperiment(trainer, 3).fit(model, train_dataloader, val_dataloader)
+    e = MyExperiment(trainer, 3)
+    e.fit(model, train_dataloader, val_dataloader)
     out_path = Path(save_dir) / "version_0"
     assert len([x for x in out_path.iterdir() if x.is_dir()]) == 3
+    assert e.cnt == 3
 
     trainer = Trainer(max_epochs=3, logger=TensorBoardLogger(save_dir=save_dir, name="", version=0))
-    MyExperiment(trainer, 5).fit(model, train_dataloader, val_dataloader)
+    e = MyExperiment(trainer, 5)
+    e.fit(model, train_dataloader, val_dataloader)
     assert len([x for x in out_path.iterdir() if x.is_dir()]) == 5
+    assert e.cnt == 2
 
     trainer = Trainer(max_epochs=3, logger=TensorBoardLogger(save_dir=save_dir, name="", version=0))
-    MyExperiment(trainer, 3).fit(model, train_dataloader, val_dataloader)
+    e = MyExperiment(trainer, 5)
+    e.fit(model, train_dataloader, val_dataloader)
     assert len([x for x in out_path.iterdir() if x.is_dir()]) == 5
+    assert e.cnt == 0
 
     trainer = Trainer(max_epochs=3, logger=TensorBoardLogger(save_dir=save_dir, name="", version=1))
-    MyExperiment(trainer, 3).fit(model, train_dataloader, val_dataloader)
-    out_path = Path(save_dir) / "version_1"
-    assert len([x for x in out_path.iterdir() if x.is_dir()]) == 3
+    e = MyExperiment(trainer, 5)
+    e.fit(model, train_dataloader, val_dataloader)
+    assert len([x for x in out_path.iterdir() if x.is_dir()]) == 5
+    assert e.cnt == 5
 
 def test_experiment_3():
     train_data = Reader(n_data=100, n_dims=3)
@@ -84,9 +96,11 @@ def test_experiment_3():
     save_dir = "save_dir_exp_3" if __name__ == "__main__" else TemporaryDirectory().name
 
     trainer = Trainer(max_epochs=3, logger=TensorBoardLogger(save_dir=save_dir, name="", version=0))
-    MyExperiment(MyExperiment(trainer, 3), 5).fit(model, train_dataloader, val_dataloader)
+    e = MyExperiment(MyExperiment(trainer, 3), 5)
+    e.fit(model, train_dataloader, val_dataloader)
     out_path = Path(save_dir) / "version_0"
     assert len([x for x in out_path.iterdir() if x.is_dir()]) == 5
+    assert e.cnt == 5
 
 if __name__ == "__main__":
-    test_experiment_3()
+    test_experiment_2()
