@@ -12,30 +12,31 @@ class PlotMetrics(Callback):
         self.history: Dict[str, List[float]] = None
 
     # pylint: disable=protected-access
-    def _plot_best_dot(self, pl_module, metric_name):
+    def _plot_best_dot(self, ax: plt.Axes, pl_module, metric_name):
         """Plot the dot. We require to know if the metric is max or min typed."""
         metric = pl_module.metrics[metric_name]
         metric_history = self.history[metric_name]
         scores = metric_history["val"] if metric_history["val"][0] is not None else metric_history["train"]
         metric_x = np.argmax(scores) if metric.higher_is_better else np.argmin(scores)
         metric_y = scores[metric_x]
-        plt.annotate(f"Epoch {metric_x + 1}\nMax {metric_y:.2f}", xy=(metric_x + 1, metric_y))
-        plt.plot([metric_x + 1], [metric_y], "o")
+        ax.annotate(f"Epoch {metric_x + 1}\nMax {metric_y:.2f}", xy=(metric_x + 1, metric_y))
+        ax.plot([metric_x + 1], [metric_y], "o")
 
     def _do_plot(self, pl_module, metric_name: str, out_file: str):
         """Plot the figure with the metric"""
-        plt.figure()
+        fig = plt.figure()
+        ax = fig.gca()
         metric_history = self.history[metric_name]
         _range = range(1, len(metric_history["train"]) + 1)
-        plt.plot(_range, metric_history["train"], label="train")
+        ax.plot(_range, metric_history["train"], label="train")
         if None not in metric_history["val"]:
-            plt.plot(_range, metric_history["val"], label="validation")
-        self._plot_best_dot(pl_module, metric_name)
-        plt.xlabel("Epoch")
-        plt.ylabel(metric_name)
-        plt.legend()
-        plt.savefig(out_file)
-        plt.close()
+            ax.plot(_range, metric_history["val"], label="validation")
+        self._plot_best_dot(ax, pl_module, metric_name)
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel(metric_name)
+        fig.legend()
+        fig.savefig(out_file)
+        plt.close(fig)
 
     @overrides
     def on_train_epoch_end(self, trainer, pl_module):
