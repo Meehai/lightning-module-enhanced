@@ -57,7 +57,6 @@ class MetadataCallback(pl.Callback):
             "hparams_current": None,
         }
 
-
         log_dir = trainer.log_dir
         self.log_dir = Path(log_dir).absolute()
         self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -139,6 +138,9 @@ class MetadataCallback(pl.Callback):
         # Always update the current hparams such that, for test modes, we get the loaded stats
         self.log_metadata("Best model path", trainer.checkpoint_callback.best_model_path)
         self.log_metadata("hparams_current", pl_module.hparams)
+        if "train dataset size" not in self.metadata:
+            self.log_metadata("train dataset size", len(trainer.train_dataloader.dataset.datasets))
+            self.log_metadata("validation dataset size", len(trainer.val_dataloaders[0].dataset))
         self.save()
 
     # pylint: disable=unused-argument

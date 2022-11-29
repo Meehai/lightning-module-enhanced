@@ -51,7 +51,7 @@ class TrainSetup:
             logger.debug2("Scheduler was already set. Returning early")
             return
 
-        if "scheduler" in self.train_cfg:
+        if "scheduler" in self.train_cfg and self.train_cfg["scheduler"] is not None:
             logger.debug2("Scheduler defined in train_cfg.")
 
             assert self.module.optimizer is not None, "Cannot setup scheduler before optimizer."
@@ -69,9 +69,13 @@ class TrainSetup:
             return
 
         # Last hope is adding scheduler from base model
-        if hasattr(self.module.base_model, "scheduler_dict") and self.module.base_model.scheduler_dict is not None:
+        if hasattr(self.module, "base_model") and hasattr(self.module.base_model, "scheduler_dict") and \
+            self.module.base_model.scheduler_dict is not None:
             logger.debug2("Scheduler set from base model")
-            self.module.scheduler_dict = self.module.base_model.scheduler_dict
+            try:
+                self.module.scheduler_dict = self.module.base_model.scheduler_dict
+            except:
+                pass
 
     def _setup_criterion(self):
         """Checks if the base model has the 'criterion_fn' property, and if True, uses this."""

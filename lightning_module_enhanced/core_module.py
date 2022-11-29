@@ -217,7 +217,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
                 continue
 
             if not hasattr(layer, "reset_parameters"):
-                logger.debug(f"Layer {layer} has params, but no reset_parameters() method. Trying recursively")
+                logger.debug2(f"Layer {layer} has params, but no reset_parameters() method. Trying recursively")
                 layer = CoreModule(layer)
                 layer.reset_parameters(seed)
             else:

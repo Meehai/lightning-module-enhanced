@@ -114,7 +114,7 @@ class TrainableModuleMixin(TrainableModule):
                 metric_fn = (metric_fn, "min")
 
             if isinstance(metric_fn, Tuple):
-                logger.debug(f"Metric '{metric_name}' is a callable. Converting to CallableCoreMetric.")
+                logger.debug2(f"Metric '{metric_name}' is a callable. Converting to CallableCoreMetric.")
                 metric_fn, min_or_max = metric_fn
                 assert min_or_max in ("min", "max"), f"Got '{min_or_max}'"
                 metric_fn = CallableCoreMetric(metric_fn, higher_is_better=(min_or_max == "max"), requires_grad=False)
