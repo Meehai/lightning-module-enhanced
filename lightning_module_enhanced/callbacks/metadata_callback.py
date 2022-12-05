@@ -140,7 +140,8 @@ class MetadataCallback(pl.Callback):
         self.log_metadata("hparams_current", pl_module.hparams)
         if "train dataset size" not in self.metadata:
             self.log_metadata("train dataset size", len(trainer.train_dataloader.dataset.datasets))
-            self.log_metadata("validation dataset size", len(trainer.val_dataloaders[0].dataset))
+            if trainer.val_dataloaders is not None:
+                self.log_metadata("validation dataset size", len(trainer.val_dataloaders[0].dataset))
         self.save()
 
     # pylint: disable=unused-argument
