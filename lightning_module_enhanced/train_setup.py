@@ -74,7 +74,8 @@ class TrainSetup:
             logger.debug2("Scheduler set from base model")
             try:
                 self.module.scheduler_dict = self.module.base_model.scheduler_dict
-            except:
+            except Exception as e:
+                logger.warning(e)
                 pass
 
     def _setup_criterion(self):
