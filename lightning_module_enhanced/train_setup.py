@@ -76,7 +76,6 @@ class TrainSetup:
                 self.module.scheduler_dict = self.module.base_model.scheduler_dict
             except Exception as e:
                 logger.warning(e)
-                pass
 
     def _setup_criterion(self):
         """Checks if the base model has the 'criterion_fn' property, and if True, uses this."""
