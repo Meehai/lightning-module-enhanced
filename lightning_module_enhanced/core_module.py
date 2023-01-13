@@ -2,6 +2,7 @@
 from __future__ import annotations
 from typing import Dict, List, Union, Any, Sequence
 from copy import deepcopy
+from pathlib import Path
 from overrides import overrides
 import torch as tr
 import pytorch_lightning as pl
@@ -18,7 +19,7 @@ from .utils import to_tensor, to_device
 class CoreModule(TrainableModuleMixin, pl.LightningModule):
     """
 
-        Generic pytorch-lightning module for predict-ml models.
+        Generic pytorch-lightning module for ml models.
 
         Callbacks and metrics are called based on the order described here:
         https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html#hooks
@@ -226,7 +227,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
     def load_state_from_path(self, path: str) -> CoreModule:
         """Loads the state dict from a path"""
         # if path is remote (gcs) download checkpoint to a temp dir
-        logger.info(f"Loading weights and hyperparameters from '{path}'")
+        logger.info(f"Loading weights and hyperparameters from '{Path(path).absolute()}'")
         ckpt_data = tr.load(path, map_location="cpu")
         self.load_state_dict(ckpt_data["state_dict"])
         self.save_hyperparameters(ckpt_data["hyper_parameters"])
