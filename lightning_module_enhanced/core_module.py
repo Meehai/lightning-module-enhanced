@@ -150,6 +150,10 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         return self._generic_batch_step(train_batch)
 
     @overrides
+    def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
+        return self.forward(batch["data"])
+
+    @overrides
     def configure_callbacks(self) -> Union[Sequence[pl.Callback], pl.Callback]:
         return self.callbacks
 
