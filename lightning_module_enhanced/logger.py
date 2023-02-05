@@ -1,38 +1,61 @@
-"""Python logger settings."""
+"""
+Python logger settings.
+Uses ENv variables to control the log level:
+
+YOUR_KEY_LOGLEVEL=4 python blabla.py
+and logger.debug4("message")
+
+"""
 
 import os
+import sys
 import logging
+from colorama import Fore, Back, Style
 
-KEY = "LIGHTNING_MODULE_ENHANCED"
+KEY = "LME"
 ENV_KEY = f"{KEY}_LOGLEVEL"
-env_var = int(os.environ[ENV_KEY]) if ENV_KEY in os.environ else 2
+# defaults to -1 (no logger!).
+env_var = int(os.environ[ENV_KEY]) if ENV_KEY in os.environ else -1
 
-# Usage: loglevel=0 (none), loglevel=1 (info), loglevel=2 (debug), loglevel=3 (debug verbose)
+# we need numbers below 5 (last logging module used number)
 logging.DEBUG2 = 3
-loglevel = {0: logging.NOTSET, 1: logging.INFO, 2: logging.DEBUG, 3: logging.DEBUG2}[env_var]
-logging.addLevelName(logging.DEBUG2, "DEBUG-VERBOSE")
+logging.DEBUG3 = 2
+logging.DEBUG4 = 1
+try:
+    loglevel = {
+        -1: logging.NOTSET,
+        0: logging.INFO,
+        1: logging.DEBUG,
+        2: logging.DEBUG2,
+        3: logging.DEBUG3,
+        4: logging.DEBUG4,
+    }[env_var]
+except KeyError:
+    sys.stderr.write(f"You tried to use {KEY}_LOGLEVEL={env_var}. You need to set it between -1 and 4\n")
+    sys.exit(1)
+# add the custom ones in the logger
+logging.addLevelName(logging.DEBUG2, "DGB2")
+logging.addLevelName(logging.DEBUG3, "DGB3")
+logging.addLevelName(logging.DEBUG4, "DGB4")
+
 
 class CustomFormatter(logging.Formatter):
     """Custom formatting for logger."""
 
-    yellow = "\x1b[33;20m"
-    green = "\x1b[32;20m"
-    cyan = "\x1b[36;20m"
-    red = "\x1b[31;20m"
-    bold_red = "\x1b[31;1m"
-    reset = "\x1b[0m"
-
+    reset = Style.RESET_ALL
     pre = "[%(asctime)s-%(name)s-%(levelname)s]"
     post = "(%(filename)s:%(funcName)s:%(lineno)d)"
 
-    # Example [TIME:LEVEL:NAME] Message [FILE:FUNC:LINE]
+    # Example [TIME:LEVEL:NAME] Message [FILE:FUNC:LINE]. We can update some other format here easily
     FORMATS = {
-        logging.DEBUG: f"{cyan}{pre}{reset} %(message)s {yellow}{post}{reset}",
-        logging.DEBUG2: f"{cyan}{pre}{reset} %(message)s {yellow}{post}{reset}",
-        logging.INFO: f"{green}{pre}{reset} %(message)s {yellow}{post}{reset}",
-        logging.WARNING: f"{yellow}{pre}{reset} %(message)s {yellow}{post}{reset}",
-        logging.ERROR: f"{red}{pre}{reset} %(message)s {yellow}{post}{reset}",
-        logging.CRITICAL: f"{bold_red}{pre}{reset} %(message)s {yellow}{post}{reset}",
+        logging.DEBUG: f"{Fore.CYAN}{pre}{reset} %(message)s {Fore.YELLOW}{post}{reset}",
+        logging.DEBUG2: f"{Fore.CYAN}{pre}{reset} %(message)s {Fore.YELLOW}{post}{reset}",
+        logging.DEBUG3: f"{Fore.MAGENTA}{pre}{reset} %(message)s {Fore.YELLOW}{post}{reset}",
+        logging.DEBUG4: f"{Back.RED}{pre}{reset} %(message)s {Fore.YELLOW}{post}{reset}",
+        logging.INFO: f"{Fore.GREEN}{pre}{reset} %(message)s {Fore.YELLOW}{post}{reset}",
+        logging.WARNING: f"{Fore.YELLOW}{pre}{reset} %(message)s {Fore.YELLOW}{post}{reset}",
+        logging.ERROR: f"{Fore.RED}{pre}{reset} %(message)s {Fore.YELLOW}{post}{reset}",
+        logging.CRITICAL: f"{Back.RED}{pre}{reset} %(message)s {Fore.YELLOW}{post}{reset}",
     }
 
     def format(self, record):
@@ -41,13 +64,29 @@ class CustomFormatter(logging.Formatter):
         formatter.formatTime = self.formatTime
         return formatter.format(record)
 
+    # here we define the time format.
     def formatTime(self, record, datefmt=None):
-        return super().formatTime(record, "%Y-%m-%d %H:%M:%S")
+        return super().formatTime(record, "%Y%m%d %H:%M:%S")
+
+
+def _debug2(msg):
+    logger.log(logging.DEBUG2, msg)
+
+
+def _debug3(msg):
+    logger.log(logging.DEBUG3, msg)
+
+
+def _debug4(msg):
+    logger.log(logging.DEBUG4, msg)
+
 
 # instantiate logger and set log level
 logger = logging.getLogger(KEY)
 logger.setLevel(loglevel)
-logger.debug2 = lambda msg: logger.log(logging.DEBUG2, msg)
+logger.debug2 = _debug2
+logger.debug3 = _debug3
+logger.debug4 = _debug4
 
 # add custom formatter to logger
 handler = logging.StreamHandler()
