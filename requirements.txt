@@ -5,4 +5,5 @@ torchmetrics>=0.9.0
 overrides>=6.1.0
 matplotlib>=3.5.1
 pandas>=1.4.2
-colorama=0.4.6
+colorama==0.4.6
+
