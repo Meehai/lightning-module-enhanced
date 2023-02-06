@@ -3,7 +3,7 @@ from overrides import overrides
 from torchmetrics.functional.classification import multiclass_stat_scores
 import torch as tr
 
-from lightning_module_enhanced.metrics import CoreMetric
+from .core_metric import CoreMetric
 
 
 class MultiClassF1Score(CoreMetric):
@@ -16,7 +16,9 @@ class MultiClassF1Score(CoreMetric):
 
     @overrides
     def forward(self, y: tr.Tensor, gt: tr.Tensor) -> tr.Tensor:
-        stats = multiclass_stat_scores(y.argmax(-1), gt.argmax(-1), num_classes=self.num_classes, average="none")
+        stats = multiclass_stat_scores(
+            y.argmax(-1), gt.argmax(-1), num_classes=self.num_classes, average="none"
+        )
         # TP, FP, TN, FN
         res = stats[:, 0:4].T
         return res

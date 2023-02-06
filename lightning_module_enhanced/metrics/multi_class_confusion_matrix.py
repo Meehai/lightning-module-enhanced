@@ -3,7 +3,7 @@ from overrides import overrides
 from torchmetrics.functional.classification import multiclass_confusion_matrix
 import torch as tr
 
-from lightning_module_enhanced.metrics import CoreMetric
+from .core_metric import CoreMetric
 
 
 class MultiClassConfusionMatrix(CoreMetric):
@@ -15,7 +15,9 @@ class MultiClassConfusionMatrix(CoreMetric):
         self.num_classes = num_classes
 
     def forward(self, y: tr.Tensor, gt: tr.Tensor) -> tr.Tensor:
-        res = multiclass_confusion_matrix(y.argmax(-1), gt.argmax(-1), num_classes=self.num_classes)
+        res = multiclass_confusion_matrix(
+            y.argmax(-1), gt.argmax(-1), num_classes=self.num_classes
+        )
         return res
 
     @overrides

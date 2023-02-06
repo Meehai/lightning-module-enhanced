@@ -2,7 +2,8 @@
 from overrides import overrides
 import torch as tr
 from torch import functional as F
-from lightning_module_enhanced.metrics import CoreMetric
+from .core_metric import CoreMetric
+
 
 class MultiClassAccuracy(CoreMetric):
     """
@@ -10,6 +11,7 @@ class MultiClassAccuracy(CoreMetric):
     It is implemented as a global metric, so we count scores for each batch and return these final ones at the end of
     the epoch.
     """
+
     def __init__(self, num_classes: int):
         super().__init__(higher_is_better=True)
         self.num_classes = num_classes
@@ -22,14 +24,18 @@ class MultiClassAccuracy(CoreMetric):
             gt_flat = gt.reshape(-1, self.num_classes)
             gt_argmax = gt_flat.argmax(-1)
         else:
-            gt_flat = F.one_hot(gt, num_classes=self.num_classes).reshape(-1, self.num_classes)
+            gt_flat = F.one_hot(gt, num_classes=self.num_classes).reshape(
+                -1, self.num_classes
+            )
             gt_argmax = gt.reshape(-1)
 
         y_flat = y.reshape(-1, self.num_classes)
         y_eq_gt = y_flat.argmax(dim=-1) == gt_argmax
         cnts_correct_per_class = (gt_flat * y_eq_gt[:, None]).sum(dim=0)
         num_per_class = gt_flat.sum(dim=0)
-        return cnts_correct_per_class.to(self.scores.device), num_per_class.to(self.scores.device)
+        return cnts_correct_per_class.to(self.scores.device), num_per_class.to(
+            self.scores.device
+        )
 
     @overrides
     def batch_update(self, batch_result) -> None:
