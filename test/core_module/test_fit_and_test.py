@@ -31,7 +31,10 @@ class Model(nn.Module):
 
     @property
     def metrics(self):
-        return {"metric1": lambda y, gt: (y - gt).abs().mean(), "metric2": lambda y, gt: (y - gt) * 0}
+        return {
+            "metric1": (lambda y, gt: (y - gt).abs().mean(), "min"),
+            "metric2": (lambda y, gt: (y - gt) * 0, "min"),
+        }
 
 
 def test_fit_and_test_good():

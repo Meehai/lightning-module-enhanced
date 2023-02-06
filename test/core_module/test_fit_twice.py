@@ -59,7 +59,7 @@ def test_fit_twice_with_validation_only_once_2():
 def test_fit_twice_with_validation_only_once_3():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
-    model.metrics = {"metric1": lambda y, gt: (y - gt).pow(2).mean()}
+    model.metrics = {"metric1": (lambda y, gt: (y - gt).pow(2).mean(), "min")}
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     Trainer(max_epochs=20).fit(model, DataLoader(Reader()))
     Trainer(max_epochs=10).fit(model, DataLoader(Reader()), DataLoader(Reader()))

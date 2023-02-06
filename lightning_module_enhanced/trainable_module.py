@@ -52,9 +52,7 @@ class TrainableModuleMixin(TrainableModule):
     def __init__(self):
         super().__init__()
         self._optimizer: optim.Optimizer = None
-        self._scheduler_dict: Dict[
-            str, Union[optim.lr_scheduler._LRScheduler, Any]
-        ] = None
+        self._scheduler_dict: Dict[str, Union[optim.lr_scheduler._LRScheduler, Any]] = None
         self._criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor] = None
         self._metrics: Dict[str, CoreMetric] = {}
         # The default callbacks that are singletons. Cannot be overwritten and only one instance must exist.
@@ -93,9 +91,7 @@ class TrainableModuleMixin(TrainableModule):
     def criterion_fn(self, criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor]):
         assert isinstance(criterion_fn, Callable), f"Got '{criterion_fn}'"
         logger.debug(f"Setting criterion to '{criterion_fn}'")
-        self._criterion_fn = CallableCoreMetric(
-            criterion_fn, higher_is_better=False, requires_grad=True
-        )
+        self._criterion_fn = CallableCoreMetric(criterion_fn, higher_is_better=False, requires_grad=True)
         self.metrics = {**self.metrics, "loss": self.criterion_fn}
 
     @property
@@ -106,47 +102,31 @@ class TrainableModuleMixin(TrainableModule):
     @metrics.setter
     def metrics(self, metrics: Dict[str, Tuple[Callable, str]]):
         if len(self._metrics) != 0:
-            logger.debug(
-                f"Overwriting existing metrics {list(self.metrics.keys())} to {list(metrics.keys())}"
-            )
+            logger.debug(f"Overwriting existing metrics {list(self.metrics.keys())} to {list(metrics.keys())}")
         self._metrics = {}
 
         for metric_name, metric_fn in metrics.items():
             # Our metrics can be a CoreMetric already, a Tuple (callable, min/max) or just a Callable
-            assert isinstance(metric_fn, (CoreMetric, Tuple, Callable)), (
+            assert isinstance(metric_fn, (CoreMetric, Tuple)), (
                 f"Unknown metric type: '{type(metric_fn)}'. "
-                'Expcted CoreMetric, Callable or (Callable, "min"/"max").'
+                'Expcted CoreMetric, or a tuple of form (Callable, "min"/"max").'
             )
             assert not metric_name.startswith("val_"), "metrics cannot start with val_"
             if metric_name == "loss":
-                assert (
-                    isinstance(metric_fn, CallableCoreMetric)
-                    and metric_fn.requires_grad is True
-                )
+                assert isinstance(metric_fn, CallableCoreMetric) and metric_fn.requires_grad is True
 
-            # If it is not a CoreMetric already (Tuple or Callable), we convert it to CallableCoreMetric
-            if isinstance(metric_fn, Callable) and not isinstance(
-                metric_fn, CoreMetric
-            ):
-                metric_fn = (metric_fn, "min")
-
+            # If we get a tuple, we will assume it's a 2 piece: a callable function (or class) and a
             if isinstance(metric_fn, Tuple):
-                logger.debug2(
-                    f"Metric '{metric_name}' is a callable. Converting to CallableCoreMetric."
-                )
+                logger.debug(f"Metric '{metric_name}' is a callable. Converting to CallableCoreMetric.")
                 metric_fn, min_or_max = metric_fn
-                assert min_or_max in ("min", "max"), f"Got '{min_or_max}'"
-                metric_fn = CallableCoreMetric(
-                    metric_fn,
-                    higher_is_better=(min_or_max == "max"),
-                    requires_grad=False,
-                )
+                assert not isinstance(metric_fn, CoreMetric), f"Cannot use tuple syntax with metric instances"
+                assert isinstance(metric_fn, Callable), "Cannot use the tuple syntax with non-callables for metrics"
+                assert min_or_max in ("min", "max"), f"Got '{min_or_max}', expected 'min' or 'max'"
+                metric_fn = CallableCoreMetric(metric_fn, higher_is_better=(min_or_max == "max"), requires_grad=False)
             self._metrics[metric_name] = metric_fn
         if self.criterion_fn is not None:
             self._metrics["loss"] = self.criterion_fn
-        logger.debug(
-            f"Set module metrics: {list(self.metrics.keys())} ({len(self.metrics)})"
-        )
+        logger.debug(f"Set module metrics: {list(self.metrics.keys())} ({len(self.metrics)})")
 
     @property
     def optimizer(self) -> OptimizerType:
@@ -185,9 +165,7 @@ class TrainableModuleMixin(TrainableModule):
             scheduler_dict = [scheduler_dict]
         for i in range(len(scheduler_dict)):
             assert "scheduler" in scheduler_dict[i]
-            assert hasattr(
-                scheduler_dict[i]["scheduler"], "step"
-            ), "Scheduler does not have a step method"
+            assert hasattr(scheduler_dict[i]["scheduler"], "step"), "Scheduler does not have a step method"
         logger.debug(f"Set the scheduler to {scheduler_dict}")
         self._scheduler_dict = scheduler_dict
 
