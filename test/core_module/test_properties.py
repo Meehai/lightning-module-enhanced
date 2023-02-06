@@ -1,12 +1,13 @@
 import pytest
 import torch as tr
-from lightning_module_enhanced import LightningModuleEnhanced
+from lightning_module_enhanced import LME
 from torch import nn
+
 
 class TestProperties:
     @pytest.fixture(autouse=True)
     def run_around_tests(self):
-        self.module = LightningModuleEnhanced(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+        self.module = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
         yield
 
     def test_contructor_1(self):
@@ -36,22 +37,16 @@ class TestProperties:
         assert self.module.trainable_params == True
 
     def test_set_metrics_1(self):
-        self.module.metrics = {
-            "metric1": lambda y, gt: (y - gt).mean()
-        }
+        self.module.metrics = {"metric1": lambda y, gt: (y - gt).mean()}
         assert len(self.module.metrics) == 1
 
     def test_set_metrics_before_criterion(self):
         self.module.criterion_fn = lambda y, gt: (y - gt).mean()
-        self.module.metrics = {
-            "metric1": lambda y, gt: (y - gt).mean()
-        }
+        self.module.metrics = {"metric1": lambda y, gt: (y - gt).mean()}
         assert len(self.module.metrics) == 2
 
     def test_set_metrics_after_criterion(self):
-        self.module.metrics = {
-            "metric1": lambda y, gt: (y - gt).mean()
-        }
+        self.module.metrics = {"metric1": lambda y, gt: (y - gt).mean()}
         self.module.criterion_fn = lambda y, gt: (y - gt).mean()
         assert len(self.module.metrics) == 2
 
@@ -60,7 +55,8 @@ class TestProperties:
         assert self.module.criterion_fn is not None
         assert len(self.module.metrics) == 1
 
+
 if __name__ == "__main__":
-    p =TestProperties()
-    p.module = LightningModuleEnhanced(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    p = TestProperties()
+    p.module = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     p.test_set_criterion_1()
