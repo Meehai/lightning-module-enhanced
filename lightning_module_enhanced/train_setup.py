@@ -5,9 +5,11 @@ from .schedulers import ReduceLROnPlateauWithBurnIn
 
 from .logger import logger
 
+
 class TrainSetup:
     """Train Setup class"""
-    def __init__(self, module: "LightningModuleEnhanced", train_cfg: Dict):
+
+    def __init__(self, module: "LME", train_cfg: Dict):
         assert isinstance(train_cfg, Dict), f"Got {type(train_cfg)}"
         self.module = module
         self.train_cfg = train_cfg
@@ -30,12 +32,9 @@ class TrainSetup:
         if "optimizer" in self.train_cfg:
             str_optimizer_type = self.train_cfg["optimizer"]["type"]
             logger.debug2("Optimizer defined in train_cfg.")
-            optimizer_type = {
-                "adamw": optim.AdamW,
-                "adam": optim.Adam,
-                "sgd": optim.SGD,
-                "rmsprop": optim.RMSprop
-            }[str_optimizer_type]
+            optimizer_type = {"adamw": optim.AdamW, "adam": optim.Adam, "sgd": optim.SGD, "rmsprop": optim.RMSprop}[
+                str_optimizer_type
+            ]
             # assert self.module.num_trainable_params > 0, "Module has no trainable params!"
             self.module.optimizer = optimizer_type(self.module.parameters(), **self.train_cfg["optimizer"]["args"])
             return
@@ -57,7 +56,7 @@ class TrainSetup:
             assert self.module.optimizer is not None, "Cannot setup scheduler before optimizer."
             scheduler_type = {
                 "ReduceLROnPlateau": optim.lr_scheduler.ReduceLROnPlateau,
-                "ReduceLROnPlateauWithBurnIn": ReduceLROnPlateauWithBurnIn
+                "ReduceLROnPlateauWithBurnIn": ReduceLROnPlateauWithBurnIn,
             }[self.train_cfg["scheduler"]["type"]]
             scheduler = scheduler_type(optimizer=self.module.optimizer, **self.train_cfg["scheduler"]["args"])
 
@@ -69,8 +68,11 @@ class TrainSetup:
             return
 
         # Last hope is adding scheduler from base model
-        if hasattr(self.module, "base_model") and hasattr(self.module.base_model, "scheduler_dict") and \
-            self.module.base_model.scheduler_dict is not None:
+        if (
+            hasattr(self.module, "base_model")
+            and hasattr(self.module.base_model, "scheduler_dict")
+            and self.module.base_model.scheduler_dict is not None
+        ):
             logger.debug2("Scheduler set from base model")
             try:
                 self.module.scheduler_dict = self.module.base_model.scheduler_dict
@@ -99,7 +101,7 @@ class TrainSetup:
 
     def _setup_callbacks(self):
         """Checks if the base model has the 'callbacks' property, and if True, uses it."""
-        if len(self.module.callbacks) > len(self.module._default_callbacks): # pylint: disable=protected-access
+        if len(self.module.callbacks) > len(self.module._default_callbacks):  # pylint: disable=protected-access
             logger.debug2("Callbacks were already set. Returning early.")
             return
 
