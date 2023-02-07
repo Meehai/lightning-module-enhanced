@@ -113,9 +113,9 @@ class TrainableModuleMixin(TrainableModule):
 
         for metric_name, metric_fn in metrics.items():
             # Our metrics can be a CoreMetric already, a Tuple (callable, min/max) or just a Callable
-            assert isinstance(metric_fn, (CoreMetric, Tuple, Callable)), (
+            assert isinstance(metric_fn, (CoreMetric, Tuple)), (
                 f"Unknown metric type: '{type(metric_fn)}'. "
-                'Expcted CoreMetric, Callable or (Callable, "min"/"max").'
+                'Expcted CoreMetric, or a tuple of form (Callable, "min"/"max").'
             )
             assert not metric_name.startswith("val_"), "metrics cannot start with val_"
             if metric_name == "loss":
@@ -124,18 +124,22 @@ class TrainableModuleMixin(TrainableModule):
                     and metric_fn.requires_grad is True
                 )
 
-            # If it is not a CoreMetric already (Tuple or Callable), we convert it to CallableCoreMetric
-            if isinstance(metric_fn, Callable) and not isinstance(
-                metric_fn, CoreMetric
-            ):
-                metric_fn = (metric_fn, "min")
-
+            # If we get a tuple, we will assume it's a 2 piece: a callable function (or class) and a
             if isinstance(metric_fn, Tuple):
-                logger.debug2(
+                logger.debug(
                     f"Metric '{metric_name}' is a callable. Converting to CallableCoreMetric."
                 )
                 metric_fn, min_or_max = metric_fn
-                assert min_or_max in ("min", "max"), f"Got '{min_or_max}'"
+                assert not isinstance(
+                    metric_fn, CoreMetric
+                ), "Cannot use tuple syntax with metric instances"
+                assert isinstance(
+                    metric_fn, Callable
+                ), "Cannot use the tuple syntax with non-callables for metrics"
+                assert min_or_max in (
+                    "min",
+                    "max",
+                ), f"Got '{min_or_max}', expected 'min' or 'max'"
                 metric_fn = CallableCoreMetric(
                     metric_fn,
                     higher_is_better=(min_or_max == "max"),

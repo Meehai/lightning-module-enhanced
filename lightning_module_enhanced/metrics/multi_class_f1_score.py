@@ -10,15 +10,13 @@ class MultiClassF1Score(CoreMetric):
     """Multi class F1 Score implementation"""
 
     def __init__(self, num_classes: int):
-        super().__init__()
+        super().__init__(higher_is_better=True)
         self.num_classes = num_classes
         self.batch_results = tr.zeros(4, num_classes).type(tr.DoubleTensor)
 
     @overrides
     def forward(self, y: tr.Tensor, gt: tr.Tensor) -> tr.Tensor:
-        stats = multiclass_stat_scores(
-            y.argmax(-1), gt.argmax(-1), num_classes=self.num_classes, average="none"
-        )
+        stats = multiclass_stat_scores(y.argmax(-1), gt.argmax(-1), num_classes=self.num_classes, average="none")
         # TP, FP, TN, FN
         res = stats[:, 0:4].T
         return res

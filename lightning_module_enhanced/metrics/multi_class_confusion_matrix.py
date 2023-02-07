@@ -10,14 +10,12 @@ class MultiClassConfusionMatrix(CoreMetric):
     """Multi Class Confusion Matrix implementation"""
 
     def __init__(self, num_classes: int):
-        super().__init__()
+        super().__init__(higher_is_better=False)
         self.batch_results = tr.zeros(num_classes, num_classes).type(tr.LongTensor)
         self.num_classes = num_classes
 
     def forward(self, y: tr.Tensor, gt: tr.Tensor) -> tr.Tensor:
-        res = multiclass_confusion_matrix(
-            y.argmax(-1), gt.argmax(-1), num_classes=self.num_classes
-        )
+        res = multiclass_confusion_matrix(y.argmax(-1), gt.argmax(-1), num_classes=self.num_classes)
         return res
 
     @overrides

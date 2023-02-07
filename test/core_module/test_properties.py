@@ -37,16 +37,16 @@ class TestProperties:
         assert self.module.trainable_params == True
 
     def test_set_metrics_1(self):
-        self.module.metrics = {"metric1": lambda y, gt: (y - gt).mean()}
+        self.module.metrics = {"metric1": (lambda y, gt: (y - gt).mean(), "min")}
         assert len(self.module.metrics) == 1
 
     def test_set_metrics_before_criterion(self):
         self.module.criterion_fn = lambda y, gt: (y - gt).mean()
-        self.module.metrics = {"metric1": lambda y, gt: (y - gt).mean()}
+        self.module.metrics = {"metric1": (lambda y, gt: (y - gt).mean(), "min")}
         assert len(self.module.metrics) == 2
 
     def test_set_metrics_after_criterion(self):
-        self.module.metrics = {"metric1": lambda y, gt: (y - gt).mean()}
+        self.module.metrics = {"metric1": (lambda y, gt: (y - gt).mean(), "min")}
         self.module.criterion_fn = lambda y, gt: (y - gt).mean()
         assert len(self.module.metrics) == 2
 
