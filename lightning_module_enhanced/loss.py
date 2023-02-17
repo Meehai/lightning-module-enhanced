@@ -13,11 +13,11 @@ def batch_weighted_ce(y: tr.Tensor, gt: tr.Tensor, reduction: str = "mean", **kw
     C = y.shape[-1]
     y_flat = y.reshape(-1, C)
     gt_flat = gt.reshape(-1, C)
-    denom = 1 / gt_flat.sum(dim=0)
-    finite_mask = tr.isfinite(denom)
-    batch_weights = denom / denom[finite_mask].sum()
-    batch_weights[~finite_mask] = 0
-    batch_weights *= C - (~finite_mask).sum()
+    sum_classes = gt_flat.sum(dim=0)
+    n_invalid = (sum_classes == 0).sum()
+    denom = (1 / sum_classes).nan_to_num(0, 0, 0)
+    batch_weights = denom / denom.sum()
+    batch_weights = batch_weights * (C - n_invalid)
     loss = F.cross_entropy(y_flat, gt_flat, weight=batch_weights, reduction=reduction, **kwargs)
     if reduction == "none":
         loss = loss.reshape(y.shape[0:-1])
