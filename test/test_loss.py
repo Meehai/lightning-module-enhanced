@@ -15,4 +15,4 @@ def test_batch_weighted_ce_2():
     gt = F.one_hot(tr.randint(0, 7, size=(200, 300)), num_classes=8).type(tr.float)
     loss = batch_weighted_ce(y, gt, reduction="none")
     assert len(loss.shape) == 2 and loss.shape == y.shape[0:2]
-    assert loss.mean() == batch_weighted_ce(y, gt)
+    assert tr.allclose(loss.mean(), batch_weighted_ce(y, gt))
