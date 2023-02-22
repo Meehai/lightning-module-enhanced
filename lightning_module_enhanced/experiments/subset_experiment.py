@@ -10,6 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from .experiment import Experiment
+from ..logger import logger
 
 class SubsetExperiment(Experiment):
     """Subset experiment implementation"""
@@ -43,6 +44,7 @@ class SubsetExperiment(Experiment):
     def on_experiment_start(self):
         ls = np.linspace(1 / self.subsets, 1, self.subsets) if isinstance(self.subsets, int) else self.subsets
         subset_lens = [int(len(self._train_dataset) * x) for x in ls]
+        logger.info(f"Subset experiment. Trainer len: {len(self._train_dataset)}. Subsets ({len(ls)}): {subset_lens}")
         indices = [np.random.choice(len(self._train_dataset), x, replace=False) for x in subset_lens]
         subsets = [Subset(self._train_dataset, ind) for ind in indices]
         self.dataloaders = [DataLoader(subset, **self._dataloader_params) for subset in subsets]
