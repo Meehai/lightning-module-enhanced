@@ -1,4 +1,5 @@
 """Init module"""
 
-from .core_module import CoreModule as LightningModuleEnhanced
+# pylint: disable=reimported
+from .core_module import CoreModule as LME, CoreModule as LightningModuleEnhanced
 from .trainable_module import TrainableModule, TrainableModuleMixin

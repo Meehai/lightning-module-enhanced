@@ -5,8 +5,9 @@ from torch.utils.data import DataLoader
 from lightning_module_enhanced.experiments import Experiment
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
-from lightning_module_enhanced import LightningModuleEnhanced as LME
+from lightning_module_enhanced import LME
 from pathlib import Path
+
 
 class MyExperiment(Experiment):
     def __init__(self, trainer, n_experiments: int):
@@ -20,6 +21,7 @@ class MyExperiment(Experiment):
     def on_iteration_start(self, ix: int):
         self.cnt += 1
 
+
 class Reader:
     def __init__(self, n_data: int, n_dims: int):
         self.n_data = n_data
@@ -32,6 +34,7 @@ class Reader:
 
     def __len__(self):
         return self.n_data
+
 
 class Model(nn.Module):
     def __init__(self, n_dims: int):
@@ -48,11 +51,13 @@ class Model(nn.Module):
     def optimizer(self):
         return optim.SGD(self.parameters(), lr=0.01)
 
+
 def test_experiment_1():
     trainer = Trainer()
     e = MyExperiment(trainer, 5)
     assert e is not None
     assert e.cnt == 0
+
 
 def test_experiment_2():
     train_data = Reader(n_data=100, n_dims=3)
@@ -87,6 +92,7 @@ def test_experiment_2():
     assert len([x for x in out_path.iterdir() if x.is_dir()]) == 5
     assert e.cnt == 5
 
+
 def test_experiment_3():
     train_data = Reader(n_data=100, n_dims=3)
     validation_data = Reader(n_data=100, n_dims=3)
@@ -101,6 +107,7 @@ def test_experiment_3():
     out_path = Path(save_dir) / "version_0"
     assert len([x for x in out_path.iterdir() if x.is_dir()]) == 5
     assert e.cnt == 5
+
 
 if __name__ == "__main__":
     test_experiment_2()

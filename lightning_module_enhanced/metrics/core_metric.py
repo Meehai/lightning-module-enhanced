@@ -34,7 +34,8 @@ class CoreMetric(nn.Module, ABC):
     """
     Generic CoreMetric for a CoreModule.
     """
-    def __init__(self, higher_is_better: bool = False, requires_grad: bool = False):
+
+    def __init__(self, higher_is_better: bool, requires_grad: bool = False):
         super().__init__()
         self.batch_results = None
         self.batch_count = tr.IntTensor([0])
@@ -71,11 +72,13 @@ class CoreMetric(nn.Module, ABC):
         epoch_result_reduced = epoch_result.squeeze()
         shape = epoch_result_reduced.shape
         if not (len(shape) == 0 or (len(shape) == 1 and shape[-1] == 1)):
-            logger.debug2(f"Metric '{self}' has a non-number reduced value (shape: {shape}). Returning None.")
+            logger.debug2(
+                f"Metric '{self}' has a non-number reduced value (shape: {shape}). Returning None."
+            )
             return None
         return epoch_result_reduced
 
     def __str__(self):
-        str_type =  str(type(self)).split(".")[-1][0:-2]
+        str_type = str(type(self)).split(".")[-1][0:-2]
         f_str = f"[{str_type}]. Higher is beter: {self.higher_is_better}. Grad: {self.requires_grad}"
         return f_str

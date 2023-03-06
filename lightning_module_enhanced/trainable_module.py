@@ -8,15 +8,17 @@ from torch import optim, nn
 import torch as tr
 import pytorch_lightning as pl
 from .metrics import CoreMetric, CallableCoreMetric
-from .callbacks import MetadataCallback, CopyBestCheckpoint
+from .callbacks import MetadataCallback
 from .logger import logger
 from .train_setup import TrainSetup
 
 OptimizerType = Union[optim.Optimizer, List[optim.Optimizer]]
 SchedulerType = Union[Dict, List[Dict]]
 
+
 class TrainableModule(nn.Module, ABC):
     """Trainable module abstract class"""
+
     @property
     @abstractmethod
     def callbacks(self) -> List[pl.Callback]:
@@ -42,9 +44,11 @@ class TrainableModule(nn.Module, ABC):
     def scheduler_dict(self) -> Dict:
         """Returns the scheduler dict"""
 
+
 # pylint: disable=abstract-method
 class TrainableModuleMixin(TrainableModule):
     """TrainableModule mixin class implementation"""
+
     def __init__(self):
         super().__init__()
         self._optimizer: optim.Optimizer = None
@@ -52,7 +56,7 @@ class TrainableModuleMixin(TrainableModule):
         self._criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor] = None
         self._metrics: Dict[str, CoreMetric] = {}
         # The default callbacks that are singletons. Cannot be overwritten and only one instance must exist.
-        self._default_callbacks = [MetadataCallback(), CopyBestCheckpoint()]
+        self._default_callbacks = [MetadataCallback()]
         self._callbacks: List[pl.Callback] = [*self._default_callbacks]
         self._metadata_callback = self._default_callbacks[0]
 
@@ -72,9 +76,10 @@ class TrainableModuleMixin(TrainableModule):
         res = [*self._default_callbacks]
         for callback in callbacks:
             for default_callback in self._default_callbacks:
-                assert not isinstance(callback, type(default_callback)), \
-                    "Default callaback {default_callback} cannot be overwritten."
-            res.append(callback)
+                if isinstance(callbacks, type(default_callback)) and callback != default_callback:
+                    raise ValueError(f"Default callback '{default_callback}' cannot be overwritten")
+            if callback not in res:
+                res.append(callback)
         self._callbacks = res
 
     @property
@@ -102,22 +107,29 @@ class TrainableModuleMixin(TrainableModule):
 
         for metric_name, metric_fn in metrics.items():
             # Our metrics can be a CoreMetric already, a Tuple (callable, min/max) or just a Callable
-            assert isinstance(metric_fn, (CoreMetric, Tuple, Callable)), \
-                   f"Unknown metric type: '{type(metric_fn)}'. " \
-                   "Expcted CoreMetric, Callable or (Callable, \"min\"/\"max\")."
+            assert isinstance(metric_fn, (CoreMetric, Tuple)), (
+                f"Unknown metric type: '{type(metric_fn)}'. "
+                'Expcted CoreMetric, or a tuple of form (Callable, "min"/"max").'
+            )
             assert not metric_name.startswith("val_"), "metrics cannot start with val_"
             if metric_name == "loss":
                 assert isinstance(metric_fn, CallableCoreMetric) and metric_fn.requires_grad is True
 
-            # If it is not a CoreMetric already (Tuple or Callable), we convert it to CallableCoreMetric
-            if isinstance(metric_fn, Callable) and not isinstance(metric_fn, CoreMetric):
-                metric_fn = (metric_fn, "min")
-
+            # If we get a tuple, we will assume it's a 2 piece: a callable function (or class) and a
             if isinstance(metric_fn, Tuple):
-                logger.debug2(f"Metric '{metric_name}' is a callable. Converting to CallableCoreMetric.")
+                logger.debug(f"Metric '{metric_name}' is a callable. Converting to CallableCoreMetric.")
                 metric_fn, min_or_max = metric_fn
-                assert min_or_max in ("min", "max"), f"Got '{min_or_max}'"
-                metric_fn = CallableCoreMetric(metric_fn, higher_is_better=(min_or_max == "max"), requires_grad=False)
+                assert not isinstance(metric_fn, CoreMetric), "Cannot use tuple syntax with metric instances"
+                assert isinstance(metric_fn, Callable), "Cannot use the tuple syntax with non-callables for metrics"
+                assert min_or_max in (
+                    "min",
+                    "max",
+                ), f"Got '{min_or_max}', expected 'min' or 'max'"
+                metric_fn = CallableCoreMetric(
+                    metric_fn,
+                    higher_is_better=(min_or_max == "max"),
+                    requires_grad=False,
+                )
             self._metrics[metric_name] = metric_fn
         if self.criterion_fn is not None:
             self._metrics["loss"] = self.criterion_fn
@@ -148,7 +160,7 @@ class TrainableModuleMixin(TrainableModule):
     @property
     def scheduler_dict(self) -> SchedulerType:
         """Returns the scheduler dict"""
-        res =  self._scheduler_dict
+        res = self._scheduler_dict
         if res is not None and len(res) == 1:
             return res[0]
         return res
@@ -163,7 +175,6 @@ class TrainableModuleMixin(TrainableModule):
             assert hasattr(scheduler_dict[i]["scheduler"], "step"), "Scheduler does not have a step method"
         logger.debug(f"Set the scheduler to {scheduler_dict}")
         self._scheduler_dict = scheduler_dict
-
 
     def setup_module_for_train(self, train_cfg: Dict):
         """Given a train cfg, prepare this module for training, by setting the required information."""

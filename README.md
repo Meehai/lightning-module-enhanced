@@ -17,9 +17,9 @@ For `scheduler`, the `args` are sent to the constructor of the scheduler type, w
 
 ```
     import yaml
-    from lightning_module_enhanced import LightningModuleEnhanced
+    from lightning_module_enhanced import LME
     train_cfg = yaml.safe_load(open("/path/to/train_cfg.yaml", "r"))
-    model = LightningModuleEnhanced(get_pytorch_nn_module())
+    model = LME(get_pytorch_nn_module())
     model.setup_for_train(train_cfg)
 ```
 
