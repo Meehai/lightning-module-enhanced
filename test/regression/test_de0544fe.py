@@ -29,7 +29,7 @@ class TrainReader:
         return 5
 
 
-def test_r_metrics_grad():
+def test_de0544fe():
     module = LME(nn.Sequential(nn.Linear(10, 2), nn.Linear(2, 3)))
     module.criterion_fn = lambda y, gt: (y - gt).abs().mean()
     module.metrics = {
@@ -45,3 +45,4 @@ def test_r_metrics_grad():
 
 if __name__ == "__main__":
     test_r_metrics_grad()
+    
