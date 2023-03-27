@@ -44,14 +44,6 @@ class Model(nn.Module):
     def forward(self, x: tr.Tensor):
         return self.fc(x)
 
-    def criterion_fn(self, y: tr.Tensor, gt: tr.Tensor):
-        return (y - gt).pow(2).mean()
-
-    @property
-    def optimizer(self):
-        return optim.SGD(self.parameters(), lr=0.01)
-
-
 def test_experiment_1():
     trainer = Trainer()
     e = MyExperiment(trainer, 5)
@@ -63,6 +55,8 @@ def test_experiment_2():
     train_data = Reader(n_data=100, n_dims=3)
     validation_data = Reader(n_data=100, n_dims=3)
     model = LME(Model(n_dims=train_data.n_dims))
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     train_dataloader = DataLoader(train_data)
     val_dataloader = DataLoader(validation_data)
     save_dir = "save_dir_exp_2" if __name__ == "__main__" else TemporaryDirectory().name
@@ -97,6 +91,8 @@ def test_experiment_3():
     train_data = Reader(n_data=100, n_dims=3)
     validation_data = Reader(n_data=100, n_dims=3)
     model = LME(Model(n_dims=train_data.n_dims))
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     train_dataloader = DataLoader(train_data)
     val_dataloader = DataLoader(validation_data)
     save_dir = "save_dir_exp_3" if __name__ == "__main__" else TemporaryDirectory().name

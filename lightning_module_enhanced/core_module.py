@@ -53,7 +53,6 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
 
         # Store initial hyperparameters in the pl_module and the initial shapes/model name in metadata logger
         self.save_hyperparameters({"args": args, **kwargs}, ignore=["base_model"])
-        self.setup_module_for_train({})
 
     # Getters and setters for properties
 
