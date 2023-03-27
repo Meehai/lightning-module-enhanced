@@ -31,7 +31,26 @@ class BaseModelPlusSetup(BaseModel):
     def optimizer(self):
         return optim.SGD(self.parameters(), lr=0.01)
 
+    
 def test_fit_good_implicit():
     model = LME(BaseModelPlusSetup())
     TrainSetup(model, {})
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
+
+
+def test_fit_explicit_over_implicit_1():
+    model = LME(BaseModelPlusSetup())
+
+    def f(y, gt):
+        return (y - gt).abs().mean()
+
+    model.criterion_fn = f
+    Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
+    assert model.criterion_fn.metric_fn == f
+
+
+def test_fit_explicit_over_implicit_2():
+    model = LME(BaseModelPlusSetup())
+    model.optimizer = optim.Adam(model.parameters(), lr=0.01)
+    Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
+    assert isinstance(model.optimizer, optim.Adam)
