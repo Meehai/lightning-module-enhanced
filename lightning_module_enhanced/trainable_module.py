@@ -16,7 +16,12 @@ SchedulerType = Union[Dict, List[Dict]]
 
 
 class TrainableModule(nn.Module, ABC):
-    """Trainable module abstract class"""
+    """
+    Trainable module abstract class
+    Defines the necessary and optional attributes required to train a LME.
+    The necessary attributes are: optimizer & criterion.
+    The optional attributes are: scheduler, metrics & callbacks.
+    """
 
     @property
     @abstractmethod

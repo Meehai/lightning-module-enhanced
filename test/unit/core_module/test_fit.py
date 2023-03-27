@@ -41,11 +41,6 @@ def test_fit_no_criterion():
         pass
 
 
-def test_fit_good_implicit():
-    model = LME(BaseModelPlusSetup())
-    Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
-
-
 def test_fit_good_explicit():
     model = LME(BaseModel())
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()

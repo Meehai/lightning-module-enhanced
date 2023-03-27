@@ -8,13 +8,34 @@ from ..logger import logger
 from ..trainable_module import TrainableModule
 
 class TrainSetup:
-    """Train Setup class"""
+    """
+    Train Setup class.
+    It will add the necessary attributes of a TrainableModule given a config file.
+    The necessary attributes are: optimizer & criterion.
+    The optional attributes are: scheduler, metrics & callbacks.
+    """
 
     def __init__(self, module: TrainableModule, train_cfg: Dict):
         assert isinstance(module, TrainableModule), f"Got {type(module)}"
         assert isinstance(train_cfg, Dict), f"Got {type(train_cfg)}"
         self.module = module
         self.train_cfg = train_cfg
+
+    def setup(self):
+        """The main function of this class"""
+        if hasattr(self.module.base_model, "setup_model_for_train"):
+            logger.debug(f"Model {self.module.base_model} has setup_model_for_train() method. Calling it first.")
+            self.module.base_model.setup_model_for_train(self.train_cfg)
+        if self.train_cfg is None:
+            logger.debug("Train cfg is None. Returning early.")
+            return
+        self._setup_optimizer()
+        self._setup_scheduler()
+        self._setup_criterion()
+        self._setup_metrics()
+        self._setup_callbacks()
+
+
 
     def _setup_optimizer(self):
         cfg: Dict = self.train_cfg["optimizer"]
@@ -120,20 +141,6 @@ class TrainSetup:
         if hasattr(self.module.base_model, "callbacks") and self.module.base_model.callbacks is not None:
             logger.debug("Base model has callbacks attribute. Using these by default")
             self.module.callbacks = self.module.base_model.callbacks
-
-    def setup(self):
-        """The main function of this class"""
-        if hasattr(self.module.base_model, "setup_model_for_train"):
-            logger.debug(f"Model {self.module.base_model} has setup_model_for_train() method. Calling it first.")
-            self.module.base_model.setup_model_for_train(self.train_cfg)
-        if self.train_cfg is None:
-            logger.debug("Train cfg is None. Returning early.")
-            return
-        self._setup_optimizer()
-        self._setup_scheduler()
-        self._setup_criterion()
-        self._setup_metrics()
-        self._setup_callbacks()
 
     def __call__(self):
         return self.setup()
