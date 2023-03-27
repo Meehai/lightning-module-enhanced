@@ -33,20 +33,8 @@ class Model(nn.Module):
     def forward(self, x: tr.Tensor):
         return self.fc(x)
 
-    def criterion_fn(self, y: tr.Tensor, gt: tr.Tensor):
-        return (y - gt).pow(2).mean()
-
-    @property
-    def optimizer(self):
-        return optim.SGD(self.parameters(), lr=0.01)
-
-    @property
-    def callbacks(self):
-        return [MyCallback()]
-
-
 class MyCallback(Callback):
-    def on_train_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
+    def on_train_start(self, trainer: Trainer, pl_module: LME) -> None:
         global lens
         train_reader_len = len(trainer.train_dataloader.dataset.datasets)
         lens.append(train_reader_len)
@@ -56,6 +44,10 @@ def test_subset_experiment_1():
     train_data = Reader(n_data=100, n_dims=3)
     validation_data = Reader(n_data=100, n_dims=3)
     model = LME(Model(n_dims=train_data.n_dims))
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.optimizer = optim.SGD(model.parameters(), lr=0.01)
+    model.callbacks = [MyCallback()]
+
     train_dataloader = DataLoader(train_data)
     val_dataloader = DataLoader(validation_data)
     save_dir = "save_dir" if __name__ == "__main__" else TemporaryDirectory().name
