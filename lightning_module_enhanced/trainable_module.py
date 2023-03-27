@@ -10,7 +10,6 @@ import pytorch_lightning as pl
 from .metrics import CoreMetric, CallableCoreMetric
 from .callbacks import MetadataCallback
 from .logger import logger
-from .train_setup import TrainSetup
 
 OptimizerType = Union[optim.Optimizer, List[optim.Optimizer]]
 SchedulerType = Union[Dict, List[Dict]]
@@ -175,7 +174,3 @@ class TrainableModuleMixin(TrainableModule):
             assert hasattr(scheduler_dict[i]["scheduler"], "step"), "Scheduler does not have a step method"
         logger.debug(f"Set the scheduler to {scheduler_dict}")
         self._scheduler_dict = scheduler_dict
-
-    def setup_module_for_train(self, train_cfg: Dict):
-        """Given a train cfg, prepare this module for training, by setting the required information."""
-        TrainSetup(self, train_cfg).setup()

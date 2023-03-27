@@ -1,45 +1,43 @@
 """Module that implements a standard setup process of the lightning module via a train config file"""
 from typing import Dict
 from torch import optim
-from .schedulers import ReduceLROnPlateauWithBurnIn
+from torch.nn import functional as F
 
-from .logger import logger
-
+from ..schedulers import ReduceLROnPlateauWithBurnIn
+from ..logger import logger
+from ..trainable_module import TrainableModule
 
 class TrainSetup:
     """Train Setup class"""
 
-    def __init__(self, module: "LME", train_cfg: Dict):
+    def __init__(self, module: TrainableModule, train_cfg: Dict):
+        assert isinstance(module, TrainableModule), f"Got {type(module)}"
         assert isinstance(train_cfg, Dict), f"Got {type(train_cfg)}"
         self.module = module
         self.train_cfg = train_cfg
-        if not hasattr(self.module, "optimizer"):
-            self.module.optimizer = None
-        if not hasattr(self.module, "scheduler_dict"):
-            self.module.scheduler_dict = None
-        if not hasattr(self.module, "criterion_fn"):
-            self.module.criterion_fn = None
-        if not hasattr(self.module, "metrics"):
-            self.module.metrics = None
-        if not hasattr(self.module, "callbacks"):
-            self.module.calbacks = None
 
     def _setup_optimizer(self):
+        cfg: Dict = self.train_cfg["optimizer"]
         if self.module.optimizer is not None:
             logger.debug2("Optimizer is already set. Returning early.")
             return
 
         if "optimizer" in self.train_cfg:
-            str_optimizer_type = self.train_cfg["optimizer"]["type"]
             logger.debug2("Optimizer defined in train_cfg.")
-            optimizer_type = {"adamw": optim.AdamW, "adam": optim.Adam, "sgd": optim.SGD, "rmsprop": optim.RMSprop}[
-                str_optimizer_type
-            ]
-            # assert self.module.num_trainable_params > 0, "Module has no trainable params!"
-            self.module.optimizer = optimizer_type(self.module.parameters(), **self.train_cfg["optimizer"]["args"])
+            optimizer_type = {
+                "adamw": optim.AdamW,
+                "adam": optim.Adam,
+                "sgd": optim.SGD,
+                "rmsprop": optim.RMSprop
+            }[cfg["type"]]
+            self.module.optimizer = optimizer_type(self.module.parameters(), **cfg["args"])
             return
 
         # Last hope is adding optimizer from base model
+        if not hasattr(self.module, "base_model"):
+            logger.warning(f"Provided module {self.module} has no 'base_model' property. Probably not a LME.")
+            return
+        
         if hasattr(self.module.base_model, "optimizer") and self.module.base_model is not None:
             logger.debug2("Optimizer set from base model")
             self.module.optimizer = self.module.base_model.optimizer
@@ -67,12 +65,12 @@ class TrainSetup:
             self.module.scheduler_dict = {"scheduler": scheduler, **self.train_cfg["scheduler"]["optimizer_args"]}
             return
 
+        if not hasattr(self.module, "base_model"):
+            logger.warning(f"Provided module {self.module} has no 'base_model' property. Probably not a LME.")
+            return
+
         # Last hope is adding scheduler from base model
-        if (
-            hasattr(self.module, "base_model")
-            and hasattr(self.module.base_model, "scheduler_dict")
-            and self.module.base_model.scheduler_dict is not None
-        ):
+        if hasattr(self.module.base_model, "scheduler_dict") and self.module.base_model.scheduler_dict is not None:
             logger.debug2("Scheduler set from base model")
             try:
                 self.module.scheduler_dict = self.module.base_model.scheduler_dict
@@ -83,6 +81,20 @@ class TrainSetup:
         """Checks if the base model has the 'criterion_fn' property, and if True, uses this."""
         if self.module.criterion_fn is not None:
             logger.debug2("Criterion fn was already set. Returning early.")
+            return
+
+        if "criterion" in self.train_cfg:
+            cfg = self.train_cfg["criterion"]
+            assert cfg["type"] in ("mse", "cross_entropy"), f"Got an unexpected criterion type: '{cfg['type']}'"
+            logger.debug(f"Setting the criterion to: '{cfg['type']}' based on provided cfg.")
+            if cfg["type"] == "mse":
+                self.module.criterion_fn = F.mse_loss
+            if cfg["type"] == "cross_entropy":
+                self.module.criterion_fn = F.cross_entropy
+            return
+
+        if not hasattr(self.module, "base_model"):
+            logger.warning(f"Provided module {self.module} has no 'base_model' property. Probably not a LME.")
             return
 
         if hasattr(self.module.base_model, "criterion_fn") and self.module.base_model.criterion_fn is not None:
