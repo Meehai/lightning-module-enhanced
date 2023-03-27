@@ -73,7 +73,7 @@ class TrainSetup:
         cfg = self.train_cfg["scheduler"]
         assert "type" in cfg and "optimizer_args" in cfg and "monitor" in cfg["optimizer_args"], cfg
         assert self.module.optimizer is not None, "Cannot setup scheduler before optimizer."
-    
+
         scheduler_type = {
             "ReduceLROnPlateau": optim.lr_scheduler.ReduceLROnPlateau,
             "ReduceLROnPlateauWithBurnIn": ReduceLROnPlateauWithBurnIn,

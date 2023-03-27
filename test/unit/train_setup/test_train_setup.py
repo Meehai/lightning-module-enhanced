@@ -101,7 +101,6 @@ def test_train_setup_metrics_bad_accuracy():
     except AssertionError:
         pass
 
-
 def test_train_setup_metrics_good_accuracy():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 5), nn.ReLU()))
     cfg = {
@@ -114,3 +113,23 @@ def test_train_setup_metrics_good_accuracy():
     Trainer(max_epochs=7).fit(model, DataLoader(ReaderClassification(n_dims=5)))
     assert len(model.metadata_callback.metadata["epoch_metrics"]["accuracy"]) == 7
     assert len(model.metadata_callback.metadata["epoch_metrics"]["accuracy"][0]) == 5
+
+def test_train_setup_metrics_l1():
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    cfg = {
+        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "criterion": {"type": "mse"},
+        "metrics": [{"type": "l1"}]
+    }
+    TrainSetup(model, cfg)
+    Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
+
+def test_train_setup_metrics_mse():
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    cfg = {
+        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "criterion": {"type": "mse"},
+        "metrics": [{"type": "mse"}]
+    }
+    TrainSetup(model, cfg)
+    Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
