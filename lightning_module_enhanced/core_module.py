@@ -10,7 +10,7 @@ from pytorch_lightning.utilities.seed import seed_everything
 from torch import nn
 from torchinfo import summary, ModelStatistics
 
-from .trainable_module import TrainableModuleMixin
+from .trainable_module import TrainableModuleMixin, TrainableModule
 from .metrics import CoreMetric
 from .logger import logger
 from .utils import to_tensor, to_device

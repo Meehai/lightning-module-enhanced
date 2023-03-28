@@ -85,8 +85,11 @@ class MetadataCallback(pl.Callback):
                 self.log_metadata(f"val dataset {i} size", len(dataloader.dataset))
 
         # optimizer metadata at fit start
-        optimizer = pl_module.optimizer
-        optimizer_sd = [o.state_dict() for o in optimizer] if isinstance(optimizer, list) else [optimizer.state_dict()]
+        optimizer = pl_module.configure_optimizers()
+        if isinstance(optimizer, list):
+            optimizer_sd = [o["optimizer"].state_dict() for o in optimizer]
+        else:
+            optimizer_sd = [optimizer["optimizer"].state_dict()]
         optimizer_lrs = [o["param_groups"][0]["lr"] for o in optimizer_sd]
         optimizer_dict = {
             "Type": parsed_str_type(optimizer),
