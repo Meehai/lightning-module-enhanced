@@ -1,5 +1,5 @@
 """Module that implements a standard setup process of the lightning module via a train config file"""
-from typing import Dict
+from typing import Dict, Tuple, Callable
 from functools import partial
 from torch import optim
 from torch.nn import functional as F
@@ -10,6 +10,7 @@ from torchmetrics.functional.regression.mse import mean_squared_error
 from ..schedulers import ReduceLROnPlateauWithBurnIn
 from ..logger import logger
 from ..trainable_module import TrainableModule
+from ..metrics import CallableCoreMetric
 
 class TrainSetup:
     """
@@ -24,24 +25,27 @@ class TrainSetup:
         assert isinstance(train_cfg, Dict), f"Got {type(train_cfg)}"
         self.module = module
         self.train_cfg = train_cfg
-        self._setup()
+        self.setup(self.train_cfg)
 
-    def _setup(self):
+    def setup(self, train_cfg: Dict):
         """The main function of this class"""
-        if self.train_cfg is None:
-            logger.info("Train cfg is None. Returning early.")
-            return
+        assert train_cfg is not None
+        assert "optimizer" in train_cfg and "criterion" in train_cfg, train_cfg
 
-        self._setup_optimizer()
-        self._setup_criterion()
-        self._setup_scheduler()
-        self._setup_metrics()
-        self._setup_callbacks()
+        optimizer_type, optimizer_args = TrainSetup.parse_optimizer(self.train_cfg["optimizer"])
+        self.module.optimizer = optimizer_type(self.module.parameters(), **optimizer_args)
+        self.module.criterion_fn = TrainSetup.parse_criterion(self.train_cfg["criterion"])
+        if "scheduler" in self.train_cfg:
+            scheduler_type, opt_args = TrainSetup.parse_scheduler(self.train_cfg["scheduler"])
+            self.module.scheduler_dict = {"scheduler": scheduler_type(optimizer=self.module.optimizer), **opt_args}
+        if "metrics" in self.train_cfg:
+            self.module.metrics = TrainSetup.parse_metrics(train_cfg["metrics"])
+        if "callbacks" in self.train_cfg:
+            self.module.callbacks = TrainSetup.parse_callbacks(train_cfg["callbacks"])
 
-    def _setup_optimizer(self):
-        assert "optimizer" in self.train_cfg, "Optimizer not in train cfg"
-        cfg: Dict = self.train_cfg["optimizer"]
-
+    @staticmethod
+    def parse_optimizer(cfg):
+        """Parses the possible optimizers"""
         logger.debug(f"Setting optimizer from config: '{cfg['type']}'")
         optimizer_type = {
             "adamw": optim.AdamW,
@@ -49,59 +53,51 @@ class TrainSetup:
             "sgd": optim.SGD,
             "rmsprop": optim.RMSprop
         }[cfg["type"]]
-        self.module.optimizer = optimizer_type(self.module.parameters(), **cfg["args"])
+        return optimizer_type, cfg["args"]
 
-    def _setup_criterion(self):
-        """Checks if the base model has the 'criterion_fn' property, and if True, uses this."""
-        assert "criterion" in self.train_cfg, "Train cfg has no criterion"
-        cfg = self.train_cfg["criterion"]
-
+    @staticmethod
+    def parse_criterion(cfg):
+        """Parses the possible criteria"""
+        # TODO: allow criterion provided as callable from outside
         logger.debug(f"Setting the criterion to: '{cfg['type']}' based on provided cfg.")
         criterion_type = {
             "mse": F.mse_loss,
             "l1": F.l1_loss,
             "cross_entropy": F.cross_entropy
         }[cfg["type"]]
-        self.module.criterion_fn = criterion_type
+        return criterion_type
 
-    def _setup_scheduler(self):
+    @staticmethod
+    def parse_scheduler(cfg: Dict):
         """Setup the scheduler following Pytorch Lightning's requirements."""
-        if "scheduler" not in self.train_cfg:
-            logger.debug("Scheduler not defined in train_cfg. Returning early")
-            return
-
-        cfg = self.train_cfg["scheduler"]
         assert "type" in cfg and "optimizer_args" in cfg and "monitor" in cfg["optimizer_args"], cfg
-        assert self.module.optimizer is not None, "Cannot setup scheduler before optimizer."
-
         scheduler_type = {
             "ReduceLROnPlateau": optim.lr_scheduler.ReduceLROnPlateau,
             "ReduceLROnPlateauWithBurnIn": ReduceLROnPlateauWithBurnIn,
         }[cfg["type"]]
-        scheduler = scheduler_type(optimizer=self.module.optimizer, **cfg["args"])
-        self.module.scheduler_dict = {"scheduler": scheduler, **cfg["optimizer_args"]}
+        return partial(scheduler_type, **cfg["args"]), cfg["optimizer_args"]
 
-    def _setup_metrics(self):
+    @staticmethod
+    def parse_metrics(cfg: Dict) -> Dict[str, Tuple[Callable, str]]:
         """Setup the metrics from the config file. Only a couple of them are available."""
-        if "metrics" not in self.train_cfg:
-            logger.debug("Metrics not defined in train_cfg. Returning early")
-            return
-
         metrics = {}
-        cfg = self.train_cfg["metrics"]
         for metric_dict in cfg:
             metric_type, metric_args = metric_dict["type"], metric_dict.get("args", {})
             assert metric_type in ("accuracy", "l1", "mse"), metric_type
             if metric_type == "accuracy":
                 assert "num_classes" in metric_args and "task" in metric_args
-                metrics[metric_type] = (partial(accuracy, **metric_args), "max")
+                metrics[metric_type] = CallableCoreMetric(metric_fn=partial(accuracy, **metric_args),
+                                                          higher_is_better=True)
             if metric_type == "l1":
                 assert metric_args == {}
-                metrics[metric_type] = (mean_absolute_error, "min")
+                metrics[metric_type] = CallableCoreMetric(mean_absolute_error, higher_is_better=False)
             if metric_type == "mse":
                 assert metric_args == {}
-                metrics[metric_type] = (mean_squared_error, "min")
-        self.module.metrics = metrics
+                metrics[metric_type] = CallableCoreMetric(mean_squared_error, higher_is_better=False)
+        return metrics
 
-    def _setup_callbacks(self):
+    @staticmethod
+    # pylint: disable=unused-argument
+    def parse_callbacks(cfg: Dict):
         """TODO: callbacks"""
+        return None
