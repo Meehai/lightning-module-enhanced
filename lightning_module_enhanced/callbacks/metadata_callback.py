@@ -57,7 +57,7 @@ class MetadataCallback(pl.Callback):
             "hparams_current": None,
         }
 
-        log_dir = trainer.log_dir
+        log_dir = trainer.loggers[0].log_dir
         self.log_dir = Path(log_dir).absolute()
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.log_file_path = self.log_dir / f"{prefix}_metadata.json"
