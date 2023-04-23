@@ -26,6 +26,7 @@ def test_metadata_callback_train_1():
     assert model.metadata_callback.metadata is not None
 
     meta = model.metadata_callback.metadata
+    assert "model_parameters" in meta
     assert "epoch_metrics" in meta
     assert "optimizer" in meta
     assert "best_model" in meta

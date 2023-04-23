@@ -45,27 +45,32 @@ class MetadataCallback(pl.Callback):
         """Adds a epoch metric to the current metadata"""
         if key not in self.metadata["epoch_metrics"]:
             self.metadata["epoch_metrics"][key] = {}
-        if epoch != 0:
-            # Epoch 0 can sometimes have a validation sanity check fake epoch
-            assert epoch not in self.metadata["epoch_metrics"][key], f"Cannot overwrite existing epoch metric '{key}'"
+        assert epoch not in self.metadata["epoch_metrics"][key], f"Cannot overwrite existing epoch metric '{key}'"
         # Apply .tolist(). Every metric should be able to be converted as list, such that it can be stored in a JSON.
         self.metadata["epoch_metrics"][key][epoch] = value.tolist()
 
     def _setup(self, trainer: pl.Trainer, pl_module: pl.LightningModule, prefix: str):
         """Called to set the log dir based on the first logger for train and test modes"""
-        if self.metadata is None:
+        assert prefix in ("fit", "test"), prefix
+        # flushing the metrics can happen in 3 cases:
+        # - metadata is None, so we just initialie it
+        # - metadata is not None, we are training the same model with a new trainer, so it starts again from epoch 0
+        # - metadata is not None, we are testing the model, so we don't want to have a test metadata with train metrics
+        if self.metadata is None or \
+           (self.metadata is not None and prefix == "fit" and trainer.current_epoch == 0) or \
+           (self.metadata is not None and prefix == "test"):
             self.metadata = {
                 "epoch_metrics": {},
                 "hparams_current": None,
             }
 
+        # using trainer.logger.log_dir will have errors for non TensorBoardLogger (at least in lightning 1.8)
         log_dir = trainer.loggers[0].log_dir
         self.log_dir = Path(log_dir).absolute()
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.log_file_path = self.log_dir / f"{prefix}_metadata.json"
         logger.debug(f"Metadata logger set up to '{self.log_file_path}'")
 
-        self.log_metadata("base_model", pl_module.base_model.__class__.__name__)
         self._log_model_summary(pl_module)
         # default metadata
         now = datetime.now()
@@ -78,6 +83,8 @@ class MetadataCallback(pl.Callback):
 
     def on_fit_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         """At the start of the .fit() loop, add the sizes of all train/validation dataloaders"""
+        if pl_module.trainer.state.stage == "sanity_check":
+            return
         self._setup(trainer, pl_module, prefix="fit")
         self._log_optimizer_fit_start(pl_module)
         self._log_scheduler_fit_start(pl_module)
@@ -88,7 +95,6 @@ class MetadataCallback(pl.Callback):
     def on_test_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         """At the start of the .test() loop, add the sizes of all test dataloaders"""
         self._setup(trainer, pl_module, prefix="test")
-        self.metadata["epoch_metrics"] = {}
         self.log_metadata("test_start_hparams", pl_module.hparams)
         for i, dataloader in enumerate(pl_module.trainer.test_dataloaders):
             self.log_metadata(f"test_dataset_{i}_size", len(dataloader.dataset))
@@ -221,10 +227,18 @@ class MetadataCallback(pl.Callback):
         self.log_metadata("Early Stopping", es_dict)
 
     def _log_model_summary(self, pl_module: LightningModule):
+        """model's layers and number of parameters"""
+        assert hasattr(pl_module, "base_model")
+        res = {"name": pl_module.base_model.__class__.__name__}
         layer_summary = {}
-        for name, param in pl_module.named_parameters():
+        num_params, num_trainable_params = 0, 0
+        for name, param in pl_module.base_model.named_parameters():
+            num_params += param.numel()
+            num_trainable_params += param.numel() * param.requires_grad
             layer_summary[name] = f"count: {param.numel()}. requires_grad: {param.requires_grad}"
-        self.log_metadata("summary", layer_summary)
+        res["parameter_count"] = {"total": num_params, "trainable": num_trainable_params}
+        res["layer_summary"] = layer_summary
+        self.log_metadata("model_parameters", res)
 
     def _log_model_checkpoint_fit_start(self, pl_module: LightningModule):
         # model checkpoint metadata at fit start

@@ -1,4 +1,9 @@
 __pycache__
 lightning_logs/
-
+*.json
+*.ckpt
+*tfevents*
+*.yaml
+*.csv
+*.npy
 
