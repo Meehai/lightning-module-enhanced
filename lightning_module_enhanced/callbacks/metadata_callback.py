@@ -103,9 +103,9 @@ class MetadataCallback(pl.Callback):
     def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         if pl_module.trainer.state.stage == "sanity_check":
             return
-        if not "train_dataset_size" in self.metadata:
+        if "train_dataset_size" not in self.metadata:
             self.log_metadata("train_dataset_size", len(trainer.train_dataloader.dataset.datasets))
-        if not "validation_dataset_size" and trainer.val_dataloaders is not None:
+        if "validation_dataset_size" not in self.metadata and trainer.val_dataloaders is not None:
             for i, dataloader in enumerate(pl_module.trainer.val_dataloaders):
                 self.log_metadata(f"validation_dataset_{i}_size", len(dataloader.dataset))
         self.save()
@@ -138,7 +138,7 @@ class MetadataCallback(pl.Callback):
         assert best_checkpoint.exists() and best_checkpoint.is_file(), "Best checkpoint does not exist."
         best_model_pkl = tr.load(best_checkpoint, map_location="cpu")
         best_model_dict = {
-            "path": best_checkpoint.__str__(),
+            "path": str(best_checkpoint),
             "hyper_parameters": best_model_pkl["hyper_parameters"],
             "optimizers_lr": [o["param_groups"][0]["lr"] for o in best_model_pkl["optimizer_states"]]
         }
@@ -164,7 +164,7 @@ class MetadataCallback(pl.Callback):
         if configure_optimizers_result is None:
             res = self._log_optimizer_fit_start(pl_module, pl_module.configure_optimizers())
             self.log_metadata("optimizer", res)
-            return
+            return None
         if isinstance(configure_optimizers_result, list):
             return [self._log_optimizer_fit_start(pl_module, o) for o in configure_optimizers_result]
         if isinstance(configure_optimizers_result, dict):
@@ -212,12 +212,12 @@ class MetadataCallback(pl.Callback):
         best_model_dict["scheduler_num_lr_reduced"] = num_reduces
 
     def _log_early_stopping_fit_start(self, pl_module: LightningModule):
-        assert pl_module.trainer is not None, f"Invalid call to this function, trainer is not set."
+        assert pl_module.trainer is not None, "Invalid call to this function, trainer is not set."
         early_stopping_cbs = list(filter(lambda x: isinstance(x, EarlyStopping), pl_module.trainer.callbacks))
         # no early stopping for this train, simply return
         if len(early_stopping_cbs) == 0:
             return
-        assert len(early_stopping_cb) == 1
+        assert len(early_stopping_cbs) == 1, early_stopping_cbs
         early_stopping_cb: EarlyStopping = early_stopping_cbs[0]
         es_dict = {
             "monitor": early_stopping_cb.monitor,
