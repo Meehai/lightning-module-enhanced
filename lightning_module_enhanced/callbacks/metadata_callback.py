@@ -66,7 +66,7 @@ class MetadataCallback(pl.Callback):
         logger.debug(f"Metadata logger set up to '{self.log_file_path}'")
 
         self.log_metadata("base_model", pl_module.base_model.__class__.__name__)
-        self.log_metadata("summary", str(pl_module.summary))
+        self._log_model_summary(pl_module)
         # default metadata
         now = datetime.now()
         self.log_metadata_dict({
@@ -82,12 +82,7 @@ class MetadataCallback(pl.Callback):
         self._log_optimizer_fit_start(pl_module)
         self._log_scheduler_fit_start(pl_module)
         self._log_early_stopping_fit_start(pl_module)
-
-        # model checkpoint metadata at fit start
-        model_checkpoint_dict = {"monitor": trainer.checkpoint_callback.monitor,
-                                 "mode": trainer.checkpoint_callback.mode}
-
-        self.log_metadata("model_checkpoint", model_checkpoint_dict)
+        self._log_model_checkpoint_fit_start(pl_module)
         self.save()
 
     def on_test_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
@@ -112,7 +107,6 @@ class MetadataCallback(pl.Callback):
     def on_train_epoch_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
         """Saves the metadata as a json on the train dir"""
         # Always update the current hparams such that, for test modes, we get the loaded stats
-        self.log_metadata("best_model_path", trainer.checkpoint_callback.best_model_path)
         self.log_metadata("hparams_current", pl_module.hparams)
         self.save()
 
@@ -138,6 +132,7 @@ class MetadataCallback(pl.Callback):
         assert best_checkpoint.exists() and best_checkpoint.is_file(), "Best checkpoint does not exist."
         best_model_pkl = tr.load(best_checkpoint, map_location="cpu")
         best_model_dict = {
+            "path": best_checkpoint.__str__(),
             "hyper_parameters": best_model_pkl["hyper_parameters"],
             "optimizers_lr": [o["param_groups"][0]["lr"] for o in best_model_pkl["optimizer_states"]]
         }
@@ -204,12 +199,11 @@ class MetadataCallback(pl.Callback):
             return
         if not hasattr(pl_module.scheduler_dict["scheduler"], "factor"):
             return
-        first_lr = self.metadata["Optimizer"]["starting_lr"][0]
+        first_lr = self.metadata["optimizer"][0]["starting_lr"][0]
         last_lr = best_model_dict["optimizers_lr"][0]
         factor = pl_module.scheduler_dict["scheduler"].factor
         num_reduces = 0 if first_lr == last_lr else int((last_lr / first_lr) / factor)
         best_model_dict["scheduler_num_lr_reduced"] = num_reduces
-
 
     def _log_early_stopping_fit_start(self, pl_module: LightningModule):
         assert pl_module.trainer is not None, f"Invalid call to this function, trainer is not set."
@@ -225,6 +219,18 @@ class MetadataCallback(pl.Callback):
             "patience": early_stopping_cb.patience
         }
         self.log_metadata("Early Stopping", es_dict)
+
+    def _log_model_summary(self, pl_module: LightningModule):
+        layer_summary = {}
+        for name, param in pl_module.named_parameters():
+            layer_summary[name] = f"count: {param.numel()}. requires_grad: {param.requires_grad}"
+        self.log_metadata("summary", layer_summary)
+
+    def _log_model_checkpoint_fit_start(self, pl_module: LightningModule):
+        # model checkpoint metadata at fit start
+        model_checkpoint_dict = {"monitor": pl_module.trainer.checkpoint_callback.monitor,
+                                 "mode": pl_module.trainer.checkpoint_callback.mode}
+        self.log_metadata("model_checkpoint", model_checkpoint_dict)
 
     def __str__(self):
         return f"Metadata Callback. Log dir: '{self.log_dir}'"
