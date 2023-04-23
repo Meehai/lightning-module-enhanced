@@ -1,5 +1,5 @@
 """Utils module"""
-from typing import T, Any, Tuple, Optional
+from typing import T, Any, Dict
 import random
 import json
 import torch as tr
@@ -79,8 +79,11 @@ def json_encode_val(value: Any) -> str:
         encodable_value = str(value)
     return encodable_value
 
-def accelerator_params_from_module(module: nn.Module) -> Tuple[str, Optional[int]]:
-    """Some pytorch lightning madness"""
+def accelerator_params_from_module(module: nn.Module) -> Dict[str, int]:
+    """
+    Some pytorch lightning madness
+    TODO: multi-gpu setup ?
+    """
     # Assume the device based on this.
     device = next(module.parameters()).device
     if device.type == "cuda":
@@ -93,7 +96,7 @@ def accelerator_params_from_module(module: nn.Module) -> Tuple[str, Optional[int
         index = None
     else:
         assert False, f"Unknown device type: {device}"
-    return accelerator, index
+    return {"accelerator": accelerator, "devices": index}
 
 def seed_everything(seed: int=None):
     """lightning removed this function in >=2.0, so we need to define it ourselves"""
