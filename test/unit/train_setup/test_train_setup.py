@@ -86,7 +86,7 @@ def test_train_setup_scheduler_good():
                       "optimizer_args": {"monitor": "loss"}}
     }
     TrainSetup(model, cfg)
-    Trainer(max_epochs=1).fit(model, DataLoader(Reader()))    
+    Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
 
 def test_train_setup_metrics_bad_accuracy():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))

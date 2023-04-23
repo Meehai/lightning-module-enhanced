@@ -284,7 +284,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
                     self.log(prefixed_metric, value_reduced, prog_bar=prog_bar, on_epoch=True)
                 # Call the metadata callback for the full result, since it can handle any sort of metrics
                 self.metadata_callback.save_epoch_metric(prefixed_metric, metric_epoch_result,
-                                                         self.trainer.current_epoch)
+                                                        self.trainer.current_epoch)
                 # Reset the metric after storing this epoch's value
                 metric_fn.reset()
 
