@@ -39,6 +39,10 @@ class PlotMetrics(Callback):
         plt.close(fig)
 
     @overrides
+    def on_fit_start(self, trainer, pl_module) -> None:
+        self.history = None
+
+    @overrides
     def on_train_epoch_end(self, trainer, pl_module):
         relevant_metrics = {k: v for k, v in trainer.logged_metrics.items()
                             if not (k.endswith("_epoch") or k.endswith("_step"))}
