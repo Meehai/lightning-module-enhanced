@@ -26,10 +26,11 @@ class PlotCallbackGeneric(Callback):
     def _do_call(self, trainer: Trainer, pl_module: LightningModule, batch, batch_idx, key):
         if batch_idx != 0:
             return
-        out_dir = PlotCallbackGeneric._get_out_dir(trainer, key)
         if len(trainer.loggers) == 0:
             logger.warning(f"No lightning logger found. Not calling PlotCallbacks()")
             return
+
+        out_dir = PlotCallbackGeneric._get_out_dir(trainer, key)
         with tr.no_grad():
             y = pl_module.forward(batch)
         self.plot_callback(model=pl_module, batch=batch, y=y, out_dir=out_dir)
@@ -57,8 +58,11 @@ class PlotCallback(PlotCallbackGeneric):
     def _do_call(self, trainer, pl_module, batch, batch_idx, key):
         if batch_idx != 0:
             return
-        out_dir = PlotCallbackGeneric._get_out_dir(trainer, key)
+        if len(trainer.loggers) == 0:
+            logger.warning(f"No lightning logger found. Not calling PlotCallbacks()")
+            return
 
+        out_dir = PlotCallbackGeneric._get_out_dir(trainer, key)
         x, gt = batch["data"], batch["labels"]
         with tr.no_grad():
             y = pl_module.forward(x)
