@@ -80,8 +80,8 @@ def json_encode_val(value: Any) -> str:
 
 def accelerator_params_from_module(module: nn.Module) -> Dict[str, int]:
     """
-    Some pytorch lightning madness
-    TODO: multi-gpu setup ?
+    Some pytorch lightning madness.
+    TODO: multi-device support based on some config params. Could be integrated in TrainSetup using a cfg perhaps.
     """
     # Assume the device based on this.
     device = next(module.parameters()).device
@@ -90,9 +90,9 @@ def accelerator_params_from_module(module: nn.Module) -> Dict[str, int]:
         # cuda:5 => "gpu" and [5]. "cuda" => "gpu" and [0]
         index = [device.index] if isinstance(device.index, int) else [0]
     elif device.type == "cpu":
-        # cpu:XX => "cpu" and None
+        # cpu:XX => "cpu" and 1 => this fails otherwise in torch >= 2.0 or lightning >= 2.0
         accelerator = "cpu"
-        index = None
+        index = 1
     else:
         assert False, f"Unknown device type: {device}"
     return {"accelerator": accelerator, "devices": index}
