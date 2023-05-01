@@ -46,6 +46,10 @@ class PlotMetrics(Callback):
     @overrides
     def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: "CoreModule"):
         assert (trainer.current_epoch == 0 and self.history is None) or (self.history is not None)
+        if len(trainer.loggers) == 0:
+            logger.warning("No lightning logger found. Not calling PlotMetrics()")
+            return
+
         if self.history is None:
             self.history = {metric_name: {"train": [], "val": []} for metric_name in pl_module.metrics.keys()}
 

@@ -6,6 +6,8 @@ from pytorch_lightning import Trainer, LightningModule
 from pytorch_lightning.callbacks import Callback
 import torch as tr
 
+from ..logger import logger
+
 class PlotCallbackGeneric(Callback):
     """Plot callback impementation. For each train/validation epoch, create a dir under logger_dir/pngs/epoch_X"""
     def __init__(self, plot_callback: Callable):
@@ -14,13 +16,17 @@ class PlotCallbackGeneric(Callback):
     @staticmethod
     def _get_out_dir(trainer: Trainer, dir_name: str) -> Path:
         """Gets the output directory as '/path/to/log_dir/pngs/train_or_val/epoch_N/' """
-        logger = trainer.loggers[0]
-        out_dir = Path(f"{logger.log_dir}/pngs/{dir_name}/{trainer.current_epoch}")
+        if len(trainer.loggers) == 0:
+            return None
+        out_dir = Path(f"{trainer.loggers[0].log_dir}/pngs/{dir_name}/{trainer.current_epoch}")
         out_dir.mkdir(exist_ok=True, parents=True)
         return out_dir
 
-    def _do_call(self, trainer, pl_module, batch, batch_idx, key):
+    def _do_call(self, trainer: Trainer, pl_module: LightningModule, batch, batch_idx, key):
         if batch_idx != 0:
+            return
+        if len(trainer.loggers) == 0:
+            logger.warning("No lightning logger found. Not calling PlotCallbacks()")
             return
         out_dir = PlotCallbackGeneric._get_out_dir(trainer, key)
         with tr.no_grad():
@@ -50,8 +56,11 @@ class PlotCallback(PlotCallbackGeneric):
     def _do_call(self, trainer, pl_module, batch, batch_idx, key):
         if batch_idx != 0:
             return
-        out_dir = PlotCallbackGeneric._get_out_dir(trainer, key)
+        if len(trainer.loggers) == 0:
+            logger.warning("No lightning logger found. Not calling PlotCallbacks()")
+            return
 
+        out_dir = PlotCallbackGeneric._get_out_dir(trainer, key)
         x, gt = batch["data"], batch["labels"]
         with tr.no_grad():
             y = pl_module.forward(x)
