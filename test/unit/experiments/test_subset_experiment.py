@@ -36,7 +36,7 @@ class Model(nn.Module):
 class MyCallback(Callback):
     def on_train_start(self, trainer: Trainer, pl_module: LME) -> None:
         global lens
-        train_reader_len = len(trainer.train_dataloader.dataset.datasets)
+        train_reader_len = len(trainer.train_dataloader.dataset)
         lens.append(train_reader_len)
 
 

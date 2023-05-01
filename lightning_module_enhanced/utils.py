@@ -1,6 +1,5 @@
 """Utils module"""
 from typing import T, Any, Dict
-import random
 import json
 import torch as tr
 import numpy as np
@@ -97,9 +96,3 @@ def accelerator_params_from_module(module: nn.Module) -> Dict[str, int]:
     else:
         assert False, f"Unknown device type: {device}"
     return {"accelerator": accelerator, "devices": index}
-
-def seed_everything(seed: int=None):
-    """lightning removed this function in >=2.0, so we need to define it ourselves"""
-    tr.manual_seed(seed)
-    np.random.seed(seed)
-    random.seed(seed)

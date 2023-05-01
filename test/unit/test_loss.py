@@ -26,6 +26,13 @@ def test_batch_weighted_ce_3():
     except AssertionError:
         pass
 
+def test_batch_weighted_ce_4():
+    y = tr.randn(200, 300, 8)
+    gt = tr.randint(0, 7, size=(200, 300))
+    loss = batch_weighted_ce(y, gt, reduction="none")
+    assert len(loss.shape) == 2 and loss.shape == y.shape[0:2]
+    assert tr.allclose(loss.mean(), batch_weighted_ce(y, gt), rtol=0.001)
+
 def test_batch_weighted_bce_1():
     y = tr.randn(100, 1).sigmoid()
     gt = tr.randint(0, 2, (100, 1), dtype=tr.float32)
@@ -38,3 +45,6 @@ def test_batch_weighted_bce_2():
     loss = batch_weighted_bce(y, gt, reduction="none")
     assert loss.shape == y.shape
     assert tr.allclose(loss.mean(), batch_weighted_bce(y, gt))
+
+if __name__ == "__main__":
+    test_batch_weighted_ce_4()

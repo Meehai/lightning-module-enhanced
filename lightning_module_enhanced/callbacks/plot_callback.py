@@ -30,7 +30,7 @@ class PlotCallbackGeneric(Callback):
     @overrides
     # pylint: disable=unused-argument
     def on_validation_batch_end(self, trainer: Trainer, pl_module: LightningModule,
-                                outputs, batch, batch_idx: int, dataloader_idx: int) -> None:
+                                outputs, batch, batch_idx: int, dataloader_idx: int = 0) -> None:
         self._do_call(trainer, pl_module, batch, batch_idx, "validation")
 
     @overrides
@@ -41,7 +41,7 @@ class PlotCallbackGeneric(Callback):
 
     @overrides
     def on_test_batch_end(self, trainer: Trainer, pl_module: LightningModule,
-                          outputs, batch, batch_idx: int, dataloader_idx: int) -> None:
+                          outputs, batch, batch_idx: int, dataloader_idx: int = 0) -> None:
         self._do_call(trainer, pl_module, batch, batch_idx, "test")
 
 class PlotCallback(PlotCallbackGeneric):

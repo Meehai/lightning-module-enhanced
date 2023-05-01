@@ -6,7 +6,7 @@ from pathlib import Path
 from overrides import overrides
 import torch as tr
 import pytorch_lightning as pl
-from pytorch_lightning.utilities.seed import seed_everything
+from lightning_fabric.utilities.seed import seed_everything
 from torch import nn
 from torchinfo import summary, ModelStatistics
 
@@ -135,18 +135,18 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
     @overrides
     def training_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs) -> Union[tr.Tensor, Dict[str, Any]]:
         """Training step: returns batch training loss and metrics."""
-        res = self._generic_batch_step(train_batch)
+        res = self.model_algorithm(train_batch)
         return res
 
     @overrides
     def validation_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs):
         """Validation step: returns batch validation loss and metrics."""
-        return self._generic_batch_step(train_batch, prefix="val_")
+        return self.model_algorithm(train_batch, prefix="val_")
 
     @overrides
     def test_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs):
         """Testing step: returns batch test loss and metrics. No prefix."""
-        return self._generic_batch_step(train_batch)
+        return self.model_algorithm(train_batch)
 
     @overrides
     def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
@@ -157,13 +157,13 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         return self.callbacks
 
     @overrides
-    def training_epoch_end(self, outputs):
+    def on_train_epoch_end(self) -> None:
         """Computes epoch average train loss and metrics for logging."""
         # If validation is enabled (for train loops), add "val_" metrics for all logged metrics.
         self._run_and_log_metrics_at_epoch_end(self.logged_metrics)
 
     @overrides
-    def test_epoch_end(self, outputs):
+    def on_test_epoch_end(self):
         self._run_and_log_metrics_at_epoch_end(self.logged_metrics)
 
     @overrides
@@ -242,15 +242,14 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
     def load_state_dict(self, state_dict: Dict[str, Any], strict: bool = True):
         return self.base_model.load_state_dict(state_dict, strict)
 
-    # Internal methods
-
-    def _generic_batch_step(self, train_batch: Dict, prefix: str = "") -> Dict[str, tr.Tensor]:
-        """Generic step for computing the forward pass, loss and metrics."""
+    def model_algorithm(self, train_batch: Dict, prefix: str = "") -> Dict[str, tr.Tensor]:
+        """Generic step for computing the forward pass, loss and metrics. Simple feed-forward algorithm by default."""
         y = self.forward(train_batch["data"])
         gt = to_device(to_tensor(train_batch["labels"]), self.device)
         outputs = self._get_batch_metrics(y, gt, prefix)
         return outputs
 
+    # Internal methods
     def _get_batch_metrics(self, y, gt, prefix: str) -> Dict[str, tr.Tensor]:
         """Get batch-level metrics"""
         outputs = {}

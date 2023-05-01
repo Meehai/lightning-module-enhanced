@@ -1,8 +1,8 @@
 from lightning_module_enhanced import LME, TrainSetup
-from lightning_lite.utilities.exceptions import MisconfigurationException
+from lightning_fabric.utilities.exceptions import MisconfigurationException
 from pytorch_lightning import Trainer
 from torch.utils.data import DataLoader
-from torch import nn, optim
+from torch import nn
 import torch as tr
 
 class ReaderClassification:
@@ -69,7 +69,8 @@ def test_train_setup_scheduler_bad_2():
                       "optimizer_args": {"monitor": "val_loss"}}
     }
     TrainSetup(model, cfg)
-    """fails because no val_loss is available"""
+    # fails because no val_loss is available. We cannot make a pre-flight check because this is set up at .ft() time
+    # and we have no val dataloader.
     try:
         Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
         raise Exception
@@ -133,3 +134,6 @@ def test_train_setup_metrics_mse():
     }
     TrainSetup(model, cfg)
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
+
+if __name__ == "__main__":
+    test_train_setup_scheduler_bad_2()

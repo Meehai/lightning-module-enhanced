@@ -4,10 +4,11 @@ from pathlib import Path
 from datetime import datetime
 import json
 import pytorch_lightning as pl
+import torch as tr
+from overrides import overrides
 from torch.optim import Optimizer
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import EarlyStopping
-import torch as tr
 
 from ..logger import logger
 
@@ -81,6 +82,7 @@ class MetadataCallback(pl.Callback):
         })
         self.save()
 
+    @overrides
     def on_fit_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         """At the start of the .fit() loop, add the sizes of all train/validation dataloaders"""
         if pl_module.trainer.state.stage == "sanity_check":
@@ -92,24 +94,25 @@ class MetadataCallback(pl.Callback):
         self._log_model_checkpoint_fit_start(pl_module)
         self.save()
 
+    @overrides
     def on_test_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         """At the start of the .test() loop, add the sizes of all test dataloaders"""
         self._setup(trainer, pl_module, prefix="test")
         self.log_metadata("test_start_hparams", pl_module.hparams)
-        for i, dataloader in enumerate(pl_module.trainer.test_dataloaders):
-            self.log_metadata(f"test_dataset_{i}_size", len(dataloader.dataset))
+        self.log_metadata("test_dataset_size", len(pl_module.trainer.test_dataloaders.dataset))
         self.save()
 
+    @overrides
     def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         if pl_module.trainer.state.stage == "sanity_check":
             return
         if "train_dataset_size" not in self.metadata:
-            self.log_metadata("train_dataset_size", len(trainer.train_dataloader.dataset.datasets))
+            self.log_metadata("train_dataset_size", len(trainer.train_dataloader.dataset))
         if "validation_dataset_size" not in self.metadata and trainer.val_dataloaders is not None:
-            for i, dataloader in enumerate(pl_module.trainer.val_dataloaders):
-                self.log_metadata(f"validation_dataset_{i}_size", len(dataloader.dataset))
+            self.log_metadata("validation_dataset_size", len(pl_module.trainer.val_dataloaders.dataset))
         self.save()
 
+    @overrides
     def on_train_epoch_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
         """Saves the metadata as a json on the train dir"""
         # Always update the current hparams such that, for test modes, we get the loaded stats
