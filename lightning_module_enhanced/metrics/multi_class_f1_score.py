@@ -1,4 +1,5 @@
 """Multi class F1 Score"""
+from typing import Optional
 from overrides import overrides
 from torchmetrics.functional.classification import multiclass_stat_scores
 import torch as tr
@@ -36,7 +37,7 @@ class MultiClassF1Score(CoreMetric):
         return f1
 
     @overrides
-    def epoch_result_reduced(self, epoch_result: tr.Tensor) -> tr.Tensor:
+    def epoch_result_reduced(self, epoch_result: Optional[tr.Tensor]) -> Optional[tr.Tensor]:
         """One f1 score per class => average of all f1 scores"""
         return epoch_result.mean()
 

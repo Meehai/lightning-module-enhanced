@@ -61,13 +61,14 @@ class CoreMetric(nn.Module, ABC):
     def reset(self):
         """This is called at each epoch end after compute(). It resets the state for the next epoch."""
 
-    def epoch_result_reduced(self, epoch_result: tr.Tensor) -> Optional[tr.Tensor]:
+    def epoch_result_reduced(self, epoch_result: Optional[tr.Tensor]) -> Optional[tr.Tensor]:
         """
-        Reduces a potentially compelx metric (confusion matrix or multi label accuracy) into a single number.
+        Reduces a potentially complex metric (confusion matrix or multi label accuracy) into a single number.
         This is used so that other loggers, such as mlflow logger or tensorboard logger can store these without making
         any transformation (i.e. mlflow logger will sum a confusion matrix into a single number).
         By default, does nothing. Override this if needed.
         """
+        epoch_result = self.epoch_result() if epoch_result is None else epoch_result
         assert isinstance(epoch_result, tr.Tensor), f"Got {type(epoch_result)}"
         epoch_result_reduced = epoch_result.squeeze()
         shape = epoch_result_reduced.shape

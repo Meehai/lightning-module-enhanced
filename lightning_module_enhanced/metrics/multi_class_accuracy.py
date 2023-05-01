@@ -1,4 +1,5 @@
 """Multi class accuracy module"""
+from typing import Optional
 from overrides import overrides
 import torch as tr
 from torch import functional as F
@@ -50,7 +51,7 @@ class MultiClassAccuracy(CoreMetric):
         return accs
 
     @overrides
-    def epoch_result_reduced(self, epoch_result) -> tr.Tensor:
+    def epoch_result_reduced(self, epoch_result: Optional[tr.Tensor]) -> Optional[tr.Tensor]:
         """Returns the pbar-compatible result, as the average of the per-class accuracy"""
         return epoch_result.mean()
 
