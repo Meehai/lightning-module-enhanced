@@ -18,8 +18,7 @@ class PlotCallbackGeneric(Callback):
         """Gets the output directory as '/path/to/log_dir/pngs/train_or_val/epoch_N/' """
         if len(trainer.loggers) == 0:
             return None
-        logger = trainer.loggers[0]
-        out_dir = Path(f"{logger.log_dir}/pngs/{dir_name}/{trainer.current_epoch}")
+        out_dir = Path(f"{trainer.loggers[0].log_dir}/pngs/{dir_name}/{trainer.current_epoch}")
         out_dir.mkdir(exist_ok=True, parents=True)
         return out_dir
 
@@ -27,9 +26,8 @@ class PlotCallbackGeneric(Callback):
         if batch_idx != 0:
             return
         if len(trainer.loggers) == 0:
-            logger.warning(f"No lightning logger found. Not calling PlotCallbacks()")
+            logger.warning("No lightning logger found. Not calling PlotCallbacks()")
             return
-
         out_dir = PlotCallbackGeneric._get_out_dir(trainer, key)
         with tr.no_grad():
             y = pl_module.forward(batch)
@@ -59,7 +57,7 @@ class PlotCallback(PlotCallbackGeneric):
         if batch_idx != 0:
             return
         if len(trainer.loggers) == 0:
-            logger.warning(f"No lightning logger found. Not calling PlotCallbacks()")
+            logger.warning("No lightning logger found. Not calling PlotCallbacks()")
             return
 
         out_dir = PlotCallbackGeneric._get_out_dir(trainer, key)
