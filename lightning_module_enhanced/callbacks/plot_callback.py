@@ -27,7 +27,7 @@ class PlotCallbackGeneric(Callback):
         if batch_idx != 0:
             return
         out_dir = PlotCallbackGeneric._get_out_dir(trainer, key)
-        if len(trainer.loggers) is None:
+        if len(trainer.loggers) == 0:
             logger.warning(f"No lightning logger found. Not calling PlotCallbacks()")
             return
         with tr.no_grad():
