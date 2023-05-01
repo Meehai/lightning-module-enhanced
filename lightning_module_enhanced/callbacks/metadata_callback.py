@@ -66,11 +66,15 @@ class MetadataCallback(pl.Callback):
             }
 
         # using trainer.logger.log_dir will have errors for non TensorBoardLogger (at least in lightning 1.8)
-        log_dir = trainer.loggers[0].log_dir
-        self.log_dir = Path(log_dir).absolute()
-        self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.log_file_path = self.log_dir / f"{prefix}_metadata.json"
-        logger.debug(f"Metadata logger set up to '{self.log_file_path}'")
+        log_dir = None
+        if len(trainer.loggers) > 0:
+            log_dir = trainer.loggers[0].log_dir
+            self.log_dir = Path(log_dir).absolute()
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            self.log_file_path = self.log_dir / f"{prefix}_metadata.json"
+            logger.debug(f"Metadata logger set up to '{self.log_file_path}'")
+        else:
+            logger.warning("No logger provided to Trainer. Metadata will not be stored on disk!")
 
         self._log_model_summary(pl_module)
         # default metadata
@@ -155,6 +159,8 @@ class MetadataCallback(pl.Callback):
     def save(self):
         """Saves the file on disk"""
         # Force epoch metrics to be at the end for viewing purposes.
+        if self.log_file_path is None:
+            return
         metadata = {k: v for k, v in self.metadata.items() if k != "epoch_metrics"}
         metadata["epoch_metrics"] = self.metadata["epoch_metrics"]
         with open(self.log_file_path, "w", encoding="utf8") as fp:
