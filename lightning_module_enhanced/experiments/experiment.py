@@ -7,8 +7,8 @@ from pathlib import Path
 import torch as tr
 import pandas as pd
 import numpy as np
+from lightning_fabric.utilities.seed import seed_everything
 from pytorch_lightning import Trainer, LightningModule
-from pytorch_lightning.utilities.seed import seed_everything
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.utils.data import DataLoader, Dataset

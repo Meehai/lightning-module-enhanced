@@ -87,4 +87,4 @@ def test_fit_twice_from_ckpt():
 
 
 if __name__ == "__main__":
-    test_fit_twice()
+    test_fit_twice_with_validation()

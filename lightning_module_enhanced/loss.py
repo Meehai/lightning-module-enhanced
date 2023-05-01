@@ -11,11 +11,20 @@ def batch_weighted_ce(y: tr.Tensor, gt: tr.Tensor, reduction: str = "mean", **kw
     number is in the same range as F.ce(). F.ce() can be thought as F.ce(y, gt, tr.ones(C)). Without doing that,
     we end up with F.ce(y, gt, tr.ones(C)/C). We also subtract from C the number of classes with 0 values in the batch
     """
+    assert gt.dtype in (tr.long, tr.float), f"GT must be float or index tesor (long). Got: {gt.dtype}"
+    assert y.dtype == tr.float, f"Predictions must only be float. Got: {y.dtype}"
     C = y.shape[-1]
-    assert C > 1, "At least two classes required for cross entropy"
+    assert C > 1, f"At least two classes required for cross entropy. Got: {C}. y: {y.shape}. gt: {gt.shape}"
+    if gt.dtype == tr.long:
+        sum_classes = tr.zeros(C, dtype=tr.long)
+        gt_flat = gt.reshape(-1)
+        ix, counts = gt.unique(return_counts=True)
+        sum_classes[ix] = counts
+    else:
+        gt_flat = gt.reshape(-1, C)
+        sum_classes = gt_flat.sum(dim=0)
+
     y_flat = y.reshape(-1, C)
-    gt_flat = gt.reshape(-1, C)
-    sum_classes = gt_flat.sum(dim=0)
     n_invalid = (sum_classes == 0).sum()
     denom = (1 / sum_classes).nan_to_num(0, 0, 0)
     batch_weights = denom / denom.sum()
