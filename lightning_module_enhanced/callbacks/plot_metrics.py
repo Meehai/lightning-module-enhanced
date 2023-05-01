@@ -2,6 +2,7 @@
 from typing import Dict, List, Any
 from overrides import overrides
 from pytorch_lightning.callbacks import Callback
+import pytorch_lightning as pl
 import matplotlib.pyplot as plt
 import numpy as np
 from ..logger import logger
@@ -12,7 +13,7 @@ class PlotMetrics(Callback):
         self.history: Dict[str, List[float]] = None
 
     # pylint: disable=protected-access
-    def _plot_best_dot(self, ax: plt.Axes, pl_module, metric_name):
+    def _plot_best_dot(self, ax: plt.Axes, pl_module: "CoreModule", metric_name: str):
         """Plot the dot. We require to know if the metric is max or min typed."""
         metric = pl_module.metrics[metric_name]
         metric_history = self.history[metric_name]
@@ -22,7 +23,7 @@ class PlotMetrics(Callback):
         ax.annotate(f"Epoch {metric_x + 1}\nMax {metric_y:.2f}", xy=(metric_x + 1, metric_y))
         ax.plot([metric_x + 1], [metric_y], "o")
 
-    def _do_plot(self, pl_module, metric_name: str, out_file: str):
+    def _do_plot(self, pl_module: "CoreModule", metric_name: str, out_file: str):
         """Plot the figure with the metric"""
         fig = plt.figure()
         ax = fig.gca()
@@ -39,24 +40,27 @@ class PlotMetrics(Callback):
         plt.close(fig)
 
     @overrides
-    def on_fit_start(self, trainer, pl_module) -> None:
+    def on_fit_start(self, trainer: "pl.Trainer", pl_module: "CoreModule") -> None:
         self.history = None
 
     @overrides
-    def on_train_epoch_end(self, trainer, pl_module):
-        relevant_metrics = {k: v for k, v in trainer.logged_metrics.items()
-                            if not (k.endswith("_epoch") or k.endswith("_step"))}
-        non_val_metrics = list(filter(lambda name: not name.startswith("val_"), relevant_metrics.keys()))
+    def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: "CoreModule"):
+        assert (trainer.current_epoch == 0 and self.history is None) or (self.history is not None)
         if self.history is None:
-            self.history = {metric: {"train": [], "val": []} for metric in non_val_metrics}
+            self.history = {metric_name: {"train": [], "val": []} for metric_name in pl_module.metrics.keys()}
 
-        for metric_name in non_val_metrics:
+        for metric_name in pl_module.metrics.keys():
             if metric_name not in self.history:
                 logger.warning(f"Metric '{metric_name}' not in original metrics, probably added afterwards. Skipping")
                 continue
-            self.history[metric_name]["train"].append(relevant_metrics[metric_name].item())
-            val_number = relevant_metrics[f"val_{metric_name}"].item() if trainer.enable_validation else None
-            self.history[metric_name]["val"].append(val_number)
+            metric_score = pl_module._prefixed_metrics[""][metric_name].epoch_result_reduced(None)
+            if metric_score is None:
+                logger.debug2(f"Metric '{metric_name}' cannot be reduced to a single number. Skipping")
+                continue
+            self.history[metric_name]["train"].append(metric_score.item())
+            if trainer.enable_validation:
+                val_metric_score = pl_module._prefixed_metrics["val_"][f"val_{metric_name}"].epoch_result_reduced(None)
+                self.history[metric_name]["val"].append(val_metric_score.item())
 
             out_file = f"{trainer.loggers[0].log_dir}/{metric_name}.png"
             self._do_plot(pl_module, metric_name, out_file)

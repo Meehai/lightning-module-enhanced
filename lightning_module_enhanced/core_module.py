@@ -115,7 +115,6 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         if self.trainer.enable_validation:
             # If we use a validation set, clone all the metrics, so that the statistics don't intefere with each other
             self._prefixed_metrics["val_"] = CoreModule._clone_all_metrics_with_prefix(self.metrics, prefix="val_")
-        return super().on_fit_start()
 
     @overrides
     def on_fit_end(self):
@@ -126,7 +125,6 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         self._prefixed_metrics[""] = self.metrics
         if self.criterion_fn is None:
             raise ValueError("Criterion must be set before calling trainer.test()")
-        return super().on_test_start()
 
     @overrides
     def on_test_end(self):
@@ -135,8 +133,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
     @overrides
     def training_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs) -> Union[tr.Tensor, Dict[str, Any]]:
         """Training step: returns batch training loss and metrics."""
-        res = self.model_algorithm(train_batch)
-        return res
+        return self.model_algorithm(train_batch)
 
     @overrides
     def validation_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs):
@@ -210,7 +207,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         return y_tr
 
     def reset_parameters(self, seed: int = None):
-        """Resets the parameters of the base model"""
+        """Resets the parameters of the base model. Applied recursively as much as possible."""
         if seed is not None:
             seed_everything(seed)
         num_params = len(tuple(self.parameters()))
@@ -242,17 +239,17 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
     def load_state_dict(self, state_dict: Dict[str, Any], strict: bool = True):
         return self.base_model.load_state_dict(state_dict, strict)
 
-    def model_algorithm(self, train_batch: Dict, prefix: str = "") -> Dict[str, tr.Tensor]:
+    def model_algorithm(self, train_batch: Dict, prefix: str = "") -> tr.Tensor:
         """Generic step for computing the forward pass, loss and metrics. Simple feed-forward algorithm by default."""
         y = self.forward(train_batch["data"])
         gt = to_device(to_tensor(train_batch["labels"]), self.device)
-        outputs = self._get_batch_metrics(y, gt, prefix)
-        return outputs
+        loss = self._compute_batch_metrics(y, gt, prefix)
+        return loss
 
     # Internal methods
-    def _get_batch_metrics(self, y, gt, prefix: str) -> Dict[str, tr.Tensor]:
+    def _compute_batch_metrics(self, y, gt, prefix: str) -> tr.Tensor:
         """Get batch-level metrics"""
-        outputs = {}
+        loss = None
         for metric_name in self.logged_metrics:
             prefixed_metric_name = f"{prefix}{metric_name}"
             metric_fn: CoreMetric = self._prefixed_metrics[prefix][prefixed_metric_name]
@@ -261,10 +258,12 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
             with state():
                 metric_output: tr.Tensor = metric_fn.forward(y, gt)
             metric_fn.batch_update(metric_output)
-            outputs[prefixed_metric_name] = metric_output
+            if metric_name == "loss":
+                loss = metric_output
             # Don't use any self.log() here. We don't really care about intermediate batch results, only epoch results,
             #  which are handled in self._run_and_log_metrics_at_epoch_end(metrics).
-        return outputs
+            # Lightning 2.0 also removed the return here. We store batch results in the CoreMetric object
+        return loss
 
     def _run_and_log_metrics_at_epoch_end(self, metrics_to_log: List[str]):
         """Runs and logs a given list of logged metrics. Assume they all exist in self.metrics"""
