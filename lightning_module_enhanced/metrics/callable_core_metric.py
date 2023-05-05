@@ -63,7 +63,7 @@ class CallableCoreMetric(CoreMetric):
         self.batch_count *= 0
 
     def __str__(self):
-        return f"CallableCoreMetric {self.metric_fn}"
+        return f"CallableCoreMetric"
 
     def __repr__(self):
         return str(self)
