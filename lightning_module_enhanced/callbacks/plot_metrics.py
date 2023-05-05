@@ -57,13 +57,13 @@ class PlotMetrics(Callback):
             if metric_name not in self.history:
                 logger.warning(f"Metric '{metric_name}' not in original metrics, probably added afterwards. Skipping")
                 continue
-            metric_score = pl_module._prefixed_metrics[""][metric_name].epoch_result_reduced(None)
+            metric_score = pl_module._active_run_metrics[""][metric_name].epoch_result_reduced(None)
             if metric_score is None:
                 logger.debug2(f"Metric '{metric_name}' cannot be reduced to a single number. Skipping")
                 continue
             self.history[metric_name]["train"].append(metric_score.item())
             if trainer.enable_validation:
-                val_metric_score = pl_module._prefixed_metrics["val_"][f"val_{metric_name}"].epoch_result_reduced(None)
+                val_metric_score = pl_module._active_run_metrics["val_"][metric_name].epoch_result_reduced(None)
                 self.history[metric_name]["val"].append(val_metric_score.item())
 
             out_file = f"{trainer.loggers[0].log_dir}/{metric_name}.png"

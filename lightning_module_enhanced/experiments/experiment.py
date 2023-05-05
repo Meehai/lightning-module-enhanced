@@ -169,11 +169,13 @@ class Experiment(ABC):
         self.trainer.fit(iter_model, dataloader, val_dataloaders, **self._fit_params)
 
         # Test on best ckpt and validation
-        ckpt_path = self.trainer.checkpoint_callback.best_model_path
-        res = self.trainer.test(iter_model, val_dataloaders, ckpt_path=ckpt_path)[0]
+        # We always save at least 2 model checkpoints: [0] = last, [1] = (val_)loss. Others can be added via
+        # model.checkpoint_monitors = [...]
+        model_ckpt: ModelCheckpoint = self.trainer.checkpoint_callbacks[1]
+        res = self.trainer.test(iter_model, val_dataloaders, ckpt_path=model_ckpt.best_model_path)[0]
         # Save this experiment's results
         self.fit_metrics[eid] = res
-        self.checkpoint_callbacks[eid] = deepcopy(self.trainer.checkpoint_callback)
+        self.checkpoint_callbacks[eid] = deepcopy(model_ckpt)
 
         # Cleanup. Remove the model, restore old trainer and return the experiment's metrics
         del iter_model

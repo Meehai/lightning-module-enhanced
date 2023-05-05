@@ -30,3 +30,6 @@ def test_callbacks_bad_1():
         pass
     except AssertionError:
         pass
+
+if __name__ == "__main__":
+    test_callbacks_good_1()

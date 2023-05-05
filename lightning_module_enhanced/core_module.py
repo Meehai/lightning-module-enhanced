@@ -7,7 +7,8 @@ from overrides import overrides
 import torch as tr
 import pytorch_lightning as pl
 from lightning_fabric.utilities.seed import seed_everything
-from torch import nn
+from lightning_fabric.utilities.exceptions import MisconfigurationException
+from torch import nn, optim
 from torchinfo import summary, ModelStatistics
 
 from .trainable_module import TrainableModuleMixin
@@ -33,7 +34,6 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
             scheduler_dict: The oprimizer scheduler used for training runs, as well as the monitored metric
             criterion_fn: The criterion function used for training runs
             metrics: The dictionary (Name => CoreMetric) of all implemented metrics for this module
-            logged_metrics: The subset of metrics used for this run (train or test)
             callbacks: The list of callbacks for this module
             summary: A summary including parameters, layers and tensor shapes of this module
             metadata_callback: The metadata logger for this run
@@ -47,8 +47,8 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         assert isinstance(base_model, nn.Module), f"Expected a nn.Module, got {type(base_model)}"
         super().__init__()
         self.base_model = base_model
-        self._prefixed_metrics: Dict[str, Dict[str, CoreMetric]] = {}
-        self._logged_metrics: List[str] = None
+        self.automatic_optimization = False
+        self._active_run_metrics: Dict[str, Dict[str, CoreMetric]] = {}
         self._summary: ModelStatistics = None
 
         # Store initial hyperparameters in the pl_module and the initial shapes/model name in metadata logger
@@ -64,17 +64,17 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
     @property
     def num_params(self) -> int:
         """Returns the total number of parameters of this module"""
-        return self.summary.total_params
+        return self.summary().total_params
 
     @property
     def num_trainable_params(self) -> int:
         """Returns the trainable number of parameters of this module"""
-        return self.summary.trainable_params
+        return self.summary().trainable_params
 
-    @property
     def summary(self, **kwargs) -> ModelStatistics:
         """Prints the summary (layers, num params, size in MB), with the help of torchinfo module."""
-        self._summary = summary(self.base_model, verbose=0, **kwargs) if self._summary is None else self._summary
+        if self._summary is None:
+            self._summary = summary(self.base_model, verbose=0, **kwargs)
         return self._summary
 
     @property
@@ -91,59 +91,50 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         # Reset summary such that it is recomputted if necessary (like for counting num trainable params)
         self._summary = None
 
-    @property
-    def logged_metrics(self) -> List[str]:
-        """Return the list of logged metrics out of all the defined ones"""
-        if self._logged_metrics is None:
-            logger.debug2("Logged metrics is not set, defaulting to all metrics")
-            return list(self.metrics.keys())
-        return self._logged_metrics
-
-    @logged_metrics.setter
-    def logged_metrics(self, logged_metrics: List[str]):
-        logger.debug(f"Setting the logged metrics to {logged_metrics}")
-        diff = set(logged_metrics).difference(self.metrics.keys())
-        assert len(diff) == 0, f"Metrics {diff} are not in set metrics: {self.metrics.keys()}"
-        self._logged_metrics = logged_metrics
-
     # Overrides on top of the standard pytorch lightning module
     @overrides
     def on_fit_start(self) -> None:
-        if self.criterion_fn is None:
-            raise ValueError("Criterion must be set before calling trainer.fit()")
-        self._prefixed_metrics[""] = self.metrics
+        self._active_run_metrics[""] = self.metrics
         if self.trainer.enable_validation:
-            # If we use a validation set, clone all the metrics, so that the statistics don't intefere with each other
-            self._prefixed_metrics["val_"] = CoreModule._clone_all_metrics_with_prefix(self.metrics, prefix="val_")
+            cloned_metrics = deepcopy(self.metrics)
+            self._active_run_metrics["val_"] = cloned_metrics
+        self._reset_all_active_metrics()
 
     @overrides
     def on_fit_end(self):
-        self._prefixed_metrics = {}
+        self._active_run_metrics = {}
 
     @overrides
     def on_test_start(self) -> None:
-        self._prefixed_metrics[""] = self.metrics
-        if self.criterion_fn is None:
-            raise ValueError("Criterion must be set before calling trainer.test()")
+        self._active_run_metrics[""] = self.metrics
 
     @overrides
     def on_test_end(self):
-        self._prefixed_metrics = {}
+        self._active_run_metrics = {}
 
     @overrides
     def training_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs) -> Union[tr.Tensor, Dict[str, Any]]:
         """Training step: returns batch training loss and metrics."""
-        return self.model_algorithm(train_batch)
+        # Warning: if not using lightning's self.optimizers(), and rather trying to user our self.optimizer, will
+        # result in checkpoints not being saved. Don't ask me why.
+        self.optimizers().zero_grad()
+        train_metrics = self.model_algorithm(train_batch)
+        self._update_metrics_at_batch_end(train_metrics)
+        # Manual optimization like real men. We disable automatic_optimization in the constructor.
+        self.manual_backward(train_metrics["loss"])
+        self.optimizers().step()
 
     @overrides
     def validation_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs):
         """Validation step: returns batch validation loss and metrics."""
-        return self.model_algorithm(train_batch, prefix="val_")
+        val_metrics = self.model_algorithm(train_batch, prefix="val_")
+        self._update_metrics_at_batch_end(val_metrics, prefix="val_")
 
     @overrides
     def test_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs):
         """Testing step: returns batch test loss and metrics. No prefix."""
-        return self.model_algorithm(train_batch)
+        test_metrics =  self.model_algorithm(train_batch)
+        self._update_metrics_at_batch_end(test_metrics)
 
     @overrides
     def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
@@ -157,18 +148,34 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
     def on_train_epoch_end(self) -> None:
         """Computes epoch average train loss and metrics for logging."""
         # If validation is enabled (for train loops), add "val_" metrics for all logged metrics.
-        self._run_and_log_metrics_at_epoch_end(self.logged_metrics)
+        self._run_and_log_metrics_at_epoch_end(self.metrics.keys())
+        self._reset_all_active_metrics()
+        if self.scheduler_dict is not None:
+            scheduler: optim.lr_scheduler.LRScheduler = self.scheduler_dict["scheduler"]
+            monitor: str = self.scheduler_dict["monitor"]
+            # on_train_epoch_end.val_loss
+            # TODO: perhaps find some better way to do this
+            # pylint: disable=protected-access
+            try:
+                epoch_result: tr.Tensor = self._trainer._results[f"on_train_epoch_end.{monitor}"].value
+            except KeyError:
+                raise MisconfigurationException
+            # TODO: this assumes that it's reduce lr on plateau and not something else.
+            scheduler.step(epoch_result)
 
     @overrides
     def on_test_epoch_end(self):
-        self._run_and_log_metrics_at_epoch_end(self.logged_metrics)
+        self._run_and_log_metrics_at_epoch_end(self.metrics.keys())
+        self._reset_all_active_metrics()
 
+    # TODO: perhaps refactor this since we don't need to have a dict like this with automatic optimization turned off
+    # main idea would be to return just the optimizer here, and no scheduler dict (throws warning now) and have
+    # a self.scheduler that does this behind the scenes
     @overrides
     def configure_optimizers(self) -> Dict:
         """Configure the optimizer/scheduler/monitor."""
         if self.optimizer is None:
-            raise ValueError("No optimizer has been set. Use model.optimizer=optim.XXX or add an optimizer "
-                             "property in base model")
+            raise ValueError("No optimizer. Use model.optimizer=optim.XXX or add an optimizer property in base model")
 
         if isinstance(self.optimizer, list):
             res = [{"optimizer": o} for o in self.optimizer]
@@ -239,64 +246,51 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
     def load_state_dict(self, state_dict: Dict[str, Any], strict: bool = True):
         return self.base_model.load_state_dict(state_dict, strict)
 
-    def model_algorithm(self, train_batch: Dict, prefix: str = "") -> tr.Tensor:
-        """Generic step for computing the forward pass, loss and metrics. Simple feed-forward algorithm by default."""
+    def model_algorithm(self, train_batch: Dict, prefix: str = "") -> Dict[str, tr.Tensor]:
+        """
+        Generic step for computing the forward pass, loss and metrics. Simple feed-forward algorithm by default.
+        Must return a dict of type: {metric_name: metric_tensor} for all metrics.
+        'loss' must be in there as well unless you update `training_step` as well in your module.
+        """
         y = self.forward(train_batch["data"])
         gt = to_device(to_tensor(train_batch["labels"]), self.device)
-        loss = self._compute_batch_metrics(y, gt, prefix)
-        return loss
 
-    # Internal methods
-    def _compute_batch_metrics(self, y, gt, prefix: str) -> tr.Tensor:
-        """Get batch-level metrics"""
-        loss = None
-        for metric_name in self.logged_metrics:
-            prefixed_metric_name = f"{prefix}{metric_name}"
-            metric_fn: CoreMetric = self._prefixed_metrics[prefix][prefixed_metric_name]
+        # pass through all the metrics of this batch and call forward. This updates the metric state for this batch
+        metrics = {}
+        for metric_name, metric_fn in self._active_run_metrics[prefix].items():
+            metric_fn: CoreMetric = self._active_run_metrics[prefix][metric_name]
             # Call the metric and update its state
-            state = tr.enable_grad if metric_fn.requires_grad else tr.no_grad
-            with state():
-                metric_output: tr.Tensor = metric_fn.forward(y, gt)
-            metric_fn.batch_update(metric_output)
-            if metric_name == "loss":
-                loss = metric_output
-            # Don't use any self.log() here. We don't really care about intermediate batch results, only epoch results,
-            #  which are handled in self._run_and_log_metrics_at_epoch_end(metrics).
-            # Lightning 2.0 also removed the return here. We store batch results in the CoreMetric object
-        return loss
+            with (tr.enable_grad if metric_fn.requires_grad else tr.no_grad)():
+                metrics[metric_name]: tr.Tensor = metric_fn.forward(y, gt)
+        return metrics
+
+    def _update_metrics_at_batch_end(self, batch_results: Dict[str, tr.Tensor], prefix: str = ""):
+        if set(batch_results.keys()) != set(self.metrics.keys()):
+            raise ValueError(f"Not all expected metrics ({self.metrics.keys()}) were computed "
+                             f"this batch: {batch_results.keys()}")
+
+        for metric_nane, metric in self._active_run_metrics[prefix].items():
+            metric.batch_update(batch_results[metric_nane])
+
+    def _reset_all_active_metrics(self):
+        for prefix in self._active_run_metrics.keys():
+            for metric in self._active_run_metrics[prefix].values():
+                metric.reset()
 
     def _run_and_log_metrics_at_epoch_end(self, metrics_to_log: List[str]):
         """Runs and logs a given list of logged metrics. Assume they all exist in self.metrics"""
-        all_prefixes = self._prefixed_metrics.keys()
+        all_prefixes = self._active_run_metrics.keys()
         for metric_name in metrics_to_log:
             for prefix in all_prefixes:
-                prefixed_metric = f"{prefix}{metric_name}"
-                metric_fn: CoreMetric = self._prefixed_metrics[prefix][prefixed_metric]
+                metric_fn: CoreMetric = self._active_run_metrics[prefix][metric_name]
                 # Get the metric's epoch result
                 metric_epoch_result = metric_fn.epoch_result()
                 # Log the metric at the end of the epoch. Only log on pbar the val_loss, loss is tracked by default
-                prog_bar = metric_name == "val_loss"
+                prog_bar = (metric_name == "loss" and prefix == "val_")
 
                 value_reduced = metric_fn.epoch_result_reduced(metric_epoch_result)
                 if value_reduced is not None:
-                    self.log(prefixed_metric, value_reduced, prog_bar=prog_bar, on_epoch=True)
+                    self.log(f"{prefix}{metric_name}", value_reduced, prog_bar=prog_bar, on_epoch=True)
                 # Call the metadata callback for the full result, since it can handle any sort of metrics
-                self.metadata_callback.save_epoch_metric(prefixed_metric, metric_epoch_result,
-                                                        self.trainer.current_epoch)
-                # Reset the metric after storing this epoch's value
-                metric_fn.reset()
-
-    @staticmethod
-    def _clone_all_metrics_with_prefix(metrics: Dict[str, CoreMetric], prefix: str) -> Dict[str, CoreMetric]:
-        """Clones all the given metrics, by ading a prefix to the name"""
-        assert len(prefix) > 0 and prefix[-1] == "_", "Prefix must be of format 'XXX_'"
-        new_metrics = {}
-        for metric_name, metric_fn in metrics.items():
-            if metric_name.startswith(prefix):
-                logger.warning(f"This may be a bug, since metric '{metric_name}' already has prefix '{prefix}'")
-                continue
-            cloned_metric: CoreMetric = deepcopy(metric_fn)
-            cloned_metric.reset()
-            new_metrics[f"{prefix}{metric_name}"] = cloned_metric
-
-        return new_metrics
+                self.metadata_callback.save_epoch_metric(metric_name, metric_epoch_result,
+                                                         self.trainer.current_epoch, prefix)

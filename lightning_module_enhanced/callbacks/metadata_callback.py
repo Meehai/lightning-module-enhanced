@@ -1,5 +1,5 @@
 """Metadata Callback module"""
-from typing import Dict, Any
+from typing import Dict, Any, List
 from pathlib import Path
 from datetime import datetime
 import json
@@ -8,7 +8,7 @@ import torch as tr
 from overrides import overrides
 from torch.optim import Optimizer
 from pytorch_lightning import LightningModule, Trainer
-from pytorch_lightning.callbacks import EarlyStopping
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
 from ..logger import logger
 
@@ -42,13 +42,15 @@ class MetadataCallback(pl.Callback):
         """Adds a key->value pair to the current metadata"""
         self.metadata[key] = value
 
-    def save_epoch_metric(self, key: str, value: tr.Tensor, epoch: int):
+    def save_epoch_metric(self, key: str, value: tr.Tensor, epoch: int, prefix: str):
         """Adds a epoch metric to the current metadata"""
-        if key not in self.metadata["epoch_metrics"]:
-            self.metadata["epoch_metrics"][key] = {}
-        assert epoch not in self.metadata["epoch_metrics"][key], f"Cannot overwrite existing epoch metric '{key}'"
-        # Apply .tolist(). Every metric should be able to be converted as list, such that it can be stored in a JSON.
-        self.metadata["epoch_metrics"][key][epoch] = value.tolist()
+        # test and train get the unprefixed key.
+        prefixed_key = f"{prefix}{key}"
+        if prefixed_key not in self.metadata["epoch_metrics"]:
+            self.metadata["epoch_metrics"][prefixed_key] = {}
+        if epoch in self.metadata["epoch_metrics"][prefixed_key]:
+            raise ValueError(f"Metric '{prefixed_key}' at epoch {epoch} already exists in metadata")
+        self.metadata["epoch_metrics"][prefixed_key][epoch] = value.tolist()
 
     def _setup(self, trainer: pl.Trainer, pl_module: pl.LightningModule, prefix: str):
         """Called to set the log dir based on the first logger for train and test modes"""
@@ -136,21 +138,8 @@ class MetadataCallback(pl.Callback):
         self.save()
 
     def on_train_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
-        best_checkpoint = Path(trainer.checkpoint_callback.best_model_path)
-        if not (best_checkpoint.exists() and best_checkpoint.is_file()):
-            logger.warning("No best model path exists. Probably trained without validation set. Using last.")
-            best_checkpoint = Path(trainer.checkpoint_callback.last_model_path)
-
-        # Store the best model dict key to have metadata about that particular checkpoint as well
-        assert best_checkpoint.exists() and best_checkpoint.is_file(), "Best checkpoint does not exist."
-        best_model_pkl = tr.load(best_checkpoint, map_location="cpu")
-        best_model_dict = {
-            "path": str(best_checkpoint),
-            "hyper_parameters": best_model_pkl["hyper_parameters"],
-            "optimizers_lr": [o["param_groups"][0]["lr"] for o in best_model_pkl["optimizer_states"]]
-        }
-        self._log_scheduler_train_end(pl_module, best_model_dict)
-        self.log_metadata("best_model", best_model_dict)
+        self._log_best_model_epoch_end(trainer, pl_module)
+        self._log_scheduler_train_end(pl_module)
         self._on_end(trainer, pl_module, "fit")
 
     def on_test_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
@@ -206,7 +195,7 @@ class MetadataCallback(pl.Callback):
             scheduler_metadata["patience"] = scheduler.patience
         self.log_metadata("scheduler", scheduler_metadata)
 
-    def _log_scheduler_train_end(self, pl_module: LightningModule, best_model_dict: Dict):
+    def _log_scheduler_train_end(self, pl_module: LightningModule):
         """updates bset model dict with the number of learning rate reduces done by the scheduler during training"""
         if not hasattr(pl_module, "scheduler_dict"):
             return
@@ -214,6 +203,7 @@ class MetadataCallback(pl.Callback):
             return
         if not hasattr(pl_module.scheduler_dict["scheduler"], "factor"):
             return
+        best_model_dict = self.metadata["best_model"]
         first_lr = self.metadata["optimizer"][0]["starting_lr"][0]
         last_lr = best_model_dict["optimizers_lr"][0]
         factor = pl_module.scheduler_dict["scheduler"].factor
@@ -249,11 +239,33 @@ class MetadataCallback(pl.Callback):
         res["layer_summary"] = layer_summary
         self.log_metadata("model_parameters", res)
 
+    def _get_monitored_model_checkpoint(self, pl_module: LightningModule) -> ModelCheckpoint:
+        monitors: List[str] = pl_module.checkpoint_monitors
+        assert len(monitors) > 0, "At least one monitor must be present."
+        prefix = "val_" if pl_module.trainer.enable_validation else ""
+        cb = [cb for cb in pl_module.trainer.checkpoint_callbacks if cb.monitor == f"{prefix}{monitors[0]}"]
+        assert len(cb) == 1, f"Monitor '{monitors[0]}' not found in model checkpoints: {monitors}"
+        return cb[0]
+
     def _log_model_checkpoint_fit_start(self, pl_module: LightningModule):
+        cb = self._get_monitored_model_checkpoint(pl_module)
         # model checkpoint metadata at fit start
-        model_checkpoint_dict = {"monitor": pl_module.trainer.checkpoint_callback.monitor,
-                                 "mode": pl_module.trainer.checkpoint_callback.mode}
+        model_checkpoint_dict = {"monitors": cb.monitor, "mode": cb.mode}
         self.log_metadata("model_checkpoint", model_checkpoint_dict)
+
+    def _log_best_model_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
+        # find best and last modelcheckpoint callbacks. best will be None if we don't use a validation set loader.
+        cb = self._get_monitored_model_checkpoint(pl_module)
+        ckpt_path = Path(cb.best_model_path)
+        assert ckpt_path.exists() and ckpt_path.is_file(), "Best checkpoint does not exist."
+
+        best_model_pkl = tr.load(ckpt_path, map_location="cpu")
+        best_model_dict = {
+            "path": str(ckpt_path),
+            "hyper_parameters": best_model_pkl["hyper_parameters"],
+            "optimizers_lr": [o["param_groups"][0]["lr"] for o in best_model_pkl["optimizer_states"]]
+        }
+        self.log_metadata("best_model", best_model_dict)
 
     def __str__(self):
         return f"Metadata Callback. Log dir: '{self.log_dir}'"

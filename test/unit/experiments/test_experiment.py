@@ -106,4 +106,4 @@ def test_experiment_3():
 
 
 if __name__ == "__main__":
-    test_experiment_2()
+    test_experiment_3()

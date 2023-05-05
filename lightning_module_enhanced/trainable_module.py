@@ -7,9 +7,11 @@ from typing import Dict, Union, Any, Callable, List, Tuple, Type
 from torch import optim, nn
 import torch as tr
 import pytorch_lightning as pl
+from pytorch_lightning.callbacks import ModelCheckpoint
 from .metrics import CoreMetric, CallableCoreMetric
 from .callbacks import MetadataCallback
 from .logger import logger
+from .utils import parsed_str_type
 
 OptimizerType = Union[optim.Optimizer, List[optim.Optimizer]]
 SchedulerType = Union[Dict, List[Dict]]
@@ -48,6 +50,11 @@ class TrainableModule(nn.Module, ABC):
     def scheduler_dict(self) -> Dict:
         """Returns the scheduler dict"""
 
+    @property
+    @abstractmethod
+    def checkpoint_monitors(self) -> List[str]:
+        """A subset of the metrics that are used for model checkpointing"""
+
 
 # pylint: disable=abstract-method
 class TrainableModuleMixin(TrainableModule):
@@ -60,14 +67,14 @@ class TrainableModuleMixin(TrainableModule):
         self._criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor] = None
         self._metrics: Dict[str, CoreMetric] = {}
         # The default callbacks that are singletons. Cannot be overwritten and only one instance must exist.
-        self._default_callbacks = [MetadataCallback()]
         self._callbacks: List[pl.Callback] = []
-        self._metadata_callback = self._default_callbacks[0]
+        self.metadata_callback = MetadataCallback()
+        self._checkpoint_monitors = ["loss"]
 
     @property
-    def metadata_callback(self):
-        """Returns the metadata callback of this module"""
-        return self._metadata_callback
+    def default_callbacks(self):
+        """Returns the list of default callbacks"""
+        return [self.metadata_callback]
 
     # Required for training
     @property
@@ -77,9 +84,12 @@ class TrainableModuleMixin(TrainableModule):
             return self.base_model.criterion_fn
         return self._criterion_fn
 
+    # TODO: criterion_fn shouldn't update metrics, but rather metrics should be *created* based on provided metrics and
+    # built-in (?) or required (?) metrics, like loss_fn (in gan there are 3: loss_fn, g_loss and d_loss) and so on.
+    # In general a setter shouldn't set other properties as well.
     @criterion_fn.setter
     def criterion_fn(self, criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor]):
-        assert not isinstance(self.base_model, TrainableModule)
+        assert not isinstance(self.base_model, TrainableModule), "Nested trainable modules"
         assert isinstance(criterion_fn, Callable), f"Got '{criterion_fn}'"
         logger.debug(f"Setting criterion to '{criterion_fn}'")
         self._criterion_fn = CallableCoreMetric(criterion_fn, higher_is_better=False, requires_grad=True)
@@ -90,36 +100,51 @@ class TrainableModuleMixin(TrainableModule):
         """Returns the optimizer"""
         if isinstance(self.base_model, TrainableModule):
             return self.base_model.optimizer
-
-        res = self._optimizer
-        if res is not None and len(res) == 1:
-            return res[0]
-        return res
+        return self._optimizer
 
     @optimizer.setter
     def optimizer(self, optimizer: OptimizerType):
-        assert not isinstance(self.base_model, TrainableModule)
-        if isinstance(optimizer, optim.Optimizer):
-            optimizer = [optimizer]
-        for o in optimizer:
-            assert isinstance(o, optim.Optimizer), f"Got {o} (type {type(o)})"
-        logger.debug(f"Set the optimizer to {optimizer}")
+        assert not isinstance(self.base_model, TrainableModule), "Nested trainable modules"
+        assert isinstance(optimizer, (optim.Optimizer, List)), type(optimizer)
+        if isinstance(optimizer, list):
+            for o in optimizer:
+                assert isinstance(o, optim.Optimizer), f"Got {o} (type {type(o)})"
+            logger.debug(f"Set the optimizer to {[parsed_str_type(x) for x in optimizer]}")
+        else:
+            logger.debug(f"Set the optimizer to {parsed_str_type(optimizer)}")
         self._optimizer = optimizer
 
     @property
     def callbacks(self) -> List[pl.Callback]:
         """Gets the callbacks"""
         if isinstance(self.base_model, TrainableModule):
-            return [*self._default_callbacks, *self.base_model.callbacks]
-        return [*self._default_callbacks, *self._callbacks]
+            return [*self.default_callbacks, *self.base_model.callbacks]
+
+        # trainer not attached yet, so no model checkpoints are needed.
+        try:
+            _ = self.trainer
+        except RuntimeError:
+            return [*self.default_callbacks, *self._callbacks]
+
+        prefix = "val_" if self.trainer.enable_validation else ""
+        model_ckpt_cbs = [ModelCheckpoint(monitor=None, filename="last", save_last=True)]
+        for monitor in self.checkpoint_monitors:
+            try:
+                mode = "max" if self.metrics[monitor].higher_is_better else "min"
+            # not my best code
+            except KeyError:
+                raise ValueError
+            filename = "{epoch}-{" + prefix + monitor + ":.2f}"
+            model_ckpt_cbs.append(ModelCheckpoint(monitor=f"{prefix}{monitor}", mode=mode, filename=filename))
+        return [*self.default_callbacks, *self._callbacks, *model_ckpt_cbs]
 
     @callbacks.setter
     def callbacks(self, callbacks: List[pl.Callback]):
         """Sets the callbacks + the default metadata callback"""
-        assert not isinstance(self.base_model, TrainableModule)
+        assert not isinstance(self.base_model, TrainableModule), "Nested trainable modules"
         res = []
         for callback in callbacks:
-            if callback in self._default_callbacks:
+            if callback in self.default_callbacks:
                 continue
             res.append(callback)
         new_res = list(set(res))
@@ -128,7 +153,7 @@ class TrainableModuleMixin(TrainableModule):
             logger.warning("Duplicates were found in callbacks and removed")
 
         for callback in new_res:
-            for default_callback in self._default_callbacks:
+            for default_callback in self.default_callbacks:
                 assert not isinstance(callback, type(default_callback)), f"{callbacks} vs {default_callback}"
 
         self._callbacks = new_res
@@ -142,7 +167,7 @@ class TrainableModuleMixin(TrainableModule):
 
     @metrics.setter
     def metrics(self, metrics: Dict[str, Tuple[Callable, str]]):
-        assert not isinstance(self.base_model, TrainableModule)
+        assert not isinstance(self.base_model, TrainableModule), "Nested trainable modules"
         if len(self._metrics) != 0:
             logger.debug(f"Overwriting existing metrics {list(self.metrics.keys())} to {list(metrics.keys())}")
         self._metrics = {}
@@ -163,15 +188,9 @@ class TrainableModuleMixin(TrainableModule):
                 metric_fn, min_or_max = metric_fn
                 assert not isinstance(metric_fn, CoreMetric), "Cannot use tuple syntax with metric instances"
                 assert isinstance(metric_fn, Callable), "Cannot use the tuple syntax with non-callables for metrics"
-                assert min_or_max in (
-                    "min",
-                    "max",
-                ), f"Got '{min_or_max}', expected 'min' or 'max'"
-                metric_fn = CallableCoreMetric(
-                    metric_fn,
-                    higher_is_better=(min_or_max == "max"),
-                    requires_grad=False,
-                )
+                assert min_or_max in ("min", "max"), f"Got '{min_or_max}', expected 'min' or 'max'"
+                metric_fn = CallableCoreMetric(metric_fn, higher_is_better=(min_or_max == "max"), requires_grad=False)
+
             self._metrics[metric_name] = metric_fn
         if self.criterion_fn is not None:
             self._metrics["loss"] = self.criterion_fn
@@ -182,6 +201,7 @@ class TrainableModuleMixin(TrainableModule):
         """Returns the optimizer type, instead of the optimizer itself"""
         return type(self.optimizer)
 
+    # TODO: perhaps refactor this since we don't need to have a dict like this with automatic optimization turned off
     @property
     def scheduler_dict(self) -> SchedulerType:
         """Returns the scheduler dict"""
@@ -194,8 +214,8 @@ class TrainableModuleMixin(TrainableModule):
 
     @scheduler_dict.setter
     def scheduler_dict(self, scheduler_dict: SchedulerType):
-        assert not isinstance(self.base_model, TrainableModule)
-        assert isinstance(scheduler_dict, (dict, list))
+        assert not isinstance(self.base_model, TrainableModule), "Nested trainable modules"
+        assert isinstance(scheduler_dict, (dict, list)), scheduler_dict
         if isinstance(scheduler_dict, Dict):
             scheduler_dict = [scheduler_dict]
         for i in range(len(scheduler_dict)):
@@ -203,3 +223,16 @@ class TrainableModuleMixin(TrainableModule):
             assert hasattr(scheduler_dict[i]["scheduler"], "step"), "Scheduler does not have a step method"
         logger.debug(f"Set the scheduler to {scheduler_dict}")
         self._scheduler_dict = scheduler_dict
+
+    @property
+    def checkpoint_monitors(self) -> List[str]:
+        return self._checkpoint_monitors
+
+    @checkpoint_monitors.setter
+    def checkpoint_monitors(self, checkpoint_monitors: List[str]) -> List[str]:
+        assert "loss" in checkpoint_monitors, f"'loss' must be in checkpoint monitors. Got: {checkpoint_monitors}"
+        for monitor in checkpoint_monitors:
+            if not monitor in self.metrics:
+                raise ValueError(f"Provided monitor: '{monitor}' is not in the metrics: {self.metrics}")
+        self._checkpoint_monitors = checkpoint_monitors
+        logger.debug(f"Set the checkpoint monitors to: {self._checkpoint_monitors}")

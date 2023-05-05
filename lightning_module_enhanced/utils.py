@@ -96,3 +96,7 @@ def accelerator_params_from_module(module: nn.Module) -> Dict[str, int]:
     else:
         assert False, f"Unknown device type: {device}"
     return {"accelerator": accelerator, "devices": index}
+
+def parsed_str_type(item: Any) -> str:
+    """Given an object with a type of the format: <class 'A.B.C.D'>, parse it and return 'A.B.C.D'"""
+    return str(type(item)).rsplit(".", maxsplit=1)[-1][0:-2]
