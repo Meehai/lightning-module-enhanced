@@ -69,7 +69,7 @@ def test_train_setup_scheduler_bad_2():
                       "optimizer_args": {"monitor": "val_loss"}}
     }
     TrainSetup(model, cfg)
-    # fails because no val_loss is available. We cannot make a pre-flight check because this is set up at .ft() time
+    # fails because no val_loss is available. We cannot make a pre-flight check because this is set up at .fit() time
     # and we have no val dataloader.
     try:
         Trainer(max_epochs=1).fit(model, DataLoader(Reader()))

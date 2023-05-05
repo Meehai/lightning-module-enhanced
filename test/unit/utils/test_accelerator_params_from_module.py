@@ -18,4 +18,7 @@ def test_accelerator_params_from_module_1():
     module.optimizer = optim.SGD(module.parameters(), lr=0.01)
     module.criterion_fn = lambda y, gt: ((y - gt)**2).mean()
     params = accelerator_params_from_module(module)
-    Trainer(**params, max_epochs=1).fit(module, DataLoader(Reader()))
+    Trainer(**params, max_epochs=1).fit(module, DataLoader(Reader()), DataLoader(Reader()))
+
+if __name__ == "__main__":
+    test_accelerator_params_from_module_1()

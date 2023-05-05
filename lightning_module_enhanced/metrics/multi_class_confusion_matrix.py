@@ -16,7 +16,8 @@ class MultiClassConfusionMatrix(CoreMetric):
         self.num_classes = num_classes
 
     def forward(self, y: tr.Tensor, gt: tr.Tensor) -> tr.Tensor:
-        res = multiclass_confusion_matrix(y.argmax(-1), gt.argmax(-1), num_classes=self.num_classes)
+        gt_index = gt.argmax(-1) if gt.type == tr.float else gt
+        res = multiclass_confusion_matrix(y.argmax(-1), gt_index, num_classes=self.num_classes)
         return res
 
     @overrides
