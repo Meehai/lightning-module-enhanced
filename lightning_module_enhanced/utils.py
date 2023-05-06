@@ -69,6 +69,29 @@ def to_device(data: T, device: tr.device) -> T: #pylint: disable=no-member
     logger.debug(f"Got unknown type {type(data)}. Returning as is.")
     return data
 
+def tr_detach_data(data: T) -> T:
+    """Calls detach on compounded torch data"""
+    if data is None:
+        return None
+
+    if isinstance(data, tr.Tensor):
+        return data.detach()
+
+    if isinstance(data, list):
+        return [tr_detach_data(x) for x in data]
+
+    if isinstance(data, tuple):
+        return tuple(tr_detach_data(x) for x in data)
+
+    if isinstance(data, set):
+        return {tr_detach_data(x) for x in data}
+
+    if isinstance(data, dict):
+        return {k: tr_detach_data(data[k]) for k in data}
+
+    logger.debug2(f"Got unknown type {type(data)}. Returning as is.")
+    return data
+
 def json_encode_val(value: Any) -> str:
     """Given a potentially unencodable json value (but stringable), convert to string if needed"""
     try:
