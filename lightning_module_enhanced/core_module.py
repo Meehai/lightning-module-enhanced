@@ -64,17 +64,18 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
     @property
     def num_params(self) -> int:
         """Returns the total number of parameters of this module"""
-        return self.summary().total_params
+        return self.summary.total_params
 
     @property
     def num_trainable_params(self) -> int:
         """Returns the trainable number of parameters of this module"""
-        return self.summary().trainable_params
+        return self.summary.trainable_params
 
-    def summary(self, **kwargs) -> ModelStatistics:
+    @property
+    def summary(self) -> ModelStatistics:
         """Prints the summary (layers, num params, size in MB), with the help of torchinfo module."""
         if self._summary is None:
-            self._summary = summary(self.base_model, verbose=0, **kwargs)
+            self._summary = summary(self.base_model, verbose=0)
         return self._summary
 
     @property
