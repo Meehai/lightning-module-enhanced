@@ -14,7 +14,7 @@ from torchinfo import summary, ModelStatistics
 from .trainable_module import TrainableModuleMixin
 from .metrics import CoreMetric
 from .logger import logger
-from .utils import to_tensor, to_device
+from .utils import to_tensor, to_device, tr_detach_data
 
 # pylint: disable=too-many-ancestors, arguments-differ, unused-argument, abstract-method
 class CoreModule(TrainableModuleMixin, pl.LightningModule):
@@ -274,7 +274,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
             raise ValueError(f"Not all expected metrics ({self.metrics.keys()}) were computed "
                              f"this batch: {batch_results.keys()}")
         for metric_name, metric in self._active_run_metrics[prefix].items():
-            metric.batch_update(batch_results[metric_name].detach())
+            metric.batch_update(tr_detach_data(batch_results[metric_name]))
 
     def _reset_all_active_metrics(self):
         for prefix in self._active_run_metrics.keys():
