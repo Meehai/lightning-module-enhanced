@@ -169,9 +169,7 @@ class Experiment(ABC):
         self.trainer.fit(iter_model, dataloader, val_dataloaders, **self._fit_params)
 
         # Test on best ckpt and validation
-        # We always save at least 2 model checkpoints: [0] = last, [1] = (val_)loss. Others can be added via
-        # model.checkpoint_monitors = [...]
-        model_ckpt: ModelCheckpoint = self.trainer.checkpoint_callbacks[1]
+        model_ckpt: ModelCheckpoint = self.trainer.checkpoint_callback
         res = self.trainer.test(iter_model, val_dataloaders, ckpt_path=model_ckpt.best_model_path)[0]
         # Save this experiment's results
         self.fit_metrics[eid] = res
