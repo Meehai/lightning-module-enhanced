@@ -64,17 +64,18 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
     @property
     def num_params(self) -> int:
         """Returns the total number of parameters of this module"""
-        return self.summary().total_params
+        return self.summary.total_params
 
     @property
     def num_trainable_params(self) -> int:
         """Returns the trainable number of parameters of this module"""
-        return self.summary().trainable_params
+        return self.summary.trainable_params
 
-    def summary(self, **kwargs) -> ModelStatistics:
+    @property
+    def summary(self) -> ModelStatistics:
         """Prints the summary (layers, num params, size in MB), with the help of torchinfo module."""
         if self._summary is None:
-            self._summary = summary(self.base_model, verbose=0, **kwargs)
+            self._summary = summary(self.base_model, verbose=0)
         return self._summary
 
     @property
@@ -117,6 +118,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         """Training step: returns batch training loss and metrics."""
         # Warning: if not using lightning's self.optimizers(), and rather trying to user our self.optimizer, will
         # result in checkpoints not being saved. Don't ask me why.
+        assert not isinstance(self.optimizers(), list), "update training_step for list optimizers"
         self.optimizers().zero_grad()
         train_metrics = self.model_algorithm(train_batch)
         self._update_metrics_at_batch_end(train_metrics)
@@ -268,9 +270,8 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         if set(batch_results.keys()) != set(self.metrics.keys()):
             raise ValueError(f"Not all expected metrics ({self.metrics.keys()}) were computed "
                              f"this batch: {batch_results.keys()}")
-
-        for metric_nane, metric in self._active_run_metrics[prefix].items():
-            metric.batch_update(batch_results[metric_nane])
+        for metric_name, metric in self._active_run_metrics[prefix].items():
+            metric.batch_update(batch_results[metric_name].detach())
 
     def _reset_all_active_metrics(self):
         for prefix in self._active_run_metrics.keys():
