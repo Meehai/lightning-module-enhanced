@@ -118,6 +118,9 @@ class TrainableModuleMixin(TrainableModule):
     def callbacks(self) -> List[pl.Callback]:
         """Gets the callbacks"""
         if isinstance(self.base_model, TrainableModule):
+            # TODO: hack -- this is because we've disabled automatic optimization in LME >2.0 and ModelCheckpoint
+            # must be constructed manually. They did some weird validation/non-validation hacks.
+            self.base_model.trainer = self.trainer
             return [*self.default_callbacks, *self.base_model.callbacks]
 
         # trainer not attached yet, so no model checkpoints are needed.
