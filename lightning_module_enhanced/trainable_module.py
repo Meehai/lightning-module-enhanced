@@ -128,15 +128,16 @@ class TrainableModuleMixin(TrainableModule):
 
         prefix = "val_" if self.trainer.enable_validation else ""
         model_ckpt_cbs = []
-        for monitor in self.checkpoint_monitors:
+        for i, monitor in enumerate(self.checkpoint_monitors):
             try:
                 mode = "max" if self.metrics[monitor].higher_is_better else "min"
             # not my best code
             except KeyError:
                 raise ValueError
             filename = "{epoch}-{" + prefix + monitor + ":.2f}"
+            # note: save_last=True for i==0 only (first monitor)
             model_ckpt_cbs.append(ModelCheckpoint(monitor=f"{prefix}{monitor}", mode=mode, filename=filename,
-                                                  save_last=True, save_on_train_epoch_end=True))
+                                                  save_last=(i == 0), save_on_train_epoch_end=True))
         return [*self.default_callbacks, *self._callbacks, *model_ckpt_cbs]
 
     @callbacks.setter
