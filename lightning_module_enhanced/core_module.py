@@ -117,7 +117,10 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
     def training_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs) -> Union[tr.Tensor, Dict[str, Any]]:
         """Training step: returns batch training loss and metrics."""
         # Warning: if not using lightning's self.optimizers(), and rather trying to user our self.optimizer, will
-        # result in checkpoints not being saved. Don't ask me why.
+        # result in checkpoints not being saved.
+        # After more digging it's because self.optimizers() doesn't return self.optimizer (the torch optimizer), but
+        # rather lightning's warpper on top of it that can be used using other trainer strategies (ddp) and also
+        # updates some internal states, like trainer.global_step.
         assert not isinstance(self.optimizers(), list), "update training_step for list optimizers"
         self.optimizers().zero_grad()
         train_metrics = self.model_algorithm(train_batch)
