@@ -1,6 +1,5 @@
 """Utils module"""
 from typing import T, Any, Dict
-import json
 import torch as tr
 import numpy as np
 from torch import nn
@@ -91,15 +90,6 @@ def tr_detach_data(data: T) -> T:
 
     logger.debug2(f"Got unknown type {type(data)}. Returning as is.")
     return data
-
-def json_encode_val(value: Any) -> str:
-    """Given a potentially unencodable json value (but stringable), convert to string if needed"""
-    try:
-        _ = json.dumps(value)
-        encodable_value = value
-    except TypeError:
-        encodable_value = str(value)
-    return encodable_value
 
 def accelerator_params_from_module(module: nn.Module) -> Dict[str, int]:
     """

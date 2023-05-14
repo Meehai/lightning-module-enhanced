@@ -22,11 +22,36 @@ def test_metadata_callback_train_1():
     TrainSetup(model, cfg)
 
     assert model.metadata_callback.metadata is None
-    Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
+    Trainer(max_epochs=2).fit(model, DataLoader(Reader()))
     assert model.metadata_callback.metadata is not None
 
     meta = model.metadata_callback.metadata
     assert "model_parameters" in meta
-    assert "epoch_metrics" in meta
+    assert "epoch_metrics" in meta and isinstance(meta["epoch_metrics"], dict) and "l1" in meta["epoch_metrics"]
+    assert "epoch_timestamps" in meta and len(meta["epoch_timestamps"]) == 2
+    assert "epoch_average_duration" in meta
+    assert len(meta["epoch_metrics"]["l1"]) == 2
     assert "optimizer" in meta
     assert "best_model" in meta
+
+def test_metadata_callback_test_1():
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    cfg = {
+        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "criterion": {"type": "mse"},
+        "metrics": [{"type": "l1"}]
+    }
+    TrainSetup(model, cfg)
+
+    assert model.metadata_callback.metadata is None
+    Trainer().test(model, DataLoader(Reader()))
+    assert model.metadata_callback.metadata is not None
+
+    meta = model.metadata_callback.metadata
+    assert "model_parameters" in meta
+    assert "epoch_metrics" in meta and isinstance(meta["epoch_metrics"], dict) and "l1" in meta["epoch_metrics"]
+    assert len(meta["epoch_metrics"]["l1"]) == 1
+    assert "optimizer" not in meta
+    assert "best_model" not in meta
+    assert "epoch_timestamps" not in meta
+    assert "epoch_average_duration" not in meta
