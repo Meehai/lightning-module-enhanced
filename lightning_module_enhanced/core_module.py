@@ -74,8 +74,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
     @property
     def summary(self) -> ModelStatistics:
         """Prints the summary (layers, num params, size in MB), with the help of torchinfo module."""
-        if self._summary is None:
-            self._summary = summary(self.base_model, verbose=0)
+        self._summary = summary(self.base_model, verbose=0, depth=3) if self._summary is None else self._summary
         return self._summary
 
     @property
@@ -100,17 +99,23 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
             cloned_metrics = deepcopy(self.metrics)
             self._active_run_metrics["val_"] = cloned_metrics
         self._reset_all_active_metrics()
+        self._set_metrics_running_model()
 
     @overrides
     def on_fit_end(self):
+        # note: order is important here
+        self._unset_metrics_running_model()
         self._active_run_metrics = {}
 
     @overrides
     def on_test_start(self) -> None:
         self._active_run_metrics[""] = self.metrics
+        self._set_metrics_running_model()
 
     @overrides
     def on_test_end(self):
+        # note: order is important here
+        self._unset_metrics_running_model()
         self._active_run_metrics = {}
 
     @overrides
@@ -276,11 +281,6 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         for metric_name, metric in self._active_run_metrics[prefix].items():
             metric.batch_update(tr_detach_data(batch_results[metric_name]))
 
-    def _reset_all_active_metrics(self):
-        for prefix in self._active_run_metrics.keys():
-            for metric in self._active_run_metrics[prefix].values():
-                metric.reset()
-
     def _run_and_log_metrics_at_epoch_end(self, metrics_to_log: List[str]):
         """Runs and logs a given list of logged metrics. Assume they all exist in self.metrics"""
         all_prefixes = self._active_run_metrics.keys()
@@ -298,3 +298,21 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
                 # Call the metadata callback for the full result, since it can handle any sort of metrics
                 self.metadata_callback.log_epoch_metric(metric_name, metric_epoch_result,
                                                         self.trainer.current_epoch, prefix)
+
+    def _reset_all_active_metrics(self):
+        """ran at epoch end to reset the metrics"""
+        for prefix in self._active_run_metrics.keys():
+            for metric in self._active_run_metrics[prefix].values():
+                metric.reset()
+
+    def _set_metrics_running_model(self):
+        """ran at fit/test start to set the running model"""
+        for prefix in self._active_run_metrics.keys():
+            for metric in self._active_run_metrics[prefix].values():
+                metric.running_model = lambda: self
+
+    def _unset_metrics_running_model(self):
+        """ran at fit/test end to unset the running model"""
+        for prefix in self._active_run_metrics.keys():
+            for metric in self._active_run_metrics[prefix].values():
+                metric.running_model = None

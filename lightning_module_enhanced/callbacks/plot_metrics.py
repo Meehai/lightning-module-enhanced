@@ -2,7 +2,7 @@
 from typing import Dict, List, Any
 from overrides import overrides
 from pytorch_lightning.callbacks import Callback
-import pytorch_lightning as pl
+from pytorch_lightning import Trainer
 import matplotlib.pyplot as plt
 import numpy as np
 from ..logger import logger
@@ -40,11 +40,11 @@ class PlotMetrics(Callback):
         plt.close(fig)
 
     @overrides
-    def on_fit_start(self, trainer: "pl.Trainer", pl_module: "CoreModule") -> None:
+    def on_fit_start(self, trainer: Trainer, pl_module: "CoreModule") -> None:
         self.history = None
 
     @overrides
-    def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: "CoreModule"):
+    def on_train_epoch_end(self, trainer: Trainer, pl_module: "CoreModule"):
         assert (trainer.current_epoch == 0 and self.history is None) or (self.history is not None)
         if len(trainer.loggers) == 0:
             logger.warning("No lightning logger found. Not calling PlotMetrics()")
