@@ -65,6 +65,7 @@ class CoreMetric(nn.Module, ABC):
 
     @property
     def running_model(self) -> Optional[Callable[[], "CoreModule"]]:
+        """returns the active running model, if available (during training/testing)"""
         return self._running_model
 
     @running_model.setter
