@@ -73,9 +73,7 @@ class CoreMetric(nn.Module, ABC):
         epoch_result_reduced = epoch_result.squeeze()
         shape = epoch_result_reduced.shape
         if not (len(shape) == 0 or (len(shape) == 1 and shape[-1] == 1)):
-            logger.debug2(
-                f"Metric '{self}' has a non-number reduced value (shape: {shape}). Returning None."
-            )
+            logger.debug2(f"Metric '{self}' has a non-number reduced value (shape: {shape}). Returning None.")
             return None
         return epoch_result_reduced
 
