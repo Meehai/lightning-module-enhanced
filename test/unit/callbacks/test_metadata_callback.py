@@ -55,3 +55,12 @@ def test_metadata_callback_test_1():
     assert "best_model" not in meta
     assert "epoch_timestamps" not in meta
     assert "epoch_average_duration" not in meta
+
+def test_metadata_callback_no_checkpoint():
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    cfg = {
+        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "criterion": {"type": "mse"},
+    }
+    TrainSetup(model, cfg)
+    Trainer(max_epochs=1).fit(model, DataLoader(Reader()))

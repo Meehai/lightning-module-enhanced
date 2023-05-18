@@ -43,6 +43,8 @@ class CoreMetric(nn.Module, ABC):
         self.requires_grad = requires_grad
         # By default, all metrics do not require gradients. This is updated for loss in CoreModule.
         self.requires_grad_(requires_grad)
+        # The running model. Will be None when not training and a reference to the running CoreModule when training
+        self._running_model: Optional[Callable] = None
 
     @abstractmethod
     @overrides(check_signature=False)
@@ -60,6 +62,16 @@ class CoreMetric(nn.Module, ABC):
     @abstractmethod
     def reset(self):
         """This is called at each epoch end after compute(). It resets the state for the next epoch."""
+
+    @property
+    def running_model(self) -> Optional[Callable[[], "CoreModule"]]:
+        return self._running_model
+
+    @running_model.setter
+    def running_model(self, running_model: Optional[Callable[[], "CoreModule"]]):
+        assert running_model is None or (
+            isinstance(running_model(), nn.Module) and hasattr(running_model(), "metadata_callback")), running_model
+        self._running_model = running_model
 
     def epoch_result_reduced(self, epoch_result: Optional[tr.Tensor]) -> Optional[tr.Tensor]:
         """
