@@ -2,7 +2,7 @@
 from typing import Dict, List, Any
 from overrides import overrides
 from pytorch_lightning.callbacks import Callback
-import pytorch_lightning as pl
+from pytorch_lightning import Trainer
 import matplotlib.pyplot as plt
 import numpy as np
 from ..logger import logger
@@ -40,11 +40,11 @@ class PlotMetrics(Callback):
         plt.close(fig)
 
     @overrides
-    def on_fit_start(self, trainer: "pl.Trainer", pl_module: "CoreModule") -> None:
+    def on_fit_start(self, trainer: Trainer, pl_module: "CoreModule") -> None:
         self.history = None
 
     @overrides
-    def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: "CoreModule"):
+    def on_train_epoch_end(self, trainer: Trainer, pl_module: "CoreModule"):
         assert (trainer.current_epoch == 0 and self.history is None) or (self.history is not None)
         if len(trainer.loggers) == 0:
             logger.warning("No lightning logger found. Not calling PlotMetrics()")
@@ -57,13 +57,15 @@ class PlotMetrics(Callback):
             if metric_name not in self.history:
                 logger.warning(f"Metric '{metric_name}' not in original metrics, probably added afterwards. Skipping")
                 continue
-            metric_score = pl_module._active_run_metrics[""][metric_name].epoch_result_reduced(None)
+            metric = pl_module._active_run_metrics[""][metric_name]
+            metric_score = metric.epoch_result_reduced(metric.epoch_result())
             if metric_score is None:
                 logger.debug2(f"Metric '{metric_name}' cannot be reduced to a single number. Skipping")
                 continue
             self.history[metric_name]["train"].append(metric_score.item())
             if trainer.enable_validation:
-                val_metric_score = pl_module._active_run_metrics["val_"][metric_name].epoch_result_reduced(None)
+                val_metric = pl_module._active_run_metrics["val_"][metric_name]
+                val_metric_score = val_metric.epoch_result_reduced(val_metric.epoch_result())
                 self.history[metric_name]["val"].append(val_metric_score.item())
 
             out_file = f"{trainer.loggers[0].log_dir}/{metric_name}.png"
