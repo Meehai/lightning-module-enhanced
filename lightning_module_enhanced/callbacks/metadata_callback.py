@@ -236,7 +236,7 @@ class MetadataCallback(pl.Callback):
         best_model_pkl = tr.load(ckpt_path, map_location="cpu")
         best_model_dict = {
             "path": str(ckpt_path),
-            "hyper_parameters": best_model_pkl["hyper_parameters"],
+            "hyper_parameters": best_model_pkl.get("hyper_parameters", {}),
             "optimizers_lr": [o["param_groups"][0]["lr"] for o in best_model_pkl["optimizer_states"]]
         }
         self.metadata["best_model"] = best_model_dict
