@@ -43,16 +43,13 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         Args:
             base_model: The base :class:`torch.nn.Module`
     """
-    def __init__(self, base_model: nn.Module, *args, **kwargs):
+    def __init__(self, base_model: nn.Module):
         assert isinstance(base_model, nn.Module), f"Expected a nn.Module, got {type(base_model)}"
         super().__init__()
         self.base_model = base_model
         self.automatic_optimization = False
         self._active_run_metrics: Dict[str, Dict[str, CoreMetric]] = {}
         self._summary: ModelStatistics = None
-
-        # Store initial hyperparameters in the pl_module and the initial shapes/model name in metadata logger
-        self.save_hyperparameters({"args": args, **kwargs}, ignore=["base_model"])
 
     # Getters and setters for properties
 
