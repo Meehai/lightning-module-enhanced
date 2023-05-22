@@ -231,6 +231,8 @@ class TrainableModuleMixin(TrainableModule):
 
     @property
     def checkpoint_monitors(self) -> List[str]:
+        for monitor in self._checkpoint_monitors:
+            assert monitor in self.metrics, f"Monitor '{monitor}' not in metrics: '{self.metrics}'"
         return self._checkpoint_monitors
 
     @checkpoint_monitors.setter
