@@ -8,6 +8,7 @@ import torch as tr
 import pytorch_lightning as pl
 from lightning_fabric.utilities.seed import seed_everything
 from lightning_fabric.utilities.exceptions import MisconfigurationException
+from pytorch_lightning.core.optimizer import LightningOptimizer
 from torch import nn, optim
 from torchinfo import summary, ModelStatistics
 
@@ -123,13 +124,16 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         # After more digging it's because self.optimizers() doesn't return self.optimizer (the torch optimizer), but
         # rather lightning's warpper on top of it that can be used using other trainer strategies (ddp) and also
         # updates some internal states, like trainer.global_step.
-        assert not isinstance(self.optimizers(), list), "update training_step for list optimizers"
-        self.optimizers().zero_grad()
+        _opt = self.optimizers()
+        opts: List[LightningOptimizer] = _opt if isinstance(_opt, list) else [_opt]
+        for opt in opts:
+            opt.zero_grad()
         train_metrics = self.model_algorithm(train_batch)
         self._update_metrics_at_batch_end(train_metrics)
         # Manual optimization like real men. We disable automatic_optimization in the constructor.
         self.manual_backward(train_metrics["loss"])
-        self.optimizers().step()
+        for opt in opts:
+            opt.step()
 
     @overrides
     def validation_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs):

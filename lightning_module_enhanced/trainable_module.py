@@ -231,6 +231,9 @@ class TrainableModuleMixin(TrainableModule):
 
     @property
     def checkpoint_monitors(self) -> List[str]:
+        for monitor in self._checkpoint_monitors:
+            if not monitor in self.metrics:
+                raise ValueError(f"Monitor '{monitor}' not in metrics: '{self.metrics}'")
         return self._checkpoint_monitors
 
     @checkpoint_monitors.setter
