@@ -40,10 +40,6 @@ class PlotMetrics(Callback):
         plt.close(fig)
 
     @overrides
-    def on_fit_start(self, trainer: Trainer, pl_module: "CoreModule") -> None:
-        self.history = None
-
-    @overrides
     def on_train_epoch_end(self, trainer: Trainer, pl_module: "CoreModule"):
         assert (trainer.current_epoch == 0 and self.history is None) or (self.history is not None)
         if len(trainer.loggers) == 0:
@@ -70,6 +66,14 @@ class PlotMetrics(Callback):
 
             out_file = f"{trainer.loggers[0].log_dir}/{metric_name}.png"
             self._do_plot(pl_module, metric_name, out_file)
+
+    @overrides
+    def on_fit_start(self, trainer: Trainer, pl_module: "CoreModule") -> None:
+        # we need to not reset for Trainer().fit(ckpt_path=...) [NGC] or if we reuse the same trainer.
+        # We need to check both conditions BECAUSE the trainer's state is updated AFTER this call, but brfore
+        # on_train_epoch_start. See here: https://github.com/Lightning-AI/lightning/issues/17712
+        if trainer.current_epoch == 0 and trainer.ckpt_path is None:
+            self.history = None
 
     @overrides
     def state_dict(self) -> Dict[str, Any]:
