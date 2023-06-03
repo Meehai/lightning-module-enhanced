@@ -3,7 +3,6 @@ from typing import Optional
 from overrides import overrides
 import torch as tr
 from torchmetrics.functional.classification import multiclass_stat_scores
-from torch.nn import functional as F
 
 from .core_metric import CoreMetric
 
