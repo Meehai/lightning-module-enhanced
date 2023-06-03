@@ -1,8 +1,8 @@
 """Multi class F1 Score"""
 from typing import Optional
 from overrides import overrides
-from torchmetrics.functional.classification import multiclass_stat_scores
 import torch as tr
+from torchmetrics.functional.classification import multiclass_stat_scores
 
 from .core_metric import CoreMetric
 
@@ -17,7 +17,9 @@ class MultiClassF1Score(CoreMetric):
 
     @overrides
     def forward(self, y: tr.Tensor, gt: tr.Tensor) -> tr.Tensor:
-        stats = multiclass_stat_scores(y.argmax(-1), gt.argmax(-1), num_classes=self.num_classes, average="none")
+        # support for both index tensors as well as float gt tensors (if one_hot in dataset)
+        gt_argmax = gt.argmax(-1) if gt.dtype == tr.float else gt
+        stats = multiclass_stat_scores(y.argmax(-1), gt_argmax, num_classes=self.num_classes, average="none")
         # TP, FP, TN, FN
         res = stats[:, 0:4].T
         return res
