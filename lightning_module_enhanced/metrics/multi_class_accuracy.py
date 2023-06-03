@@ -25,9 +25,7 @@ class MultiClassAccuracy(CoreMetric):
             gt_flat = gt.reshape(-1, self.num_classes)
             gt_argmax = gt_flat.argmax(-1)
         else:
-            gt_flat = F.one_hot(gt, num_classes=self.num_classes).reshape(
-                -1, self.num_classes
-            )
+            gt_flat = F.one_hot(gt, num_classes=self.num_classes).reshape(-1, self.num_classes)
             gt_argmax = gt.reshape(-1)
 
         y_flat = y.reshape(-1, self.num_classes)
