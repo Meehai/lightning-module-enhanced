@@ -268,9 +268,10 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         # a dict, all of them are passed automatically: {'data': {'x': ..., 'edge_index': ...}, 'gt': ...}
         y = self.forward(train_batch["data"])
         gt = to_device(to_tensor(train_batch["labels"]), self.device)
+        return self.lme_metrics(y, gt, prefix)
 
-        # TODO: abstractize this
-        # pass through all the metrics of this batch and call forward. This updates the metric state for this batch
+    def lme_metrics(self, y: tr.Tensor, gt: tr.Tensor, prefix: str) -> Dict[str, tr.Tensor]:
+        """pass through all the metrics of this batch and call forward. This updates the metric state for this batch"""
         metrics = {}
         for metric_name, metric_fn in self._active_run_metrics[prefix].items():
             metric_fn: CoreMetric = self._active_run_metrics[prefix][metric_name]
