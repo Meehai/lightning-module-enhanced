@@ -263,9 +263,13 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         Must return a dict of type: {metric_name: metric_tensor} for all metrics.
         'loss' must be in there as well unless you update `training_step` as well in your module.
         """
+        # TODO: simplify data/labels requirement. Some models have other forward() header, like gcns having
+        # (x, edge_index) always. Perhaps if 'data' has a tensor, it's assumed 'x', otherwise, if it has
+        # a dict, all of them are passed automatically: {'data': {'x': ..., 'edge_index': ...}, 'gt': ...}
         y = self.forward(train_batch["data"])
         gt = to_device(to_tensor(train_batch["labels"]), self.device)
 
+        # TODO: abstractize this
         # pass through all the metrics of this batch and call forward. This updates the metric state for this batch
         metrics = {}
         for metric_name, metric_fn in self._active_run_metrics[prefix].items():
