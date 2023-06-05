@@ -19,7 +19,8 @@ class MultiClassF1Score(CoreMetric):
     def forward(self, y: tr.Tensor, gt: tr.Tensor) -> tr.Tensor:
         # support for both index tensors as well as float gt tensors (if one_hot in dataset)
         gt_argmax = gt.argmax(-1) if gt.dtype == tr.float else gt
-        stats = multiclass_stat_scores(y.argmax(-1), gt_argmax, num_classes=self.num_classes, average="none")
+        y_argmax = y.argmax(-1) if y.dtype == tr.float else y
+        stats = multiclass_stat_scores(y_argmax, gt_argmax, num_classes=self.num_classes, average="none")
         # TP, FP, TN, FN
         res = stats[:, 0:4].T
         return res

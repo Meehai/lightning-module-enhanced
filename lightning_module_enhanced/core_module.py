@@ -129,6 +129,8 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         for opt in opts:
             opt.zero_grad()
         train_metrics = self.model_algorithm(train_batch)
+        assert isinstance(train_metrics, dict), type(train_metrics)
+        assert "loss" in train_metrics.keys(), train_metrics.keys()
         self._update_metrics_at_batch_end(train_metrics)
         # Manual optimization like real men. We disable automatic_optimization in the constructor.
         self.manual_backward(train_metrics["loss"])
@@ -139,12 +141,15 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
     def validation_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs):
         """Validation step: returns batch validation loss and metrics."""
         val_metrics = self.model_algorithm(train_batch, prefix="val_")
+        assert isinstance(val_metrics, dict), type(val_metrics)
+        assert "loss" in val_metrics.keys(), val_metrics.keys()
         self._update_metrics_at_batch_end(val_metrics, prefix="val_")
 
     @overrides
     def test_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs):
         """Testing step: returns batch test loss and metrics. No prefix."""
-        test_metrics =  self.model_algorithm(train_batch)
+        test_metrics = self.model_algorithm(train_batch)
+        assert isinstance(test_metrics, dict), type(test_metrics)
         self._update_metrics_at_batch_end(test_metrics)
 
     @overrides
@@ -263,10 +268,15 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         Must return a dict of type: {metric_name: metric_tensor} for all metrics.
         'loss' must be in there as well unless you update `training_step` as well in your module.
         """
-        y = self.forward(train_batch["data"])
+        x = train_batch["data"]
+        assert isinstance(x, (dict, tr.Tensor)), type(x)
+        # This allows {"data": {"a": ..., "b": ...}} to be mapped to forward(a, b)
+        y = self.forward(**x) if isinstance(x, dict) else self.forward(x)
         gt = to_device(to_tensor(train_batch["labels"]), self.device)
+        return self.lme_metrics(y, gt, prefix)
 
-        # pass through all the metrics of this batch and call forward. This updates the metric state for this batch
+    def lme_metrics(self, y: tr.Tensor, gt: tr.Tensor, prefix: str) -> Dict[str, tr.Tensor]:
+        """pass through all the metrics of this batch and call forward. This updates the metric state for this batch"""
         metrics = {}
         for metric_name, metric_fn in self._active_run_metrics[prefix].items():
             metric_fn: CoreMetric = self._active_run_metrics[prefix][metric_name]
