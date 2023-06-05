@@ -30,7 +30,7 @@ def test_fit_no_criterion():
 
 def test_fit_no_optimizer():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    model.criterion_fn = lambda y, gt: (y - gt).abs().mean() 
+    model.criterion_fn = lambda y, gt: (y - gt).abs().mean()
     try:
         Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
         assert False
@@ -133,6 +133,139 @@ def test_fit_with_scheduler():
 
     Trainer(max_epochs=2).fit(model, DataLoader(Reader()))
     assert model.scheduler_dict["scheduler"].last_epoch == 2
+
+def test_fit_different_forward_params_1():
+    class MyReader:
+        def __len__(self):
+            return 10
+
+        def __getitem__(self, ix):
+            # data contains a dict with key 'input' which maps to nn.Linear's forward function arg
+            return {"data": {"input": tr.randn(2)}, "labels": tr.randn(1)}
+
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.optimizer = optim.SGD(model.parameters(), lr=0.01)
+    Trainer(max_epochs=1).fit(model, DataLoader(MyReader()))
+
+def test_fit_different_forward_params_2():
+    class MyModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1))
+
+        def forward(self, x):
+            return self.fc(x)
+
+    class MyReader:
+        def __len__(self):
+            return 10
+
+        def __getitem__(self, ix):
+            # data contains a dict with key 'x' which maps to MyModel's forward function arg
+            return {"data": {"x": tr.randn(2)}, "labels": tr.randn(1)}
+
+    model = LME(MyModel())
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.optimizer = optim.SGD(model.parameters(), lr=0.01)
+    Trainer(max_epochs=1).fit(model, DataLoader(MyReader()))
+
+def test_fit_different_forward_params_3():
+    class MyModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1))
+
+        def forward(self, x):
+            return self.fc(x)
+
+    class MyReader:
+        def __len__(self):
+            return 10
+
+        def __getitem__(self, ix):
+            # data contains a dict with key 'blabla' which doesn't map to MyModel's forward function arg (x)
+            return {"data": {"blabla": tr.randn(2)}, "labels": tr.randn(1)}
+
+    model = LME(MyModel())
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.optimizer = optim.SGD(model.parameters(), lr=0.01)
+    try:
+        Trainer(max_epochs=1).fit(model, DataLoader(MyReader()))
+    except TypeError:
+        pass
+
+def test_fit_different_forward_params_4():
+    class MyModel2Args(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1))
+
+        def forward(self, x, y):
+            return self.fc(x) + self.fc(y)
+
+    class MyReader:
+        def __len__(self):
+            return 10
+
+        def __getitem__(self, ix):
+            # data contains a dict with key 'x' which doesn't map to MyModel2Args's forward function arg (2 args)
+            return {"data": {"blabla": tr.randn(2)}, "labels": tr.randn(1)}
+
+    model = LME(MyModel2Args())
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.optimizer = optim.SGD(model.parameters(), lr=0.01)
+    try:
+        Trainer(max_epochs=1).fit(model, DataLoader(MyReader()))
+    except TypeError:
+        pass
+
+def test_fit_different_forward_params_5():
+    class MyModel2Args(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1))
+
+        def forward(self, x, y):
+            return self.fc(x) + self.fc(y)
+
+    class MyReader:
+        def __len__(self):
+            return 10
+
+        def __getitem__(self, ix):
+            # data contains a dict with no key, which doesn't map to MyModel2Args's forward fn (2 args)
+            return {"data": tr.randn(2), "labels": tr.randn(1)}
+
+    model = LME(MyModel2Args())
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.optimizer = optim.SGD(model.parameters(), lr=0.01)
+    try:
+        Trainer(max_epochs=1).fit(model, DataLoader(MyReader()))
+    except TypeError:
+        pass
+
+def test_fit_different_forward_params_6():
+    class MyModel2Args(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1))
+
+        def forward(self, x, y):
+            return self.fc(x) + self.fc(y)
+
+    class MyReader:
+        def __len__(self):
+            return 10
+
+        def __getitem__(self, ix):
+            # data contains a dict with 2 keys, mapping the name of the arguments of MyModel2Args' forward function
+            return {"data": {"x": tr.randn(2), "y": tr.randn(2)}, "labels": tr.randn(1)}
+
+    model = LME(MyModel2Args())
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.optimizer = optim.SGD(model.parameters(), lr=0.01)
+    Trainer(max_epochs=1).fit(model, DataLoader(MyReader()))
 
 if __name__ == "__main__":
     test_fit_twice_from_ckpt()
