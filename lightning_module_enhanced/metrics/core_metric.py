@@ -36,6 +36,7 @@ class CoreMetric(nn.Module, ABC):
     """
 
     def __init__(self, higher_is_better: bool, requires_grad: bool = False):
+        assert isinstance(higher_is_better, bool) and isinstance(requires_grad, bool)
         super().__init__()
         self.batch_results = None
         self.batch_count = tr.IntTensor([0])

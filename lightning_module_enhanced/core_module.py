@@ -8,6 +8,7 @@ import torch as tr
 import pytorch_lightning as pl
 from lightning_fabric.utilities.seed import seed_everything
 from lightning_fabric.utilities.exceptions import MisconfigurationException
+from pytorch_lightning.core.optimizer import LightningOptimizer
 from torch import nn, optim
 from torchinfo import summary, ModelStatistics
 
@@ -123,24 +124,32 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         # After more digging it's because self.optimizers() doesn't return self.optimizer (the torch optimizer), but
         # rather lightning's warpper on top of it that can be used using other trainer strategies (ddp) and also
         # updates some internal states, like trainer.global_step.
-        assert not isinstance(self.optimizers(), list), "update training_step for list optimizers"
-        self.optimizers().zero_grad()
+        _opt = self.optimizers()
+        opts: List[LightningOptimizer] = _opt if isinstance(_opt, list) else [_opt]
+        for opt in opts:
+            opt.zero_grad()
         train_metrics = self.model_algorithm(train_batch)
+        assert isinstance(train_metrics, dict), type(train_metrics)
+        assert "loss" in train_metrics.keys(), train_metrics.keys()
         self._update_metrics_at_batch_end(train_metrics)
         # Manual optimization like real men. We disable automatic_optimization in the constructor.
         self.manual_backward(train_metrics["loss"])
-        self.optimizers().step()
+        for opt in opts:
+            opt.step()
 
     @overrides
     def validation_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs):
         """Validation step: returns batch validation loss and metrics."""
         val_metrics = self.model_algorithm(train_batch, prefix="val_")
+        assert isinstance(val_metrics, dict), type(val_metrics)
+        assert "loss" in val_metrics.keys(), val_metrics.keys()
         self._update_metrics_at_batch_end(val_metrics, prefix="val_")
 
     @overrides
     def test_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs):
         """Testing step: returns batch test loss and metrics. No prefix."""
-        test_metrics =  self.model_algorithm(train_batch)
+        test_metrics = self.model_algorithm(train_batch)
+        assert isinstance(test_metrics, dict), type(test_metrics)
         self._update_metrics_at_batch_end(test_metrics)
 
     @overrides
@@ -259,10 +268,15 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         Must return a dict of type: {metric_name: metric_tensor} for all metrics.
         'loss' must be in there as well unless you update `training_step` as well in your module.
         """
-        y = self.forward(train_batch["data"])
+        x = train_batch["data"]
+        assert isinstance(x, (dict, tr.Tensor)), type(x)
+        # This allows {"data": {"a": ..., "b": ...}} to be mapped to forward(a, b)
+        y = self.forward(**x) if isinstance(x, dict) else self.forward(x)
         gt = to_device(to_tensor(train_batch["labels"]), self.device)
+        return self.lme_metrics(y, gt, prefix)
 
-        # pass through all the metrics of this batch and call forward. This updates the metric state for this batch
+    def lme_metrics(self, y: tr.Tensor, gt: tr.Tensor, prefix: str) -> Dict[str, tr.Tensor]:
+        """pass through all the metrics of this batch and call forward. This updates the metric state for this batch"""
         metrics = {}
         for metric_name, metric_fn in self._active_run_metrics[prefix].items():
             metric_fn: CoreMetric = self._active_run_metrics[prefix][metric_name]
