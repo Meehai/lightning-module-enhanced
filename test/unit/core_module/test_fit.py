@@ -1,4 +1,6 @@
+from typing import Dict
 from lightning_module_enhanced import LME
+from lightning_module_enhanced.utils import to_device, to_tensor
 from pytorch_lightning import Trainer
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -12,6 +14,15 @@ class Reader:
 
     def __getitem__(self, ix):
         return {"data": tr.randn(2), "labels": tr.randn(1)}
+
+class MultiArgsLME(LME):
+    def model_algorithm(self, train_batch: Dict, prefix: str = "") -> Dict[str, tr.Tensor]:
+        x = train_batch["data"]
+        assert isinstance(x, (dict, tr.Tensor)), type(x)
+        # This allows {"data": {"a": ..., "b": ...}} to be mapped to forward(a, b)
+        y = self.forward(**x) if isinstance(x, dict) else self.forward(x)
+        gt = to_device(to_tensor(train_batch["labels"]), self.device)
+        return self.lme_metrics(y, gt, prefix)
 
 def test_fit_1():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
@@ -143,7 +154,7 @@ def test_fit_different_forward_params_1():
             # data contains a dict with key 'input' which maps to nn.Linear's forward function arg
             return {"data": {"input": tr.randn(2)}, "labels": tr.randn(1)}
 
-    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model = MultiArgsLME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     Trainer(max_epochs=1).fit(model, DataLoader(MyReader()))
@@ -165,7 +176,7 @@ def test_fit_different_forward_params_2():
             # data contains a dict with key 'x' which maps to MyModel's forward function arg
             return {"data": {"x": tr.randn(2)}, "labels": tr.randn(1)}
 
-    model = LME(MyModel())
+    model = MultiArgsLME(MyModel())
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     Trainer(max_epochs=1).fit(model, DataLoader(MyReader()))
@@ -187,7 +198,7 @@ def test_fit_different_forward_params_3():
             # data contains a dict with key 'blabla' which doesn't map to MyModel's forward function arg (x)
             return {"data": {"blabla": tr.randn(2)}, "labels": tr.randn(1)}
 
-    model = LME(MyModel())
+    model = MultiArgsLME(MyModel())
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     try:
@@ -212,7 +223,7 @@ def test_fit_different_forward_params_4():
             # data contains a dict with key 'x' which doesn't map to MyModel2Args's forward function arg (2 args)
             return {"data": {"blabla": tr.randn(2)}, "labels": tr.randn(1)}
 
-    model = LME(MyModel2Args())
+    model = MultiArgsLME(MyModel2Args())
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     try:
@@ -237,7 +248,7 @@ def test_fit_different_forward_params_5():
             # data contains a dict with no key, which doesn't map to MyModel2Args's forward fn (2 args)
             return {"data": tr.randn(2), "labels": tr.randn(1)}
 
-    model = LME(MyModel2Args())
+    model = MultiArgsLME(MyModel2Args())
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     try:
@@ -262,7 +273,7 @@ def test_fit_different_forward_params_6():
             # data contains a dict with 2 keys, mapping the name of the arguments of MyModel2Args' forward function
             return {"data": {"x": tr.randn(2), "y": tr.randn(2)}, "labels": tr.randn(1)}
 
-    model = LME(MyModel2Args())
+    model = MultiArgsLME(MyModel2Args())
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     Trainer(max_epochs=1).fit(model, DataLoader(MyReader()))
