@@ -271,7 +271,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         x = train_batch["data"]
         assert isinstance(x, (dict, tr.Tensor)), type(x)
         # This allows {"data": {"a": ..., "b": ...}} to be mapped to forward(a, b)
-        y = self.forward(**x) if isinstance(x, dict) else self.forward(x)
+        y = self.forward(x)
         gt = to_device(to_tensor(train_batch["labels"]), self.device)
         return self.lme_metrics(y, gt, prefix)
 
