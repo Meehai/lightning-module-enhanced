@@ -18,7 +18,7 @@ class PlotCallbackGeneric(Callback):
         """Gets the output directory as '/path/to/log_dir/pngs/train_or_val/epoch_N/' """
         if len(trainer.loggers) == 0:
             return None
-        out_dir = Path(f"{trainer.loggers[0].log_dir}/pngs/{dir_name}/{trainer.current_epoch}")
+        out_dir = Path(f"{trainer.loggers[0].log_dir}/pngs/{dir_name}/{trainer.current_epoch + 1}")
         out_dir.mkdir(exist_ok=True, parents=True)
         return out_dir
 
