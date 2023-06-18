@@ -1,5 +1,6 @@
 """Utils module"""
 from typing import T, Any, Dict
+
 import torch as tr
 import numpy as np
 from torch import nn
