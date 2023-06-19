@@ -277,6 +277,10 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
 
     def lme_metrics(self, y: tr.Tensor, gt: tr.Tensor, prefix: str) -> Dict[str, tr.Tensor]:
         """pass through all the metrics of this batch and call forward. This updates the metric state for this batch"""
+        if prefix not in self._active_run_metrics:
+            raise KeyError(f"Prefix '{prefix}' not found in active run metrics. Set model.metrics={{...}} first. "
+                            "Also, this method is meant to be ran from a pl.Trainer.fit() call, not manually.")
+
         metrics = {}
         for metric_name, metric_fn in self._active_run_metrics[prefix].items():
             metric_fn: CoreMetric = self._active_run_metrics[prefix][metric_name]
