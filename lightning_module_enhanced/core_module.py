@@ -253,7 +253,8 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         logger.info(f"Loading weights and hyperparameters from '{Path(path).absolute()}'")
         ckpt_data = tr.load(path, map_location="cpu")
         self.load_state_dict(ckpt_data["state_dict"])
-        self.save_hyperparameters(ckpt_data["hyper_parameters"])
+        if "hyper_parameters" in ckpt_data:
+            self.save_hyperparameters(ckpt_data["hyper_parameters"])
         return self
 
     def state_dict(self):
