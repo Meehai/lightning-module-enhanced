@@ -216,9 +216,14 @@ class MetadataCallback(pl.Callback):
     def _get_monitored_model_checkpoint(self, pl_module: LightningModule) -> ModelCheckpoint:
         monitors: List[str] = pl_module.checkpoint_monitors
         assert len(monitors) > 0, "At least one monitor must be present."
+        if len(monitors) > 1:
+            logger.warning(f"More than one monitor provided: {monitors}. Keeping only first")
+        monitor = monitors[0]
         prefix = "val_" if pl_module.trainer.enable_validation else ""
-        cb = [cb for cb in pl_module.trainer.checkpoint_callbacks if cb.monitor == f"{prefix}{monitors[0]}"]
-        assert len(cb) == 1, f"Monitor '{monitors[0]}' not found in model checkpoints: {monitors}"
+        cb = [cb for cb in pl_module.trainer.checkpoint_callbacks if cb.monitor == f"{prefix}{monitor}"]
+        if len(cb) > 1:
+            logger.warning(f"More than one callback for monitor '{monitor}' found: {cb}")
+        assert len(cb) > 0, f"Monitor '{monitor}' not found in model checkpoints: {monitors}"
         return cb[0]
 
     def _log_model_checkpoint_fit_start(self, pl_module: LightningModule):
