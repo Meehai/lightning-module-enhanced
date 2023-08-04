@@ -129,18 +129,26 @@ class TrainableModuleMixin(TrainableModule):
         except RuntimeError:
             return [*self.default_callbacks, *self._callbacks]
 
+        trainer_cbs = [callback for callback in self.trainer.callbacks
+                       if isinstance(callback, ModelCheckpoint) and callback.monitor is not None]
+        if len(trainer_cbs):
+            logger.info("ModelCheckpoint callbacks were provided in the Trainer. Not using the checkpoint_monitors!")
+            return [*self.default_callbacks, *self._callbacks, *trainer_cbs]
+
         prefix = "val_" if self.trainer.enable_validation else ""
         model_ckpt_cbs = []
-        for i, monitor in enumerate(self.checkpoint_monitors):
-            try:
-                mode = "max" if self.metrics[monitor].higher_is_better else "min"
-            # not my best code
-            except KeyError:
-                raise ValueError
+        for monitor in self.checkpoint_monitors:
+            # Lightning requires ValueError here, though KeyError would be more appropriate
+            if monitor not in self.metrics:
+                raise ValueError(f"Checkpoint monitor '{monitor}' not in metrics: {self.metrics.keys()}")
+
+            mode = "max" if self.metrics[monitor].higher_is_better else "min"
+            ckpt_monitor = f"{prefix}{monitor}"
             filename = "{epoch}-{" + prefix + monitor + ":.2f}"
-            # note: save_last=True for i==0 only (first monitor)
-            model_ckpt_cbs.append(ModelCheckpoint(monitor=f"{prefix}{monitor}", mode=mode, filename=filename,
-                                                  save_last=(i == 0), save_on_train_epoch_end=True))
+            # note: save_last=True for len(model_ckpt_cbs)==0 only (i.e. first monitor)
+            model_ckpt_cbs.append(ModelCheckpoint(monitor=ckpt_monitor, mode=mode, filename=filename,
+                                                  save_last=(len(model_ckpt_cbs) == 0), save_on_train_epoch_end=True))
+
         return [*self.default_callbacks, *self._callbacks, *model_ckpt_cbs]
 
     @callbacks.setter
@@ -232,7 +240,7 @@ class TrainableModuleMixin(TrainableModule):
     @property
     def checkpoint_monitors(self) -> List[str]:
         for monitor in self._checkpoint_monitors:
-            if not monitor in self.metrics:
+            if monitor not in self.metrics:
                 raise ValueError(f"Monitor '{monitor}' not in metrics: '{self.metrics}'")
         return self._checkpoint_monitors
 
@@ -240,7 +248,7 @@ class TrainableModuleMixin(TrainableModule):
     def checkpoint_monitors(self, checkpoint_monitors: List[str]) -> List[str]:
         assert "loss" in checkpoint_monitors, f"'loss' must be in checkpoint monitors. Got: {checkpoint_monitors}"
         for monitor in checkpoint_monitors:
-            if not monitor in self.metrics:
+            if monitor not in self.metrics:
                 raise ValueError(f"Provided monitor: '{monitor}' is not in the metrics: {self.metrics}")
         self._checkpoint_monitors = checkpoint_monitors
         logger.debug(f"Set the checkpoint monitors to: {self._checkpoint_monitors}")
