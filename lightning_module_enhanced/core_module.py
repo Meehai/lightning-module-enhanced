@@ -1,6 +1,6 @@
 """Generic Pytorch Lightning Graph module on top of a Graph module"""
 from __future__ import annotations
-from typing import Dict, List, Union, Any, Sequence
+from typing import Dict, List, Union, Any, Sequence, Callable
 from copy import deepcopy
 from pathlib import Path
 from overrides import overrides
@@ -51,6 +51,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         self.automatic_optimization = False
         self._active_run_metrics: Dict[str, Dict[str, CoreMetric]] = {}
         self._summary: ModelStatistics = None
+        self._model_algorithm = CoreModule.feed_forward_algorithm
 
     # Getters and setters for properties
 
@@ -88,6 +89,16 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
             param.requires_grad_(value)
         # Reset summary such that it is recomputted if necessary (like for counting num trainable params)
         self._summary = None
+
+    @property
+    def model_algorithm(self) -> callable:
+        """The model algorithm, used at both training, validation, test and inference. There is a prefix arg for all."""
+        return self._model_algorithm
+
+    @model_algorithm.setter
+    def model_algorithm(self, value: callable):
+        assert isinstance(value, Callable), f"Expected a callable, got {type(value)}"
+        self._model_algorithm = value
 
     # Overrides on top of the standard pytorch lightning module
     @overrides
@@ -128,7 +139,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         opts: List[LightningOptimizer] = _opt if isinstance(_opt, list) else [_opt]
         for opt in opts:
             opt.zero_grad()
-        train_metrics = self.model_algorithm(train_batch)
+        train_metrics = self.model_algorithm(self, train_batch)
         assert isinstance(train_metrics, dict), type(train_metrics)
         assert "loss" in train_metrics.keys(), train_metrics.keys()
         self._update_metrics_at_batch_end(train_metrics)
@@ -140,7 +151,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
     @overrides
     def validation_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs):
         """Validation step: returns batch validation loss and metrics."""
-        val_metrics = self.model_algorithm(train_batch, prefix="val_")
+        val_metrics = self.model_algorithm(self, train_batch, prefix="val_")
         assert isinstance(val_metrics, dict), type(val_metrics)
         assert "loss" in val_metrics.keys(), val_metrics.keys()
         self._update_metrics_at_batch_end(val_metrics, prefix="val_")
@@ -148,7 +159,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
     @overrides
     def test_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs):
         """Testing step: returns batch test loss and metrics. No prefix."""
-        test_metrics = self.model_algorithm(train_batch)
+        test_metrics = self.model_algorithm(self, train_batch)
         assert isinstance(test_metrics, dict), type(test_metrics)
         self._update_metrics_at_batch_end(test_metrics)
 
@@ -263,7 +274,8 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
     def load_state_dict(self, state_dict: Dict[str, Any], strict: bool = True):
         return self.base_model.load_state_dict(state_dict, strict)
 
-    def model_algorithm(self, train_batch: Dict, prefix: str = "") -> Dict[str, tr.Tensor]:
+    @staticmethod
+    def feed_forward_algorithm(self: CoreModule, train_batch: Dict, prefix: str = "") -> Dict[str, tr.Tensor]:
         """
         Generic step for computing the forward pass, loss and metrics. Simple feed-forward algorithm by default.
         Must return a dict of type: {metric_name: metric_tensor} for all metrics.
