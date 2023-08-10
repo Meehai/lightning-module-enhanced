@@ -275,7 +275,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         return self.base_model.load_state_dict(state_dict, strict)
 
     @staticmethod
-    def feed_forward_algorithm(self: CoreModule, train_batch: Dict, prefix: str = "") -> Dict[str, tr.Tensor]:
+    def feed_forward_algorithm(model: CoreModule, train_batch: Dict, prefix: str = "") -> Dict[str, tr.Tensor]:
         """
         Generic step for computing the forward pass, loss and metrics. Simple feed-forward algorithm by default.
         Must return a dict of type: {metric_name: metric_tensor} for all metrics.
@@ -284,9 +284,9 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         x = train_batch["data"]
         assert isinstance(x, (dict, tr.Tensor)), type(x)
         # This allows {"data": {"a": ..., "b": ...}} to be mapped to forward(a, b)
-        y = self.forward(x)
-        gt = to_device(to_tensor(train_batch["labels"]), self.device)
-        return self.lme_metrics(y, gt, prefix)
+        y = model.forward(x)
+        gt = to_device(to_tensor(train_batch["labels"]), model.device)
+        return model.lme_metrics(y, gt, prefix)
 
     def lme_metrics(self, y: tr.Tensor, gt: tr.Tensor, prefix: str) -> Dict[str, tr.Tensor]:
         """pass through all the metrics of this batch and call forward. This updates the metric state for this batch"""
