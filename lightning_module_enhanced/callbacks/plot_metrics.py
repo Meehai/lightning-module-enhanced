@@ -13,7 +13,7 @@ class PlotMetrics(Callback):
         self.history: Dict[str, List[float]] = None
 
     # pylint: disable=protected-access
-    def _plot_best_dot(self, ax: plt.Axes, pl_module: "CoreModule", metric_name: str):
+    def _plot_best_dot(self, ax: plt.Axes, pl_module: "LME", metric_name: str):
         """Plot the dot. We require to know if the metric is max or min typed."""
         metric = pl_module.metrics[metric_name]
         metric_history = self.history[metric_name]
@@ -23,7 +23,7 @@ class PlotMetrics(Callback):
         ax.annotate(f"Epoch {metric_x + 1}\nMax {metric_y:.2f}", xy=(metric_x + 1, metric_y))
         ax.plot([metric_x + 1], [metric_y], "o")
 
-    def _do_plot(self, pl_module: "CoreModule", metric_name: str, out_file: str):
+    def _do_plot(self, pl_module: "LME", metric_name: str, out_file: str):
         """Plot the figure with the metric"""
         fig = plt.figure()
         ax = fig.gca()
@@ -40,7 +40,7 @@ class PlotMetrics(Callback):
         plt.close(fig)
 
     @overrides
-    def on_train_epoch_end(self, trainer: Trainer, pl_module: "CoreModule"):
+    def on_train_epoch_end(self, trainer: Trainer, pl_module: "LME"):
         assert (trainer.current_epoch == 0 and self.history is None) or (self.history is not None)
         if len(trainer.loggers) == 0:
             logger.warning("No lightning logger found. Not calling PlotMetrics()")
@@ -68,7 +68,7 @@ class PlotMetrics(Callback):
             self._do_plot(pl_module, metric_name, out_file)
 
     @overrides
-    def on_fit_start(self, trainer: Trainer, pl_module: "CoreModule") -> None:
+    def on_fit_start(self, trainer: Trainer, pl_module: "LME") -> None:
         # we need to not reset for Trainer().fit(ckpt_path=...) [NGC] or if we reuse the same trainer.
         # We need to check both conditions BECAUSE the trainer's state is updated AFTER this call, but brfore
         # on_train_epoch_start. See here: https://github.com/Lightning-AI/lightning/issues/17712

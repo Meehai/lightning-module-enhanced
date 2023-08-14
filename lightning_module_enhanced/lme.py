@@ -18,7 +18,7 @@ from .logger import logger
 from .utils import to_tensor, to_device, tr_detach_data
 
 # pylint: disable=too-many-ancestors, arguments-differ, unused-argument, abstract-method
-class CoreModule(TrainableModuleMixin, pl.LightningModule):
+class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
     """
 
         Generic pytorch-lightning module for ml models.
@@ -51,7 +51,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         self.automatic_optimization = False
         self._active_run_metrics: dict[str, dict[str, CoreMetric]] = {}
         self._summary: ModelStatistics = None
-        self._model_algorithm = CoreModule.feed_forward_algorithm
+        self._model_algorithm = LightningModuleEnhanced.feed_forward_algorithm
 
     # Getters and setters for properties
 
@@ -187,6 +187,8 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
             try:
                 epoch_result: tr.Tensor = self._trainer._results[f"on_train_epoch_end.{monitor}"].value
             except KeyError:
+                logger.debug(f"It may be the case that your scheduler monitor is wrong. Monitor: '{monitor}'. "
+                             f"All results: {list(self._trainer._results.keys())}")
                 raise MisconfigurationException
             # TODO: this assumes that it's reduce lr on plateau and not something else.
             scheduler.step(epoch_result)
@@ -249,17 +251,17 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         if num_params == 0:
             return
         for layer in self.base_model.children():
-            if CoreModule(layer).num_params == 0:
+            if LightningModuleEnhanced(layer).num_params == 0:
                 continue
 
             if not hasattr(layer, "reset_parameters"):
                 logger.debug2(f"Layer {layer} has params, but no reset_parameters() method. Trying recursively")
-                layer = CoreModule(layer)
+                layer = LightningModuleEnhanced(layer)
                 layer.reset_parameters(seed)
             else:
                 layer.reset_parameters()
 
-    def load_state_from_path(self, path: str) -> CoreModule:
+    def load_state_from_path(self, path: str) -> LightningModuleEnhanced:
         """Loads the state dict from a path"""
         # if path is remote (gcs) download checkpoint to a temp dir
         logger.info(f"Loading weights and hyperparameters from '{Path(path).absolute()}'")
@@ -276,7 +278,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         return self.base_model.load_state_dict(state_dict, strict)
 
     @staticmethod
-    def feed_forward_algorithm(model: CoreModule, batch: dict, prefix: str = "") -> dict[str, tr.Tensor]:
+    def feed_forward_algorithm(model: LightningModuleEnhanced, batch: dict, prefix: str = "") -> dict[str, tr.Tensor]:
         """
         Generic step for computing the forward pass, loss and metrics. Simple feed-forward algorithm by default.
         Must return a dict of type: {metric_name: metric_tensor} for all metrics.
@@ -289,7 +291,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         gt = to_device(to_tensor(batch["labels"]), model.device)
         return model.lme_metrics(y, gt, prefix, include_loss=True)
 
-    def lme_metrics(self, y: tr.Tensor, gt: tr.Tensor, prefix: str, include_loss: bool = False) -> dict[str, tr.Tensor]:
+    def lme_metrics(self, y: tr.Tensor, gt: tr.Tensor, prefix: str, include_loss: bool = True) -> dict[str, tr.Tensor]:
         """
         Pass through all the metrics of this batch and call forward. This updates the metric state for this batch
         Parameters:

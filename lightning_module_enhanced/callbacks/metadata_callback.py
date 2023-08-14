@@ -16,14 +16,14 @@ from ..utils import parsed_str_type
 
 
 class MetadataCallback(pl.Callback):
-    """Metadata Callback for a CoreModule. Stores various information about a training."""
+    """Metadata Callback for LME. Stores various information about a training."""
     def __init__(self):
         self.log_dir = None
         self.log_file_path = None
         self.metadata = None
 
     def log_epoch_metric(self, key: str, value: tr.Tensor, epoch: int, prefix: str):
-        """Adds a epoch metric to the current metadata. Called from CoreModule"""
+        """Adds a epoch metric to the current metadata. Called from LME"""
         # test and train get the unprefixed key.
         prefixed_key = f"{prefix}{key}"
         if prefixed_key not in self.metadata["epoch_metrics"]:
