@@ -297,5 +297,25 @@ def test_fit_model_algorithm_1():
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
     assert cnt["cnt"] == 10
 
+def test_fit_model_algorithm_not_include_loss():
+    def my_model_algo(model, batch, prefix=""):
+        x = batch["data"]
+        assert isinstance(x, (dict, tr.Tensor)), type(x)
+        # This allows {"data": {"a": ..., "b": ...}} to be mapped to forward(a, b)
+        y = model.forward(x)
+        gt = to_device(to_tensor(batch["labels"]), model.device)
+        res = model.lme_metrics(y, gt, prefix, include_loss=False)
+        assert "loss" not in res
+        res["loss"] = model.criterion_fn(y, gt)
+        return res
+
+
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.optimizer = optim.SGD(model.parameters(), lr=0.01)
+    model.model_algorithm = my_model_algo
+    Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
+
+
 if __name__ == "__main__":
     test_fit_twice_from_ckpt()
