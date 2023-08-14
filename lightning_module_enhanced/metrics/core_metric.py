@@ -1,5 +1,5 @@
 """
-All metrics in CoreModule are a subclass of this class and follow logic describe below. Only epoch results are
+All metrics in LME are a subclass of this class and follow logic describe below. Only epoch results are
 relevant, and batch results are somehow accumulated, such that we minimize the risk of getting invalid results from
 simply averaging them during training.
 
@@ -15,7 +15,7 @@ Methods logic:
 - epoch_result: Takes the internal state of the current epoch and returns the epoch result
 - epoch_result_reduced: Takes the epoch result from epoch_result() and returns a reduced variant of the epoch metric
   that can be logged by basic loggers (MLFlowLogger or TensorBoardLogger) or None. If None, then it is not logged via
-  self.log() in the CoreModule at epoch end
+  self.log() in the LME at epoch end
 - reset: Resets the internal state for the next epoch
 """
 
@@ -32,7 +32,7 @@ MetricFnType = Callable[[tr.Tensor, tr.Tensor], tr.Tensor]
 
 class CoreMetric(nn.Module, ABC):
     """
-    Generic CoreMetric for a CoreModule.
+    Generic CoreMetric for a LME.
     """
 
     def __init__(self, higher_is_better: bool, requires_grad: bool = False):
@@ -42,9 +42,9 @@ class CoreMetric(nn.Module, ABC):
         self.batch_count = tr.IntTensor([0])
         self.higher_is_better: bool = higher_is_better
         self.requires_grad = requires_grad
-        # By default, all metrics do not require gradients. This is updated for loss in CoreModule.
+        # By default, all metrics do not require gradients. This is updated for loss in LME.
         self.requires_grad_(requires_grad)
-        # The running model. Will be None when not training and a reference to the running CoreModule when training
+        # The running model. Will be None when not training and a reference to the running LME when training
         self._running_model: Optional[Callable] = None
 
     @abstractmethod
@@ -58,19 +58,19 @@ class CoreMetric(nn.Module, ABC):
 
     @abstractmethod
     def epoch_result(self) -> tr.Tensor:
-        """Called at each epoch end from the CoreModule. Takes the internal state and returns the epoch result"""
+        """Called at each epoch end from the LME. Takes the internal state and returns the epoch result"""
 
     @abstractmethod
     def reset(self):
         """This is called at each epoch end after compute(). It resets the state for the next epoch."""
 
     @property
-    def running_model(self) -> Optional[Callable[[], "CoreModule"]]:
+    def running_model(self) -> Optional[Callable[[], "LME"]]:
         """returns the active running model, if available (during training/testing)"""
         return self._running_model
 
     @running_model.setter
-    def running_model(self, running_model: Optional[Callable[[], "CoreModule"]]):
+    def running_model(self, running_model: Optional[Callable[[], "LME"]]):
         assert running_model is None or (
             isinstance(running_model(), nn.Module) and hasattr(running_model(), "metadata_callback")), running_model
         self._running_model = running_model

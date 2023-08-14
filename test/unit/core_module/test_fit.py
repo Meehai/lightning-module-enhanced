@@ -286,6 +286,7 @@ def test_fit_different_forward_params_6():
 
 def test_fit_model_algorithm_1():
     cnt = {"cnt": 0}
+
     def my_model_algo(model, batch, cnt, prefix=""):
         cnt["cnt"] += 1
         return LME.feed_forward_algorithm(model, batch, prefix)
@@ -308,7 +309,6 @@ def test_fit_model_algorithm_not_include_loss():
         assert "loss" not in res
         res["loss"] = model.criterion_fn(y, gt)
         return res
-
 
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
