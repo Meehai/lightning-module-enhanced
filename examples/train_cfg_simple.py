@@ -18,7 +18,7 @@ scheduler:
     patience: 10
     factor: 0.5
   optimizer_args:
-    monitor: val_loss
+    monitor: loss
 criterion:
     type: mse
 """
@@ -38,4 +38,4 @@ if __name__ == "__main__":
     in_c, out_c = 5, 10
     model = LME(tr.nn.Linear(in_c, out_c))
     TrainSetup(model, train_cfg)
-    Trainer().fit(model, DataLoader(MyReader(100, in_c, out_c), batch_size=10))
+    Trainer(max_epochs=10).fit(model, DataLoader(MyReader(100, in_c, out_c), batch_size=10))

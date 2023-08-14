@@ -187,6 +187,8 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
             try:
                 epoch_result: tr.Tensor = self._trainer._results[f"on_train_epoch_end.{monitor}"].value
             except KeyError:
+                logger.debug(f"It may be the case that your scheduler monitor is wrong. Monitor: '{monitor}'. "
+                             f"All results: {list(self._trainer._results.keys())}")
                 raise MisconfigurationException
             # TODO: this assumes that it's reduce lr on plateau and not something else.
             scheduler.step(epoch_result)
