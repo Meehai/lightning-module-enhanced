@@ -3,7 +3,7 @@ import logging
 import warnings
 
 # pylint: disable=reimported
-from .lme import LightningModuleEnhanced as LME, LightningModuleEnhanced as LightningModuleEnhanced
+from .lme import LightningModuleEnhanced as LME, LightningModuleEnhanced
 from .trainable_module import TrainableModule
 from .train_setup import TrainSetup
 
