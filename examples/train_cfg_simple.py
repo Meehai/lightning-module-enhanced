@@ -3,7 +3,6 @@
 import yaml
 from lightning_module_enhanced import LME, TrainSetup
 from pytorch_lightning import Trainer
-from torch.utils.data import DataLoader
 import torch as tr
 
 train_cfg_str = """
@@ -38,4 +37,4 @@ if __name__ == "__main__":
     in_c, out_c = 5, 10
     model = LME(tr.nn.Linear(in_c, out_c))
     TrainSetup(model, train_cfg)
-    Trainer(max_epochs=10).fit(model, DataLoader(MyReader(100, in_c, out_c), batch_size=10))
+    Trainer(max_epochs=10).fit(model, tr.utils.data.DataLoader(MyReader(100, in_c, out_c), batch_size=10))
