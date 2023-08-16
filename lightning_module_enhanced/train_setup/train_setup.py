@@ -25,22 +25,33 @@ class TrainSetup:
         assert isinstance(train_cfg, Dict), f"Got {type(train_cfg)}"
         self.module = module
         self.train_cfg = train_cfg
-        self.setup(self.train_cfg)
+        self._setup()
 
-    def setup(self, train_cfg: Dict):
+    def _setup(self):
         """The main function of this class"""
+        train_cfg = self.train_cfg
         assert train_cfg is not None
-        assert "optimizer" in train_cfg and "criterion" in train_cfg, train_cfg
 
-        optimizer_type, optimizer_args = TrainSetup.parse_optimizer(self.train_cfg["optimizer"])
-        self.module.optimizer = optimizer_type(self.module.parameters(), **optimizer_args)
-        self.module.criterion_fn = TrainSetup.parse_criterion(self.train_cfg["criterion"])
+        if "criterion" in train_cfg:
+            self.module.criterion_fn = TrainSetup.parse_criterion(train_cfg["criterion"])
+        else:
+            logger.warning(f"TrainSetup was called without 'criterion' key in the config")
+
+        if "optimizer" in train_cfg:
+            optimizer_type, optimizer_args = TrainSetup.parse_optimizer(train_cfg["optimizer"])
+            self.module.optimizer = optimizer_type(self.module.parameters(), **optimizer_args)
+        else:
+            logger.warning(f"TrainSetup was called without 'optimizer' key in the config")
+
         if "scheduler" in self.train_cfg:
-            scheduler_type, opt_args = TrainSetup.parse_scheduler(self.train_cfg["scheduler"])
+            assert "optimizer" in train_cfg, "Scheduler is defined but no optimizer is defined"
+            scheduler_type, opt_args = TrainSetup.parse_scheduler(train_cfg["scheduler"])
             self.module.scheduler_dict = {"scheduler": scheduler_type(optimizer=self.module.optimizer), **opt_args}
-        if "metrics" in self.train_cfg:
+
+        if "metrics" in train_cfg:
             self.module.metrics = TrainSetup.parse_metrics(train_cfg["metrics"])
-        if "callbacks" in self.train_cfg:
+
+        if "callbacks" in train_cfg:
             self.module.callbacks = TrainSetup.parse_callbacks(train_cfg["callbacks"])
 
     @staticmethod
