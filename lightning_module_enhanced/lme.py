@@ -1,6 +1,6 @@
 """Generic Pytorch Lightning Graph module on top of a Graph module"""
 from __future__ import annotations
-from typing import Dict, List, Union, Any, Sequence
+from typing import Any, Sequence, Callable, Union
 from copy import deepcopy
 from pathlib import Path
 from overrides import overrides
@@ -18,7 +18,7 @@ from .logger import logger
 from .utils import to_tensor, to_device, tr_detach_data
 
 # pylint: disable=too-many-ancestors, arguments-differ, unused-argument, abstract-method
-class CoreModule(TrainableModuleMixin, pl.LightningModule):
+class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
     """
 
         Generic pytorch-lightning module for ml models.
@@ -49,8 +49,9 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         super().__init__()
         self.base_model = base_model
         self.automatic_optimization = False
-        self._active_run_metrics: Dict[str, Dict[str, CoreMetric]] = {}
+        self._active_run_metrics: dict[str, dict[str, CoreMetric]] = {}
         self._summary: ModelStatistics = None
+        self._model_algorithm = LightningModuleEnhanced.feed_forward_algorithm
 
     # Getters and setters for properties
 
@@ -89,7 +90,18 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         # Reset summary such that it is recomputted if necessary (like for counting num trainable params)
         self._summary = None
 
+    @property
+    def model_algorithm(self) -> callable:
+        """The model algorithm, used at both training, validation, test and inference. There is a prefix arg for all."""
+        return self._model_algorithm
+
+    @model_algorithm.setter
+    def model_algorithm(self, value: callable):
+        assert isinstance(value, Callable), f"Expected a callable, got {type(value)}"
+        self._model_algorithm = value
+
     # Overrides on top of the standard pytorch lightning module
+
     @overrides
     def on_fit_start(self) -> None:
         self._active_run_metrics[""] = self.metrics
@@ -117,7 +129,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         self._active_run_metrics = {}
 
     @overrides
-    def training_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs) -> Union[tr.Tensor, Dict[str, Any]]:
+    def training_step(self, batch: dict, batch_idx: int, *args, **kwargs) -> Union[tr.Tensor, dict[str, Any]]:
         """Training step: returns batch training loss and metrics."""
         # Warning: if not using lightning's self.optimizers(), and rather trying to user our self.optimizer, will
         # result in checkpoints not being saved.
@@ -125,10 +137,10 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         # rather lightning's warpper on top of it that can be used using other trainer strategies (ddp) and also
         # updates some internal states, like trainer.global_step.
         _opt = self.optimizers()
-        opts: List[LightningOptimizer] = _opt if isinstance(_opt, list) else [_opt]
+        opts: list[LightningOptimizer] = _opt if isinstance(_opt, list) else [_opt]
         for opt in opts:
             opt.zero_grad()
-        train_metrics = self.model_algorithm(train_batch)
+        train_metrics = self.model_algorithm(self, batch, prefix="")
         assert isinstance(train_metrics, dict), type(train_metrics)
         assert "loss" in train_metrics.keys(), train_metrics.keys()
         self._update_metrics_at_batch_end(train_metrics)
@@ -138,17 +150,17 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
             opt.step()
 
     @overrides
-    def validation_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs):
+    def validation_step(self, batch: dict, batch_idx: int, *args, **kwargs):
         """Validation step: returns batch validation loss and metrics."""
-        val_metrics = self.model_algorithm(train_batch, prefix="val_")
+        val_metrics = self.model_algorithm(self, batch, prefix="val_")
         assert isinstance(val_metrics, dict), type(val_metrics)
         assert "loss" in val_metrics.keys(), val_metrics.keys()
         self._update_metrics_at_batch_end(val_metrics, prefix="val_")
 
     @overrides
-    def test_step(self, train_batch: Dict, batch_idx: int, *args, **kwargs):
+    def test_step(self, batch: dict, batch_idx: int, *args, **kwargs):
         """Testing step: returns batch test loss and metrics. No prefix."""
-        test_metrics = self.model_algorithm(train_batch)
+        test_metrics = self.model_algorithm(self, batch)
         assert isinstance(test_metrics, dict), type(test_metrics)
         self._update_metrics_at_batch_end(test_metrics)
 
@@ -157,7 +169,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         return self.forward(batch["data"])
 
     @overrides
-    def configure_callbacks(self) -> Union[Sequence[pl.Callback], pl.Callback]:
+    def configure_callbacks(self) -> Sequence[pl.Callback] | pl.Callback:
         return self.callbacks
 
     @overrides
@@ -175,6 +187,8 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
             try:
                 epoch_result: tr.Tensor = self._trainer._results[f"on_train_epoch_end.{monitor}"].value
             except KeyError:
+                logger.debug(f"It may be the case that your scheduler monitor is wrong. Monitor: '{monitor}'. "
+                             f"All results: {list(self._trainer._results.keys())}")
                 raise MisconfigurationException
             # TODO: this assumes that it's reduce lr on plateau and not something else.
             scheduler.step(epoch_result)
@@ -188,7 +202,7 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
     # main idea would be to return just the optimizer here, and no scheduler dict (throws warning now) and have
     # a self.scheduler that does this behind the scenes
     @overrides
-    def configure_optimizers(self) -> Dict:
+    def configure_optimizers(self) -> dict:
         """Configure the optimizer/scheduler/monitor."""
         if self.optimizer is None:
             raise ValueError("No optimizer. Use model.optimizer=optim.XXX or add an optimizer property in base model")
@@ -237,17 +251,17 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
         if num_params == 0:
             return
         for layer in self.base_model.children():
-            if CoreModule(layer).num_params == 0:
+            if LightningModuleEnhanced(layer).num_params == 0:
                 continue
 
             if not hasattr(layer, "reset_parameters"):
                 logger.debug2(f"Layer {layer} has params, but no reset_parameters() method. Trying recursively")
-                layer = CoreModule(layer)
+                layer = LightningModuleEnhanced(layer)
                 layer.reset_parameters(seed)
             else:
                 layer.reset_parameters()
 
-    def load_state_from_path(self, path: str) -> CoreModule:
+    def load_state_from_path(self, path: str) -> LightningModuleEnhanced:
         """Loads the state dict from a path"""
         # if path is remote (gcs) download checkpoint to a temp dir
         logger.info(f"Loading weights and hyperparameters from '{Path(path).absolute()}'")
@@ -260,44 +274,57 @@ class CoreModule(TrainableModuleMixin, pl.LightningModule):
     def state_dict(self):
         return self.base_model.state_dict()
 
-    def load_state_dict(self, state_dict: Dict[str, Any], strict: bool = True):
+    def load_state_dict(self, state_dict: dict[str, Any], strict: bool = True):
         return self.base_model.load_state_dict(state_dict, strict)
 
-    def model_algorithm(self, train_batch: Dict, prefix: str = "") -> Dict[str, tr.Tensor]:
+    @staticmethod
+    def feed_forward_algorithm(model: LightningModuleEnhanced, batch: dict, prefix: str = "") -> dict[str, tr.Tensor]:
         """
         Generic step for computing the forward pass, loss and metrics. Simple feed-forward algorithm by default.
         Must return a dict of type: {metric_name: metric_tensor} for all metrics.
         'loss' must be in there as well unless you update `training_step` as well in your module.
         """
-        x = train_batch["data"]
+        x = batch["data"]
         assert isinstance(x, (dict, tr.Tensor)), type(x)
         # This allows {"data": {"a": ..., "b": ...}} to be mapped to forward(a, b)
-        y = self.forward(x)
-        gt = to_device(to_tensor(train_batch["labels"]), self.device)
-        return self.lme_metrics(y, gt, prefix)
+        y = model.forward(x)
+        gt = to_device(to_tensor(batch["labels"]), model.device)
+        return model.lme_metrics(y, gt, prefix, include_loss=True)
 
-    def lme_metrics(self, y: tr.Tensor, gt: tr.Tensor, prefix: str) -> Dict[str, tr.Tensor]:
-        """pass through all the metrics of this batch and call forward. This updates the metric state for this batch"""
+    def lme_metrics(self, y: tr.Tensor, gt: tr.Tensor, prefix: str, include_loss: bool = True) -> dict[str, tr.Tensor]:
+        """
+        Pass through all the metrics of this batch and call forward. This updates the metric state for this batch
+        Parameters:
+        - y the output of the model
+        - gt the ground truth
+        - prefix The prefix/mode of the run. Possible values: "" (train), "val_" or "test_"
+        - include_loss Whether to include the loss in the returned metrics. This can be useful when using a different
+        model_algorithm, where we want to compute the loss manually as well.
+        """
         if prefix not in self._active_run_metrics:
             raise KeyError(f"Prefix '{prefix}' not found in active run metrics. Set model.metrics={{...}} first. "
-                            "Also, this method is meant to be ran from a pl.Trainer.fit() call, not manually.")
+                           "Also, this method is meant to be ran from a pl.Trainer.fit() call, not manually.")
 
         metrics = {}
         for metric_name, metric_fn in self._active_run_metrics[prefix].items():
+            if metric_name == "loss" and not include_loss:
+                continue
             metric_fn: CoreMetric = self._active_run_metrics[prefix][metric_name]
             # Call the metric and update its state
             with (tr.enable_grad if metric_fn.requires_grad else tr.no_grad)():
                 metrics[metric_name]: tr.Tensor = metric_fn.forward(y, gt)
         return metrics
 
-    def _update_metrics_at_batch_end(self, batch_results: Dict[str, tr.Tensor], prefix: str = ""):
+    # Private methods
+
+    def _update_metrics_at_batch_end(self, batch_results: dict[str, tr.Tensor], prefix: str = ""):
         if set(batch_results.keys()) != set(self.metrics.keys()):
             raise ValueError(f"Not all expected metrics ({self.metrics.keys()}) were computed "
                              f"this batch: {batch_results.keys()}")
         for metric_name, metric in self._active_run_metrics[prefix].items():
             metric.batch_update(tr_detach_data(batch_results[metric_name]))
 
-    def _run_and_log_metrics_at_epoch_end(self, metrics_to_log: List[str]):
+    def _run_and_log_metrics_at_epoch_end(self, metrics_to_log: list[str]):
         """Runs and logs a given list of logged metrics. Assume they all exist in self.metrics"""
         all_prefixes = self._active_run_metrics.keys()
         for metric_name in metrics_to_log:

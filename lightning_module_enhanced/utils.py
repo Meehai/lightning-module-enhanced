@@ -7,67 +7,53 @@ from torch import nn
 
 from .logger import logger
 
-def to_tensor(data: T) -> T:
-    """Equivalent of the numpy's np_get_data function, converting a data structure of items to torch, where possible"""
+
+# pylint: disable=too-many-return-statements
+def to_tensor(data):
+    """Cast data to torch tensor. There is no need for device as `lightning` handles this by itself."""
     if data is None:
         return None
-
     if isinstance(data, (np.int32, np.int8, np.int16, np.int64, np.float32, np.float64, int, float)):
         return tr.Tensor([data])
-
     if isinstance(data, list):
         return [to_tensor(x) for x in data]
-
     if isinstance(data, tuple):
         return tuple(to_tensor(x) for x in data)
-
     if isinstance(data, set):
         return {to_tensor(x) for x in data}
-
-    if isinstance(data, dict):
-        return {k : to_tensor(data[k]) for k in data}
-
     if isinstance(data, tr.Tensor):
         return data
-
     if isinstance(data, np.ndarray):
-        return tr.from_numpy(data) #pylint: disable=no-member
-
+        if data.dtype == object:
+            return to_tensor(data.tolist())
+        return tr.from_numpy(data)
     if callable(data):
         return data
-
     if isinstance(data, str):
         return data
-
-    logger.debug(f"Got unknown type {type(data)}")
-    return data
+    raise TypeError(f"Got unknown type: {type(data)}")
 
 
-def to_device(data: T, device: tr.device) -> T: #pylint: disable=no-member
-    """Sets the torch device of the compound data"""
+def to_device(data, device: tr.device):
+    """Moves a generic parameter to the desired torch device."""
     if isinstance(data, (tr.Tensor, nn.Module)):
         return data.to(device)
-
     if isinstance(data, list):
         return [to_device(x, device) for x in data]
-
     if isinstance(data, tuple):
         return tuple(to_device(x, device) for x in data)
-
     if isinstance(data, set):
         return {to_device(x, device) for x in data}
-
     if isinstance(data, dict):
         return {k: to_device(data[k], device) for k in data}
-
     if isinstance(data, np.ndarray):
-        return tr.from_numpy(data).to(device) #pylint: disable=no-member
-
+        if data.dtype == object:
+            return to_device(data.tolist(), device)
+        return tr.from_numpy(data).to(device)  # pylint: disable=no-member
     if isinstance(data, (int, float, bool, str)):
         return data
+    raise TypeError(f"Got unknown type: {type(data)}")
 
-    logger.debug(f"Got unknown type {type(data)}. Returning as is.")
-    return data
 
 def tr_detach_data(data: T) -> T:
     """Calls detach on compounded torch data"""

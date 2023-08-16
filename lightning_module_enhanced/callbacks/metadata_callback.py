@@ -1,6 +1,7 @@
 """Metadata Callback module"""
 from typing import Dict, Any, List
 from pathlib import Path
+from io import FileIO
 from datetime import datetime
 import json
 import pytorch_lightning as pl
@@ -15,14 +16,14 @@ from ..utils import parsed_str_type
 
 
 class MetadataCallback(pl.Callback):
-    """Metadata Callback for a CoreModule. Stores various information about a training."""
+    """Metadata Callback for LME. Stores various information about a training."""
     def __init__(self):
         self.log_dir = None
         self.log_file_path = None
         self.metadata = None
 
     def log_epoch_metric(self, key: str, value: tr.Tensor, epoch: int, prefix: str):
-        """Adds a epoch metric to the current metadata. Called from CoreModule"""
+        """Adds a epoch metric to the current metadata. Called from LME"""
         # test and train get the unprefixed key.
         prefixed_key = f"{prefix}{key}"
         if prefixed_key not in self.metadata["epoch_metrics"]:
@@ -100,7 +101,11 @@ class MetadataCallback(pl.Callback):
         metadata = {k: v for k, v in self.metadata.items() if k != "epoch_metrics"}
         metadata["epoch_metrics"] = self.metadata["epoch_metrics"]
         with open(self.log_file_path, "w", encoding="utf8") as fp:
-            json.dump(metadata, fp, indent=4)
+            try:
+                json.dump(metadata, fp, indent=4)
+            except TypeError as ex:
+                self._debug_metadata_json_dump(metadata, fp)
+                raise TypeError(ex)
 
     # private methods
 
@@ -242,8 +247,10 @@ class MetadataCallback(pl.Callback):
         best_model_dict = {
             "path": str(ckpt_path),
             "hyper_parameters": best_model_pkl.get("hyper_parameters", {}),
-            "optimizers_lr": [o["param_groups"][0]["lr"] for o in best_model_pkl["optimizer_states"]]
+            "optimizers_lr": [o["param_groups"][0]["lr"] for o in best_model_pkl["optimizer_states"]],
+            "epoch": best_model_pkl["epoch"],
         }
+
         self.metadata["best_model"] = best_model_dict
 
     def _log_timestamp_start(self, prefix: str):
@@ -268,6 +275,14 @@ class MetadataCallback(pl.Callback):
         start = self.metadata["fit_start_timestamp"]
         timestamps = tr.DoubleTensor([start, *self.metadata["epoch_timestamps"]], device="cpu")
         self.metadata["epoch_average_duration"] = (timestamps[1:] - timestamps[0:-1]).mean().item()
+
+    def _debug_metadata_json_dump(self, metadata: Dict[str, Any], fp: FileIO) -> None:
+        # for debugging purposes
+        for k in metadata:
+            try:
+                json.dump({k: metadata[k]}, fp)
+            except TypeError:
+                logger.debug(f"Cannot serialize key '{k}'")
 
     def __str__(self):
         return f"Metadata Callback. Log dir: '{self.log_dir}'"
