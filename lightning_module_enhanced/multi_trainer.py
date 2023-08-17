@@ -1,8 +1,7 @@
 """Experiment base class"""
 from __future__ import annotations
-from typing import Union, List, Dict
+from typing import List, Dict
 from copy import deepcopy
-from abc import ABC
 from pathlib import Path
 import torch as tr
 import pandas as pd
@@ -13,11 +12,11 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.utils.data import DataLoader, Dataset
 
-from ..logger import logger as lme_logger
+from .logger import logger as lme_logger
 
-class Experiment(ABC):
-    """Experiment class implementation"""
-    def __init__(self, trainer: Union[Trainer, Experiment]):
+class MultiTrainer:
+    """MultiTrainer class implementation. Extends Trainer to train >1 identical networks w/ diff seeds seamlessly"""
+    def __init__(self, trainer: Trainer, num_experiments: int):
         self.done = False
 
         # Stuff that is pinned to the experiment: model, trainer, train and validation set/dataloader
@@ -29,6 +28,7 @@ class Experiment(ABC):
         self._dataloader_params: Dict = None
         self._fit_params: Dict = None
         self._res_path: Path = None
+        self.num_experiments = num_experiments
 
         # post fit artefacts
         self.fit_metrics: Dict[str, Dict[str, tr.Tensor]] = {}
@@ -46,7 +46,7 @@ class Experiment(ABC):
         return res
 
     @trainer.setter
-    def trainer(self, trainer: Union[Trainer, Experiment]):
+    def trainer(self, trainer: Trainer):
         self._trainer = trainer
 
     @property
@@ -199,3 +199,6 @@ class Experiment(ABC):
 
         self.done = True
         self.best_id = self.df_fit_metrics.iloc[self.df_fit_metrics["loss"].argmin()].name
+
+    def __len__(self):
+        return self.num_experiments
