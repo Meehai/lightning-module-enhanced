@@ -153,7 +153,7 @@ class MultiTrainer:
         # PS: do not put version=ix (as int). Lightning will add a 'version_' prefix to it and it will be a mess.
         iter_logger = type(self.trainer.logger)(save_dir=self.trainer.logger.log_dir,
                                                 name=self.experiment_dir_name, version=f"{ix}")
-        device_ix = "auto" if iter_model.device.index is None else [iter_model.devices.index]
+        device_ix = "auto" if iter_model.device.index is None else [iter_model.device.index]
         # TODO: find a better way to pass trainer's params here...
         iter_trainer = Trainer(logger=iter_logger, accelerator=self.trainer.accelerator, devices=device_ix,
                                max_epochs=self.trainer.max_epochs)
