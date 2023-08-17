@@ -2,42 +2,39 @@
 from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
+from multiprocessing import cpu_count
 import os
 import shutil
 import pandas as pd
 import numpy as np
+import torch as tr
 from lightning_fabric.utilities.seed import seed_everything
 from pytorch_lightning import Trainer, LightningModule
+from pytorch_lightning.loggers import Logger
 from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.accelerators import CPUAccelerator, CUDAAccelerator
 from torch.utils.data import DataLoader
+from pool_resources import PoolResources, TorchResource
 
 from .logger import logger as lme_logger
 
 class MultiTrainer:
     """MultiTrainer class implementation. Extends Trainer to train >1 identical networks w/ diff seeds seamlessly"""
-    def __init__(self, trainer: Trainer, num_trains: int, relevant_metric: str = "loss"):
-        self.done = False
+    def __init__(self, trainer: Trainer, num_trains: int, relevant_metric: str = "loss", n_devices: int = 0):
         assert isinstance(trainer, Trainer), f"Expected pl.Trainer, got {type(trainer)}"
+        if len(trainer.device_ids) > 1:
+            raise ValueError(f"Expected trainer to have at most one device id, got {trainer.device_ids}")
+
+        self.trainer: Trainer = trainer
         self.num_trains = num_trains
         self.relevant_metric = relevant_metric
+        self.n_devices = n_devices
+        self.resources = self._get_parallel_devices()
+        self.done = False
 
-        # Stuff that is pinned to the experiment: model, trainer, train and validation set/dataloader
-        self._trainer: Trainer = trainer
+        self.pool_map = PoolResources(self.resources, timeout=1, pbar=False).map if self.resources else map
 
     # Properties
-
-    @property
-    def trainer(self):
-        """The trainer of this eperiment. Might be overwritten during the experiment, but will stay as the original one
-        before/after .fit() is called
-        """
-        res = self._trainer
-        assert res is not None
-        return res
-
-    @trainer.setter
-    def trainer(self, trainer: Trainer):
-        self._trainer = trainer
 
     @property
     def logger(self):
@@ -45,8 +42,8 @@ class MultiTrainer:
         return self.trainer.logger
 
     @logger.setter
-    def logger(self, logger):
-        self.trainer.logger = logger
+    def logger(self, pl_logger: Logger):
+        self.trainer.logger = pl_logger
 
     @property
     def log_dir(self):
@@ -99,11 +96,27 @@ class MultiTrainer:
                 continue
             train_fit_params.append((i, model, train_dataloaders, val_dataloaders, kwargs))
 
-        _ = list(map(self._do_one_iteration, train_fit_params))
+        _ = list(self.pool_map(self._do_one_iteration, train_fit_params))
         self._post_fit()
         self.done = True
 
     # Private methods
+
+    def _get_parallel_devices(self) -> list[TorchResource]:
+        if self.n_devices == 0:
+            return []
+        assert isinstance(self.trainer.accelerator, (CPUAccelerator, CUDAAccelerator)), self.trainer.accelerator
+
+        if self.n_devices == -1:
+            n_devices = cpu_count() if isinstance(self.trainer.accelerator, CPUAccelerator) else tr.cuda.device_count()
+            self.n_devices = min(n_devices, self.num_trains)
+            lme_logger.debug(f"n devices set to -1. Using all resources: {self.n_devices}")
+
+        if isinstance(self.trainer.accelerator, CPUAccelerator):
+            assert cpu_count() >= self.n_devices, f"Expected {self.n_devices}, got {cpu_count()}"
+            return [TorchResource(f"cpu:{ix}") for ix in range(self.n_devices)]
+        assert tr.cuda.device_count() >= self.n_devices, f"Expected {self.n_devices}, got {tr.cuda.device_count()}"
+        return [TorchResource(f"cuda:{ix}") for ix in range(self.n_devices)]
 
     def _fit_setup(self, model: LightningModule):
         """called whenever .fit() is called first time to pin the model and dataloaders to the experiment"""
