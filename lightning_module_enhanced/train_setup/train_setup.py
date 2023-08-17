@@ -35,13 +35,13 @@ class TrainSetup:
         if "criterion" in train_cfg:
             self.module.criterion_fn = TrainSetup.parse_criterion(train_cfg["criterion"])
         else:
-            logger.warning(f"TrainSetup was called without 'criterion' key in the config")
+            logger.warning("TrainSetup was called without 'criterion' key in the config")
 
         if "optimizer" in train_cfg:
             optimizer_type, optimizer_args = TrainSetup.parse_optimizer(train_cfg["optimizer"])
             self.module.optimizer = optimizer_type(self.module.parameters(), **optimizer_args)
         else:
-            logger.warning(f"TrainSetup was called without 'optimizer' key in the config")
+            logger.warning("TrainSetup was called without 'optimizer' key in the config")
 
         if "scheduler" in self.train_cfg:
             assert "optimizer" in train_cfg, "Scheduler is defined but no optimizer is defined"
