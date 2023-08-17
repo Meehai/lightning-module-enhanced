@@ -8,20 +8,6 @@ from lightning_module_enhanced import LME
 from lightning_module_enhanced.multi_trainer import MultiTrainer
 from pathlib import Path
 
-
-class MyTrainer(MultiTrainer):
-    def __init__(self, trainer, n_experiments: int):
-        super().__init__(trainer, n_experiments)
-        self.n_experiments = n_experiments
-        self.cnt = 0
-
-    def __len__(self):
-        return self.n_experiments
-
-    def on_iteration_start(self, ix: int):
-        self.cnt += 1
-
-
 class Reader:
     def __init__(self, n_data: int, n_dims: int):
         self.n_data = n_data
@@ -46,10 +32,9 @@ class Model(nn.Module):
 
 def test_experiment_1():
     trainer = Trainer()
-    e = MyTrainer(trainer, 5)
+    e = MultiTrainer(trainer, num_trains=5)
     assert e is not None
-    assert e.cnt == 0
-
+    assert e.done_so_far == 0
 
 def test_experiment_2():
     train_data = Reader(n_data=100, n_dims=3)
@@ -62,48 +47,32 @@ def test_experiment_2():
     save_dir = "save_dir_exp_2" if __name__ == "__main__" else TemporaryDirectory().name
 
     trainer = Trainer(max_epochs=3, logger=TensorBoardLogger(save_dir=save_dir, name="", version=0))
-    e = MyTrainer(trainer, 3)
-    e.fit(model, train_dataloader, val_dataloader)
+    mt1 = MultiTrainer(trainer, num_trains=3)
+    mt1.fit(model, train_dataloader, val_dataloader)
     out_path = Path(save_dir) / "version_0"
     assert len([x for x in out_path.iterdir() if x.is_dir()]) == 3
-    assert e.cnt == 3
+    assert mt1.done_so_far == 3
 
     trainer = Trainer(max_epochs=3, logger=TensorBoardLogger(save_dir=save_dir, name="", version=0))
-    e = MyTrainer(trainer, 5)
-    e.fit(model, train_dataloader, val_dataloader)
+    mt2 = MultiTrainer(trainer, num_trains=5)
+    assert mt2.done_so_far == 3
+    mt2.fit(model, train_dataloader, val_dataloader)
     assert len([x for x in out_path.iterdir() if x.is_dir()]) == 5
-    assert e.cnt == 2
+    assert mt2.done_so_far == 5
 
     trainer = Trainer(max_epochs=3, logger=TensorBoardLogger(save_dir=save_dir, name="", version=0))
-    e = MyTrainer(trainer, 5)
-    e.fit(model, train_dataloader, val_dataloader)
+    mt3 = MultiTrainer(trainer, num_trains=5)
+    assert mt3.done_so_far == 5
+    mt3.fit(model, train_dataloader, val_dataloader)
     assert len([x for x in out_path.iterdir() if x.is_dir()]) == 5
-    assert e.cnt == 0
+    assert mt3.done_so_far == 5
 
     trainer = Trainer(max_epochs=3, logger=TensorBoardLogger(save_dir=save_dir, name="", version=1))
-    e = MyTrainer(trainer, 5)
-    e.fit(model, train_dataloader, val_dataloader)
+    mt4 = MultiTrainer(trainer, num_trains=5)
+    assert mt4.done_so_far == 0
+    mt4.fit(model, train_dataloader, val_dataloader)
     assert len([x for x in out_path.iterdir() if x.is_dir()]) == 5
-    assert e.cnt == 5
-
-
-def test_experiment_3():
-    train_data = Reader(n_data=100, n_dims=3)
-    validation_data = Reader(n_data=100, n_dims=3)
-    model = LME(Model(n_dims=train_data.n_dims))
-    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
-    model.optimizer = optim.SGD(model.parameters(), lr=0.01)
-    train_dataloader = DataLoader(train_data)
-    val_dataloader = DataLoader(validation_data)
-    save_dir = "save_dir_exp_3" if __name__ == "__main__" else TemporaryDirectory().name
-
-    trainer = Trainer(max_epochs=3, logger=TensorBoardLogger(save_dir=save_dir, name="", version=0))
-    e = MyTrainer(MyTrainer(trainer, 3), 5)
-    e.fit(model, train_dataloader, val_dataloader)
-    out_path = Path(save_dir) / "version_0"
-    assert len([x for x in out_path.iterdir() if x.is_dir()]) == 5
-    assert e.cnt == 5
-
+    assert mt4.done_so_far == 5
 
 if __name__ == "__main__":
-    test_experiment_3()
+    test_experiment_2()
