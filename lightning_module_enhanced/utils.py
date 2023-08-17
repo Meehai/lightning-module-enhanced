@@ -19,6 +19,8 @@ def to_tensor(data):
         return [to_tensor(x) for x in data]
     if isinstance(data, tuple):
         return tuple(to_tensor(x) for x in data)
+    if isinstance(data, dict):
+        return {k: to_tensor(v) for k, v in data.items()}
     if isinstance(data, set):
         return {to_tensor(x) for x in data}
     if isinstance(data, tr.Tensor):
