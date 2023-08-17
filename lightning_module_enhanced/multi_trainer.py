@@ -1,6 +1,6 @@
 """Experiment base class"""
 from __future__ import annotations
-from typing import List, Dict
+from typing import List, Dict, Any
 from copy import deepcopy
 from pathlib import Path
 import torch as tr
@@ -16,8 +16,10 @@ from .logger import logger as lme_logger
 
 class MultiTrainer:
     """MultiTrainer class implementation. Extends Trainer to train >1 identical networks w/ diff seeds seamlessly"""
-    def __init__(self, trainer: Trainer, num_experiments: int):
+    def __init__(self, trainer: Trainer, num_trains: int):
         self.done = False
+        assert isinstance(trainer, Trainer), f"Expected pl.Trainer, got {type(trainer)}"
+        self.num_trains = num_trains
 
         # Stuff that is pinned to the experiment: model, trainer, train and validation set/dataloader
         self._trainer: Trainer = trainer
@@ -25,16 +27,19 @@ class MultiTrainer:
         self._train_dataloaders: List[DataLoader] = None
         self._val_dataloaders: List[DataLoader] = None
         self._train_dataset: Dataset = None
-        self._dataloader_params: Dict = None
-        self._fit_params: Dict = None
+        self._dataloader_params: dict = None
+        self._fit_params: dict = None
         self._res_path: Path = None
-        self.num_experiments = num_experiments
+        self._checkpoint_callbacks_state: dict[str, dict[str, Any]] = {}
+        self.fit_metrics: dict[str, dict[str, tr.Tensor]] = {}
+        self._setup()
 
         # post fit artefacts
-        self.fit_metrics: Dict[str, Dict[str, tr.Tensor]] = {}
-        self.checkpoint_callbacks: Dict[str, ModelCheckpoint] = {}
+        self.checkpoint_callbacks: dict[str, ModelCheckpoint] = {}
         self._df_fit_metrics: pd.DataFrame = None
         self.best_id: str = None
+
+    # Properties
 
     @property
     def trainer(self):
@@ -90,22 +95,45 @@ class MultiTrainer:
         """The experiment's directory name in the logger. Defaults to the str of the type"""
         return str(type(self)).split(".")[-1][0:-2]
 
-    def on_iteration_start(self, ix: int):
-        """Callback called at the start of each iteration"""
+    @property
+    def done_so_far(self) -> int:
+        """return the number of experiments done so far"""
+        return len(self.fit_metrics)
 
-    def on_iteration_end(self, ix: int):
-        """Callback called at the end of each iteration"""
-
-    def on_experiment_start(self):
-        """Callback called at the start of the experiment"""
-
-    def on_experiment_end(self):
-        """Callback called at the end of the experiment"""
+    # Public methods
 
     def test(self, *args, **kwargs):
         """Test wrapper to call the original trainer's test()"""
         assert self.done is True
         return self.trainer.test(*args, **kwargs)
+
+    def fit(self, model, train_dataloaders, val_dataloaders, **kwargs):
+        """The main function, uses same args as a regular pl.Trainer"""
+        assert self.done is False, "Cannot fit twice"
+        self._fit_setup(model, train_dataloaders, val_dataloaders, **kwargs)
+
+        for i in range(len(self)):
+            if self.ix_to_id[i] in self.fit_metrics:
+                assert self.ix_to_id[i] in self.checkpoint_callbacks
+                lme_logger.debug(f"Experiment id '{self.ix_to_id[i]}' already exists. Returning early.")
+                continue
+            self._do_one_iteration(i, self._model, self._train_dataloaders, self._val_dataloaders)
+            self._after_iteration()
+
+        self.done = True
+        self.best_id = self.df_fit_metrics.iloc[self.df_fit_metrics["loss"].argmin()].name
+
+    # Private methods
+
+    def _setup(self):
+        """called at ctor time to load fit_metrics and checkpoint callback states of previous runs if they exist"""
+        self._res_path = Path(self.trainer.log_dir) / "results.npy"
+        if self._res_path.exists():
+            results = np.load(self._res_path, allow_pickle=True).item()
+            self.fit_metrics = results["fit_metrics"]
+            self._checkpoint_callbacks_state = results["checkpoint_callbacks_state"]
+            ids = list(results["fit_metrics"].keys())
+            lme_logger.info(f"Loading previously done experiments (ids: {ids}) from '{self._res_path}'")
 
     def _fit_setup(self, model: LightningModule, train_dataloaders: DataLoader,
                    val_dataloaders: List[DataLoader], **kwargs):
@@ -121,25 +149,23 @@ class MultiTrainer:
             "batch_size": train_dataloaders.batch_size,
         }
         self._fit_params = kwargs
-        self._res_path = Path(self.trainer.log_dir) / "results.npy"
         for cb in model.configure_callbacks():
             assert not isinstance(cb, ModelCheckpoint), "Subset experiment cannot have another ModelCheckpoint"
 
-        if self._res_path.exists():
-            results = np.load(self._res_path, allow_pickle=True).item()
-            self.fit_metrics = results["fit_metrics"]
-            ids = list(results['fit_metrics'].keys())
-            lme_logger.info(f"Loading previously done experiments (ids: {ids}) from '{self._res_path}'")
-            model_checkpoints = {k: ModelCheckpoint() for k in results["checkpoint_callbacks_state"].keys()}
-            for k, v in results["checkpoint_callbacks_state"].items():
-                model_checkpoints[k].load_state_dict(v)
-            self.checkpoint_callbacks = model_checkpoints
+        # load previous experiments' checkpoint callback states, if any.
+        model_checkpoints = {}
+        for k, v in self._checkpoint_callbacks_state.items():
+            model_checkpoints[k] = ModelCheckpoint()
+            model_checkpoints[k].load_state_dict(v)
+        self.checkpoint_callbacks = model_checkpoints
 
     def _after_iteration(self):
         """Saves the npy and dataframe of the results"""
+        # update the fit_metrics and callback states after each experiment
+        # TODO: will this work fine if we do things async? Perhaps each experiment should only handle its own things
+        self._checkpoint_callbacks_state = {k: v.state_dict() for k, v in self.checkpoint_callbacks.items()}
         np.save(self._res_path, {"fit_metrics": self.fit_metrics,
-                                 "checkpoint_callbacks_state": {k: v.state_dict() \
-                                    for k, v in self.checkpoint_callbacks.items()}})
+                                 "checkpoint_callbacks_state": self._checkpoint_callbacks_state})
         self.df_fit_metrics.to_csv(f"{self.trainer.log_dir}/results.csv")
 
     def _do_one_iteration(self, ix: int, model: LightningModule, dataloader: DataLoader,
@@ -148,7 +174,8 @@ class MultiTrainer:
         # Copy old trainer and update the current one
         old_trainer = deepcopy(self.trainer)
         iter_model = deepcopy(model)
-        iter_model.reset_parameters()
+        if hasattr(iter_model, "reset_parameters"):
+            iter_model.reset_parameters()
         # Seed
         seed_everything(ix + len(self))
         version_prefix = f"{self.trainer.logger.version}/" if self.trainer.logger.version != "" else ""
@@ -180,25 +207,5 @@ class MultiTrainer:
         self.trainer = old_trainer
         return res
 
-    def fit(self, model, train_dataloaders, val_dataloaders, **kwargs):
-        """The main function, uses same args as a regular pl.Trainer"""
-        assert self.done is False, "Cannot fit twice"
-        self._fit_setup(model, train_dataloaders, val_dataloaders, **kwargs)
-        self.on_experiment_start()
-
-        for i in range(len(self)):
-            if self.ix_to_id[i] in self.fit_metrics:
-                assert self.ix_to_id[i] in self.checkpoint_callbacks
-                lme_logger.debug(f"Experimnt id '{self.ix_to_id[i]}' already exists. Returning early.")
-                continue
-            self.on_iteration_start(i)
-            self._do_one_iteration(i, self._model, self._train_dataloaders, self._val_dataloaders)
-            self.on_iteration_end(i)
-            self._after_iteration()
-        self.on_experiment_end()
-
-        self.done = True
-        self.best_id = self.df_fit_metrics.iloc[self.df_fit_metrics["loss"].argmin()].name
-
     def __len__(self):
-        return self.num_experiments
+        return self.num_trains
