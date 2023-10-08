@@ -1,4 +1,5 @@
 from lightning_module_enhanced import LME, TrainSetup
+from lightning_module_enhanced.trainable_module import TrainableModuleMixin
 from lightning_fabric.utilities.exceptions import MisconfigurationException
 from pytorch_lightning import Trainer
 from torch.utils.data import DataLoader
@@ -26,8 +27,8 @@ class Reader:
 
 def test_all_are_none():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    assert len(model.metrics) == 0
-    assert model.criterion_fn is None
+    assert len(model.metrics) == 1
+    assert model.criterion_fn == TrainableModuleMixin._default_criterion_fn
     assert model.optimizer is None
     assert model.scheduler_dict is None
     try:
