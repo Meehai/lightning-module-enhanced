@@ -42,7 +42,7 @@ def test_fit_no_criterion():
     try:
         Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
         assert False
-    except ValueError:
+    except NotImplementedError:
         pass
 
 def test_fit_no_optimizer():

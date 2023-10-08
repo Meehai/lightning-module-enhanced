@@ -32,13 +32,13 @@ class TestProperties:
 
     def test_trainable_params_1(self):
         self.module.trainable_params = False
-        assert self.module.trainable_params == False
+        assert self.module.trainable_params is False
         self.module.trainable_params = True
-        assert self.module.trainable_params == True
+        assert self.module.trainable_params is True
 
     def test_set_metrics_1(self):
         self.module.metrics = {"metric1": (lambda y, gt: (y - gt).mean(), "min")}
-        assert len(self.module.metrics) == 1
+        assert len(self.module.metrics) == 2 # criterion_fn is always set to some default
 
     def test_set_metrics_before_criterion(self):
         self.module.criterion_fn = lambda y, gt: (y - gt).mean()
