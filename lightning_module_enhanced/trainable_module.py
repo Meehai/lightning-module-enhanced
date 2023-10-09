@@ -65,7 +65,7 @@ class TrainableModuleMixin(TrainableModule):
         self._optimizer: optim.Optimizer = None
         self._scheduler_dict: Dict[str, Union[optim.lr_scheduler._LRScheduler, Any]] = None
         self._criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor] = None
-        self._metrics: Dict[str, CoreMetric] = {}
+        self._metrics: Dict[str, CoreMetric] = None
         # The default callbacks that are singletons. Cannot be overwritten and only one instance must exist.
         self._callbacks: List[pl.Callback] = []
         self.metadata_callback = MetadataCallback()
@@ -82,6 +82,8 @@ class TrainableModuleMixin(TrainableModule):
         """Get the criterion function loss(y, gt) -> backpropagable tensor"""
         if isinstance(self.base_model, TrainableModule):
             return self.base_model.criterion_fn
+        if self._criterion_fn is None:
+            return TrainableModuleMixin._default_criterion_fn
         return self._criterion_fn
 
     # TODO: criterion_fn shouldn't update metrics, but rather metrics should be *created* based on provided metrics and
@@ -94,6 +96,11 @@ class TrainableModuleMixin(TrainableModule):
         logger.debug(f"Setting criterion to '{criterion_fn}'")
         self._criterion_fn = CallableCoreMetric(criterion_fn, higher_is_better=False, requires_grad=True)
         self.metrics = {**self.metrics, "loss": self.criterion_fn}
+
+    @staticmethod
+    def _default_criterion_fn(y: tr.Tensor, gt: tr.Tensor):
+        raise NotImplementedError("No criterion fn was implemented. Use model.criterion_fn=XXX or a different "
+                                  "model.model_algorithm that includes a loss function")
 
     @property
     def optimizer(self) -> OptimizerType:
@@ -131,7 +138,7 @@ class TrainableModuleMixin(TrainableModule):
 
         trainer_cbs = [callback for callback in self.trainer.callbacks
                        if isinstance(callback, ModelCheckpoint) and callback.monitor is not None]
-        if len(trainer_cbs):
+        if len(trainer_cbs) > 0:
             logger.info("ModelCheckpoint callbacks were provided in the Trainer. Not using the checkpoint_monitors!")
             return [*self.default_callbacks, *self._callbacks, *trainer_cbs]
 
@@ -176,12 +183,14 @@ class TrainableModuleMixin(TrainableModule):
         """Gets the list of metric names"""
         if isinstance(self.base_model, TrainableModule):
             return self.base_model.metrics
+        if self._metrics is None:
+            return {"loss": CallableCoreMetric(self.criterion_fn, higher_is_better=False, requires_grad=True)}
         return self._metrics
 
     @metrics.setter
     def metrics(self, metrics: Dict[str, Tuple[Callable, str]]):
         assert not isinstance(self.base_model, TrainableModule), "Nested trainable modules"
-        if len(self._metrics) != 0:
+        if self._metrics is not None:
             logger.debug(f"Overwriting existing metrics {list(self.metrics.keys())} to {list(metrics.keys())}")
         self._metrics = {}
 
