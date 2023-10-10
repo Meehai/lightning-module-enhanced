@@ -140,9 +140,11 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         opts: list[LightningOptimizer] = _opt if isinstance(_opt, list) else [_opt]
         for opt in opts:
             opt.zero_grad()
+        # TODO: can we not pass prefix around here?
         train_metrics = self.model_algorithm(self, batch, prefix="")
         assert isinstance(train_metrics, dict), type(train_metrics)
         assert "loss" in train_metrics.keys(), train_metrics.keys()
+        # TODO: maybe pass them here
         self._update_metrics_at_batch_end(train_metrics)
         # Manual optimization like real men. We disable automatic_optimization in the constructor.
         self.manual_backward(train_metrics["loss"])
@@ -152,9 +154,11 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
     @overrides
     def validation_step(self, batch: dict, batch_idx: int, *args, **kwargs):
         """Validation step: returns batch validation loss and metrics."""
+        # TODO: can we not pass prefix around here?
         val_metrics = self.model_algorithm(self, batch, prefix="val_")
         assert isinstance(val_metrics, dict), type(val_metrics)
         assert "loss" in val_metrics.keys(), val_metrics.keys()
+        # TODO: maybe pass them here
         self._update_metrics_at_batch_end(val_metrics, prefix="val_")
 
     @overrides
@@ -162,6 +166,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         """Testing step: returns batch test loss and metrics. No prefix."""
         test_metrics = self.model_algorithm(self, batch)
         assert isinstance(test_metrics, dict), type(test_metrics)
+        # TODO: maybe pass prefix only here
         self._update_metrics_at_batch_end(test_metrics)
 
     @overrides
@@ -289,6 +294,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         # This allows {"data": {"a": ..., "b": ...}} to be mapped to forward(a, b)
         y = model.forward(x)
         gt = to_device(to_tensor(batch["labels"]), model.device)
+        # TODO: can we not pass prefix around here?
         return model.lme_metrics(y, gt, prefix, include_loss=True)
 
     def lme_metrics(self, y: tr.Tensor, gt: tr.Tensor, prefix: str, include_loss: bool = True) -> dict[str, tr.Tensor]:
@@ -301,6 +307,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         - include_loss Whether to include the loss in the returned metrics. This can be useful when using a different
         model_algorithm, where we want to compute the loss manually as well.
         """
+        # TODO: can we not pass prefix around here?
         if prefix not in self._active_run_metrics:
             raise KeyError(f"Prefix '{prefix}' not found in active run metrics. Set model.metrics={{...}} first. "
                            "Also, this method is meant to be ran from a pl.Trainer.fit() call, not manually.")
