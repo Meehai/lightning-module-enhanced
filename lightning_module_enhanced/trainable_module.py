@@ -83,7 +83,7 @@ class TrainableModuleMixin(TrainableModule):
         if isinstance(self.base_model, TrainableModule):
             return self.base_model.criterion_fn
         if self._criterion_fn is None:
-            return TrainableModuleMixin._default_criterion_fn
+            return CallableCoreMetric(TrainableModuleMixin._default_criterion_fn, higher_is_better=False)
         return self._criterion_fn
 
     # TODO: criterion_fn shouldn't update metrics, but rather metrics should be *created* based on provided metrics and
