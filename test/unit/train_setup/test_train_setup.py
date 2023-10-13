@@ -28,7 +28,7 @@ class Reader:
 def test_all_are_none():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     assert len(model.metrics) == 1
-    assert model.criterion_fn == TrainableModuleMixin._default_criterion_fn
+    assert model.criterion_fn.metric_fn == TrainableModuleMixin._default_criterion_fn
     assert model.optimizer is None
     assert model.scheduler_dict is None
     try:
