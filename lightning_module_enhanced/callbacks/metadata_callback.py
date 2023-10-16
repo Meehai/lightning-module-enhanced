@@ -113,11 +113,14 @@ class MetadataCallback(pl.Callback):
         """Called to set the log dir based on the first logger for train and test modes"""
         assert prefix in ("fit", "test"), prefix
         # flushing the metrics can happen in 3 cases:
-        # - metadata is None, so we just initialie it
-        # - metadata is not None, we are training the same model with a new trainer, so it starts again from epoch 0
-        # - metadata is not None, we are testing the model, so we don't want to have a test metadata with train metrics
+        # 1) metadata is None, so we just initialie it
+        # 2) metadata is not None, we are training the same model with a new trainer, so it starts again from epoch 0.
+        #    Note, in this case we also need to check for ckpt_path, becaus at this point current_epoch is 0, but we
+        #    may be resuning.
+        # 3) metadata is not None, we are testing the model, so we don't want to have a test metadata with train metrics
         if self.metadata is None or \
-           (self.metadata is not None and prefix == "fit" and trainer.current_epoch == 0) or \
+           (self.metadata is not None and prefix == "fit" and trainer.current_epoch == 0
+                and trainer.ckpt_path is None) or \
            (self.metadata is not None and prefix == "test"):
             self.metadata = {
                 "epoch_metrics": {},

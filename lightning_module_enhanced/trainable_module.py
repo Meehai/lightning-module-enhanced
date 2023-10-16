@@ -13,8 +13,9 @@ from .callbacks import MetadataCallback
 from .logger import logger
 from .utils import parsed_str_type
 
-OptimizerType = Union[optim.Optimizer, List[optim.Optimizer]]
-SchedulerType = Union[Dict, List[Dict]]
+OptimizerType = optim.Optimizer | list[optim.Optimizer]
+SchedulerType = dict | list[dict]
+CriterionFnType = Callable[[tr.Tensor, tr.Tensor], tr.Tensor]
 
 
 class TrainableModule(nn.Module, ABC):
@@ -64,7 +65,7 @@ class TrainableModuleMixin(TrainableModule):
         super().__init__()
         self._optimizer: optim.Optimizer = None
         self._scheduler_dict: Dict[str, Union[optim.lr_scheduler._LRScheduler, Any]] = None
-        self._criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor] = None
+        self._criterion_fn: CriterionFnType = None
         self._metrics: Dict[str, CoreMetric] = None
         # The default callbacks that are singletons. Cannot be overwritten and only one instance must exist.
         self._callbacks: List[pl.Callback] = []
@@ -78,7 +79,7 @@ class TrainableModuleMixin(TrainableModule):
 
     # Required for training
     @property
-    def criterion_fn(self) -> Callable:
+    def criterion_fn(self) -> CriterionFnType:
         """Get the criterion function loss(y, gt) -> backpropagable tensor"""
         if isinstance(self.base_model, TrainableModule):
             return self.base_model.criterion_fn
@@ -86,11 +87,8 @@ class TrainableModuleMixin(TrainableModule):
             return CallableCoreMetric(TrainableModuleMixin._default_criterion_fn, higher_is_better=False)
         return self._criterion_fn
 
-    # TODO: criterion_fn shouldn't update metrics, but rather metrics should be *created* based on provided metrics and
-    # built-in (?) or required (?) metrics, like loss_fn (in gan there are 3: loss_fn, g_loss and d_loss) and so on.
-    # In general a setter shouldn't set other properties as well.
     @criterion_fn.setter
-    def criterion_fn(self, criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor]):
+    def criterion_fn(self, criterion_fn: CriterionFnType):
         assert not isinstance(self.base_model, TrainableModule), "Nested trainable modules"
         assert isinstance(criterion_fn, Callable), f"Got '{criterion_fn}'"
         logger.debug(f"Setting criterion to '{criterion_fn}'")

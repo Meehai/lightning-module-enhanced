@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Sequence, Callable, Union
 from copy import deepcopy
 from pathlib import Path
+import shutil
 from overrides import overrides
 import torch as tr
 import pytorch_lightning as pl
@@ -110,6 +111,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
             self._active_run_metrics["val_"] = cloned_metrics
         self._reset_all_active_metrics()
         self._set_metrics_running_model()
+        self._copy_loaded_checkpoints()
 
     @overrides
     def on_fit_end(self):
@@ -359,3 +361,15 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         for prefix in self._active_run_metrics.keys():
             for metric in self._active_run_metrics[prefix].values():
                 metric.running_model = None
+
+    def _copy_loaded_checkpoints(self):
+        """copies the loaded checkpoint to the log dir"""
+        ckpt_dir = Path(self.logger.log_dir) / "checkpoints"
+        ckpt_dir.mkdir(exist_ok=True, parents=False)
+        if self.trainer.ckpt_path is not None:
+            shutil.copyfile(self.trainer.ckpt_path, ckpt_dir / "loaded.ckpt")
+
+            best_model_path = Path(self.trainer.checkpoint_callback.best_model_path)
+            new_best_path = ckpt_dir / best_model_path.name
+            shutil.copyfile(best_model_path, new_best_path)
+            logger.debug("Loaded best and last checkpoint before resuming.")
