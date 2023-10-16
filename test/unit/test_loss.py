@@ -21,7 +21,7 @@ def test_batch_weighted_ce_3():
     y = tr.randn(200, 300, 1)
     gt = F.one_hot(tr.randint(0, 2, size=(200, 300)), num_classes=8).type(tr.float)
     try:
-        loss = batch_weighted_ce(y, gt, reduction="none")
+        _ = batch_weighted_ce(y, gt, reduction="none")
         raise ValueError("shouldn't reach here")
     except AssertionError:
         pass

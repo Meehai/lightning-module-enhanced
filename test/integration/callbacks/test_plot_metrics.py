@@ -1,7 +1,6 @@
 from copy import copy
 from lightning_module_enhanced import LME, TrainSetup
 from lightning_module_enhanced.callbacks import PlotMetrics
-from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning import Trainer
 from torch.utils.data import DataLoader
 from torch import nn
