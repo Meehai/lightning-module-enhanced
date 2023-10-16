@@ -1,3 +1,4 @@
+# Fixes this: https://gitlab.com/meehai/lightning-module-enhanced/-/issues/11
 from pathlib import Path
 import shutil
 from torch import nn, optim

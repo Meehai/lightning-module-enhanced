@@ -368,8 +368,8 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         ckpt_dir.mkdir(exist_ok=True, parents=False)
         if self.trainer.ckpt_path is not None:
             shutil.copyfile(self.trainer.ckpt_path, ckpt_dir / "loaded.ckpt")
-
             best_model_path = Path(self.trainer.checkpoint_callback.best_model_path)
-            new_best_path = ckpt_dir / best_model_path.name
-            shutil.copyfile(best_model_path, new_best_path)
+            if best_model_path.exists() and best_model_path.is_file():
+                new_best_path = ckpt_dir / best_model_path.name
+                shutil.copyfile(best_model_path, new_best_path)
             logger.debug("Loaded best and last checkpoint before resuming.")
