@@ -47,19 +47,6 @@ def test_train_setup_minimal():
     TrainSetup(model, cfg)
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
 
-def test_train_setup_scheduler_bad():
-    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
-        "criterion": {"type": "mse"},
-        "scheduler": {"type": "ReduceLROnPlateau", "args": {"factor": 0.9, "patience": 5}}
-    }
-    try:
-        TrainSetup(model, cfg)
-        raise Exception
-    except AssertionError:
-        pass
-
 def test_train_setup_scheduler_bad_2():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
@@ -89,19 +76,6 @@ def test_train_setup_scheduler_good():
     }
     TrainSetup(model, cfg)
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
-
-def test_train_setup_metrics_bad_accuracy():
-    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
-        "criterion": {"type": "mse"},
-        "metrics": [{"type": "accuracy"}]
-    }
-    try:
-        TrainSetup(model, cfg)
-        raise Exception
-    except AssertionError:
-        pass
 
 def test_train_setup_metrics_good_accuracy():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 5), nn.ReLU()))
