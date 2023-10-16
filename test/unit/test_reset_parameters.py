@@ -1,4 +1,3 @@
-import pytest
 import torch as tr
 from copy import deepcopy
 from lightning_module_enhanced import LME
@@ -12,7 +11,6 @@ def test_reset_parameters_1():
     new_params = deepcopy(tuple(module.parameters()))
     for p1, p2 in zip(params, new_params):
         assert not tr.allclose(p1, p2)
-
 
 def test_reset_parameters_2():
     """
