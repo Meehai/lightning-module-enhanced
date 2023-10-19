@@ -28,7 +28,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html#hooks
 
         Takes a :class:`torch.nn.Module` as the underlying model and implements
-        all the training/validation/testing logic.
+        all the training/validation/testing logic in a unified way.
 
         Attributes:
             base_model: The base :class:`torch.nn.Module`
@@ -47,6 +47,8 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
     """
     def __init__(self, base_model: nn.Module):
         assert isinstance(base_model, nn.Module), f"Expected a nn.Module, got {type(base_model)}"
+        if isinstance(base_model, LightningModuleEnhanced):
+            raise ValueError("Cannot have nested LME modules. LME must extend only a basic torch nn.Module")
         super().__init__()
         self.base_model = base_model
         self.automatic_optimization = False

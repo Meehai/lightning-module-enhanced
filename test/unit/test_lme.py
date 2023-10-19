@@ -1,10 +1,19 @@
 import torch as tr
 from lightning_module_enhanced import LME
 from torch import nn
+from copy import deepcopy
 
-def test_contructor_1():
+def test_constructor_1():
     module = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     assert module is not None
+
+def test_constructor_2():
+    try:
+        _ = LME(LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1))))
+        raise Exception
+    except ValueError as e:
+        assert str(e).find("nested") != -1
+        pass
 
 def test_device_1():
     module = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
@@ -56,6 +65,28 @@ def test_set_criterion_1():
     module.criterion_fn = lambda y, gt: (y - gt).mean()
     assert module.criterion_fn is not None
     assert len(module.metrics) == 1
+
+def test_reset_parameters_1():
+    module = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    params = deepcopy(tuple(module.parameters()))
+    module.reset_parameters()
+    new_params = deepcopy(tuple(module.parameters()))
+    for p1, p2 in zip(params, new_params):
+        assert not tr.allclose(p1, p2)
+
+def test_reset_parameters_2():
+    """
+    Same as above, but deeper. Fails for bigger values tho. Seems torch related somehow.
+    """
+    model = nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1))
+    for _ in range(10):
+        model = nn.Sequential(model)
+    module = LME(model)
+    params = deepcopy(tuple(module.parameters()))
+    module.reset_parameters()
+    new_params = deepcopy(tuple(module.parameters()))
+    for p1, p2 in zip(params, new_params):
+        assert not tr.allclose(p1, p2)
 
 
 if __name__ == "__main__":

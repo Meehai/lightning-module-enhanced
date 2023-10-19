@@ -81,15 +81,16 @@ class TrainableModuleMixin(TrainableModule):
     @property
     def criterion_fn(self) -> CriterionFnType:
         """Get the criterion function loss(y, gt) -> backpropagable tensor"""
-        if isinstance(self.base_model, TrainableModule):
-            return self.base_model.criterion_fn
+        assert not isinstance(self.base_model, TrainableModule), "Cannot have nested Trainable Modules"
+        if hasattr(self.base_model, "criterion_fn"):
+            logger.warning("Base model has a .criterion_fn property. This may be confusing. It will not be used by LME")
         if self._criterion_fn is None:
             return CallableCoreMetric(TrainableModuleMixin._default_criterion_fn, higher_is_better=False)
         return self._criterion_fn
 
     @criterion_fn.setter
     def criterion_fn(self, criterion_fn: CriterionFnType):
-        assert not isinstance(self.base_model, TrainableModule), "Nested trainable modules"
+        assert not isinstance(self.base_model, TrainableModule), "Cannot have nested Trainable Modules"
         assert isinstance(criterion_fn, Callable), f"Got '{criterion_fn}'"
         logger.debug(f"Setting criterion to '{criterion_fn}'")
         self._criterion_fn = CallableCoreMetric(criterion_fn, higher_is_better=False, requires_grad=True)
@@ -103,13 +104,14 @@ class TrainableModuleMixin(TrainableModule):
     @property
     def optimizer(self) -> OptimizerType:
         """Returns the optimizer"""
-        if isinstance(self.base_model, TrainableModule):
-            return self.base_model.optimizer
+        assert not isinstance(self.base_model, TrainableModule), "Cannot have nested Trainable Modules"
+        if hasattr(self.base_model, "optimizer"):
+            logger.warning("Base model has a .optimizer property. This may be confusing as it will not be used by LME")
         return self._optimizer
 
     @optimizer.setter
     def optimizer(self, optimizer: OptimizerType):
-        assert not isinstance(self.base_model, TrainableModule), "Nested trainable modules"
+        assert not isinstance(self.base_model, TrainableModule), "Cannot have nested Trainable Modules"
         assert isinstance(optimizer, (optim.Optimizer, List)), type(optimizer)
         if isinstance(optimizer, list):
             for o in optimizer:
@@ -122,11 +124,9 @@ class TrainableModuleMixin(TrainableModule):
     @property
     def callbacks(self) -> List[pl.Callback]:
         """Gets the callbacks"""
-        if isinstance(self.base_model, TrainableModule):
-            # TODO: hack -- this is because we've disabled automatic optimization in LME >2.0 and ModelCheckpoint
-            # must be constructed manually. They did some weird validation/non-validation hacks.
-            self.base_model.trainer = self.trainer
-            return [*self.default_callbacks, *self.base_model.callbacks]
+        assert not isinstance(self.base_model, TrainableModule), "Cannot have nested Trainable Modules"
+        if hasattr(self.base_model, "callbacks"):
+            logger.warning("Base model has a .callbacks property. This may be confusing as it will not be used by LME")
 
         # trainer not attached yet, so no model checkpoints are needed.
         try:
@@ -179,8 +179,9 @@ class TrainableModuleMixin(TrainableModule):
     @property
     def metrics(self) -> Dict[str, CoreMetric]:
         """Gets the list of metric names"""
-        if isinstance(self.base_model, TrainableModule):
-            return self.base_model.metrics
+        assert not isinstance(self.base_model, TrainableModule), "Cannot have nested Trainable Modules"
+        if hasattr(self.base_model, "metrics"):
+            logger.warning("Base model has a .metrics property. This may be confusing as it will not be used by LME")
         if self._metrics is None:
             return {"loss": CallableCoreMetric(self.criterion_fn, higher_is_better=False, requires_grad=True)}
         return self._metrics
@@ -225,8 +226,9 @@ class TrainableModuleMixin(TrainableModule):
     @property
     def scheduler_dict(self) -> SchedulerType:
         """Returns the scheduler dict"""
-        if isinstance(self.base_model, TrainableModule):
-            return self.base_model.scheduler_dict
+        assert not isinstance(self.base_model, TrainableModule), "Cannot have nested Trainable Modules"
+        if hasattr(self.base_model, "scheduler_dict"):
+            logger.warning("Base model has a .scheduler_dict property. This may be confusing. Will not be used by LME")
         res = self._scheduler_dict
         if res is not None and len(res) == 1:
             return res[0]
