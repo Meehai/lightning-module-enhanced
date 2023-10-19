@@ -93,7 +93,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
 
     @property
     def model_algorithm(self) -> callable:
-        """The model algorithm, used at both training, validation, test and inference. There is a prefix arg for all."""
+        """The model algorithm, used at both training, validation, test and inference."""
         return self._model_algorithm
 
     @model_algorithm.setter
@@ -161,10 +161,9 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
 
     @overrides
     def test_step(self, batch: dict, batch_idx: int, *args, **kwargs):
-        """Testing step: returns batch test loss and metrics. No prefix."""
+        """Testing step: returns batch test loss and metrics."""
         test_metrics = self.model_algorithm(self, batch)
         assert isinstance(test_metrics, dict), type(test_metrics)
-        # TODO: maybe pass prefix only here
         self._update_metrics_at_batch_end(test_metrics)
 
     @overrides
