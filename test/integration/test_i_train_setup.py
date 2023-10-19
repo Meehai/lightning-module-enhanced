@@ -41,7 +41,7 @@ def test_all_are_none():
 def test_train_setup_minimal():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"}
     }
     TrainSetup(model, cfg)
@@ -50,7 +50,7 @@ def test_train_setup_minimal():
 def test_train_setup_scheduler_bad_2():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"},
         "scheduler": {"type": "ReduceLROnPlateau",
                       "args": {"factor": 0.9, "patience": 5},
@@ -68,7 +68,7 @@ def test_train_setup_scheduler_bad_2():
 def test_train_setup_scheduler_good():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"},
         "scheduler": {"type": "ReduceLROnPlateau",
                       "args": {"factor": 0.9, "patience": 5},
@@ -80,7 +80,7 @@ def test_train_setup_scheduler_good():
 def test_train_setup_metrics_good_accuracy():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 5), nn.ReLU()))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"},
         "metrics": [{"type": "accuracy", "args": {"task": "multiclass", "num_classes": 5, "average": "none"}}]
     }
@@ -93,7 +93,7 @@ def test_train_setup_metrics_good_accuracy():
 def test_train_setup_metrics_l1():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"},
         "metrics": [{"type": "l1"}]
     }
@@ -103,7 +103,7 @@ def test_train_setup_metrics_l1():
 def test_train_setup_metrics_mse():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"},
         "metrics": [{"type": "mse"}]
     }

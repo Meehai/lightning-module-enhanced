@@ -31,7 +31,7 @@ def test_core_metric_running_model_1():
     fn = MyMetric()
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"},
     }
     TrainSetup(model, cfg)
