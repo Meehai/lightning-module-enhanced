@@ -378,6 +378,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
 
     def _prefix_from_trainer(self) -> str:
         """returns the prefix: "" (for training), "val_" for validating or "" for testing as well"""
-        assert self.trainer.training or self.trainer.validating or self.trainer.testing, self.trainer.state
-        prefix = "" if self.trainer.training or self.trainer.validating else "val_"
+        assert self.trainer.training or self.trainer.validating or self.trainer.testing \
+            or self.trainer.sanity_checking, self.trainer.state
+        prefix = "" if self.trainer.training or self.trainer.testing else "val_"
         return prefix
