@@ -140,7 +140,7 @@ class TrainableModuleMixin(TrainableModule):
             logger.info("ModelCheckpoint callbacks were provided in the Trainer. Not using the checkpoint_monitors!")
             return [*self.default_callbacks, *self._callbacks, *trainer_cbs]
 
-        prefix = "val_" if self.trainer.enable_validation else ""
+        prefix = "val_" if self.trainer.validating else ""
         model_ckpt_cbs = []
         for monitor in self.checkpoint_monitors:
             # Lightning requires ValueError here, though KeyError would be more appropriate

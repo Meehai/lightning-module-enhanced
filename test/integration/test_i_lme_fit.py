@@ -22,13 +22,13 @@ class MultiArgsLME(LME):
         self.model_algorithm = self.model_algorithm_multi_args
 
     @staticmethod
-    def model_algorithm_multi_args(self, train_batch: Dict, prefix: str = "") -> Dict[str, tr.Tensor]:
+    def model_algorithm_multi_args(self, train_batch: Dict) -> Dict[str, tr.Tensor]:
         x = train_batch["data"]
         assert isinstance(x, (dict, tr.Tensor)), type(x)
         # This allows {"data": {"a": ..., "b": ...}} to be mapped to forward(a, b)
         y = self.forward(**x) if isinstance(x, dict) else self.forward(x)
         gt = to_device(to_tensor(train_batch["labels"]), self.device)
-        return self.lme_metrics(y, gt, prefix)
+        return self.lme_metrics(y, gt)
 
 def test_fit_1():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
@@ -288,9 +288,9 @@ def test_fit_different_forward_params_6():
 def test_fit_model_algorithm_1():
     cnt = {"cnt": 0}
 
-    def my_model_algo(model, batch, cnt, prefix=""):
+    def my_model_algo(model, batch, cnt):
         cnt["cnt"] += 1
-        return LME.feed_forward_algorithm(model, batch, prefix)
+        return LME.feed_forward_algorithm(model, batch)
 
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
@@ -300,13 +300,13 @@ def test_fit_model_algorithm_1():
     assert cnt["cnt"] == 10
 
 def test_fit_model_algorithm_not_include_loss():
-    def my_model_algo(model, batch, prefix=""):
+    def my_model_algo(model, batch):
         x = batch["data"]
         assert isinstance(x, (dict, tr.Tensor)), type(x)
         # This allows {"data": {"a": ..., "b": ...}} to be mapped to forward(a, b)
         y = model.forward(x)
         gt = to_device(to_tensor(batch["labels"]), model.device)
-        res = model.lme_metrics(y, gt, prefix, include_loss=False)
+        res = model.lme_metrics(y, gt, include_loss=False)
         assert "loss" not in res
         res["loss"] = model.criterion_fn(y, gt)
         return res
@@ -319,4 +319,4 @@ def test_fit_model_algorithm_not_include_loss():
 
 
 if __name__ == "__main__":
-    test_fit_twice_from_ckpt()
+    test_fit_different_forward_params_1()

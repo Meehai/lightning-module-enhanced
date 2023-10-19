@@ -142,11 +142,9 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         opts: list[LightningOptimizer] = _opt if isinstance(_opt, list) else [_opt]
         for opt in opts:
             opt.zero_grad()
-        # TODO: can we not pass prefix around here?
-        train_metrics = self.model_algorithm(self, batch, prefix="")
+        train_metrics = self.model_algorithm(self, batch)
         assert isinstance(train_metrics, dict), type(train_metrics)
         assert "loss" in train_metrics.keys(), train_metrics.keys()
-        # TODO: maybe pass them here
         self._update_metrics_at_batch_end(train_metrics)
         # Manual optimization like real men. We disable automatic_optimization in the constructor.
         self.manual_backward(train_metrics["loss"])
@@ -156,12 +154,10 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
     @overrides
     def validation_step(self, batch: dict, batch_idx: int, *args, **kwargs):
         """Validation step: returns batch validation loss and metrics."""
-        # TODO: can we not pass prefix around here?
-        val_metrics = self.model_algorithm(self, batch, prefix="val_")
+        val_metrics = self.model_algorithm(self, batch)
         assert isinstance(val_metrics, dict), type(val_metrics)
         assert "loss" in val_metrics.keys(), val_metrics.keys()
-        # TODO: maybe pass them here
-        self._update_metrics_at_batch_end(val_metrics, prefix="val_")
+        self._update_metrics_at_batch_end(val_metrics)
 
     @overrides
     def test_step(self, batch: dict, batch_idx: int, *args, **kwargs):
@@ -285,7 +281,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         return self.base_model.load_state_dict(state_dict, strict)
 
     @staticmethod
-    def feed_forward_algorithm(model: LightningModuleEnhanced, batch: dict, prefix: str = "") -> dict[str, tr.Tensor]:
+    def feed_forward_algorithm(model: LightningModuleEnhanced, batch: dict) -> dict[str, tr.Tensor]:
         """
         Generic step for computing the forward pass, loss and metrics. Simple feed-forward algorithm by default.
         Must return a dict of type: {metric_name: metric_tensor} for all metrics.
@@ -296,20 +292,18 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         # This allows {"data": {"a": ..., "b": ...}} to be mapped to forward(a, b)
         y = model.forward(x)
         gt = to_device(to_tensor(batch["labels"]), model.device)
-        # TODO: can we not pass prefix around here?
-        return model.lme_metrics(y, gt, prefix, include_loss=True)
+        return model.lme_metrics(y, gt, include_loss=True)
 
-    def lme_metrics(self, y: tr.Tensor, gt: tr.Tensor, prefix: str, include_loss: bool = True) -> dict[str, tr.Tensor]:
+    def lme_metrics(self, y: tr.Tensor, gt: tr.Tensor, include_loss: bool = True) -> dict[str, tr.Tensor]:
         """
         Pass through all the metrics of this batch and call forward. This updates the metric state for this batch
         Parameters:
         - y the output of the model
         - gt the ground truth
-        - prefix The prefix/mode of the run. Possible values: "" (train), "val_" or "test_"
         - include_loss Whether to include the loss in the returned metrics. This can be useful when using a different
         model_algorithm, where we want to compute the loss manually as well.
         """
-        # TODO: can we not pass prefix around here?
+        prefix = self._prefix_from_trainer()
         if prefix not in self._active_run_metrics:
             raise KeyError(f"Prefix '{prefix}' not found in active run metrics. Set model.metrics={{...}} first. "
                            "Also, this method is meant to be ran from a pl.Trainer.fit() call, not manually.")
@@ -326,7 +320,8 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
 
     # Private methods
 
-    def _update_metrics_at_batch_end(self, batch_results: dict[str, tr.Tensor], prefix: str = ""):
+    def _update_metrics_at_batch_end(self, batch_results: dict[str, tr.Tensor]):
+        prefix = self._prefix_from_trainer()
         if set(batch_results.keys()) != set(self.metrics.keys()):
             raise ValueError(f"Not all expected metrics ({self.metrics.keys()}) were computed "
                              f"this batch: {batch_results.keys()}")
@@ -380,3 +375,9 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
                 new_best_path = ckpt_dir / best_model_path.name
                 shutil.copyfile(best_model_path, new_best_path)
             logger.debug("Loaded best and last checkpoint before resuming.")
+
+    def _prefix_from_trainer(self) -> str:
+        """returns the prefix: "" (for training), "val_" for validating or "" for testing as well"""
+        assert self.trainer.training or self.trainer.validating or self.trainer.testing, self.trainer.state
+        prefix = "" if self.trainer.training or self.trainer.validating else "val_"
+        return prefix
