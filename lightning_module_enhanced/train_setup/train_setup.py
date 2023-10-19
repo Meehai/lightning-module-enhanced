@@ -1,5 +1,5 @@
 """Module that implements a standard setup process of the lightning module via a train config file"""
-from typing import Dict, Tuple, Callable
+from typing import Callable
 from functools import partial
 from torch import optim
 from torch.nn import functional as F
@@ -20,9 +20,9 @@ class TrainSetup:
     The optional attributes are: scheduler, metrics & callbacks.
     """
 
-    def __init__(self, module: TrainableModule, train_cfg: Dict):
+    def __init__(self, module: TrainableModule, train_cfg: dict):
         assert isinstance(module, TrainableModule), f"Got {type(module)}"
-        assert isinstance(train_cfg, Dict), f"Got {type(train_cfg)}"
+        assert isinstance(train_cfg, dict), f"Got {type(train_cfg)}"
         self.module = module
         self.train_cfg = train_cfg
         self._setup()
@@ -58,12 +58,7 @@ class TrainSetup:
     def parse_optimizer(cfg):
         """Parses the possible optimizers"""
         logger.debug(f"Setting optimizer from config: '{cfg['type']}'")
-        optimizer_type = {
-            "adamw": optim.AdamW,
-            "adam": optim.Adam,
-            "sgd": optim.SGD,
-            "rmsprop": optim.RMSprop
-        }[cfg["type"]]
+        optimizer_type = getattr(optim, cfg["type"])
         return optimizer_type, cfg["args"]
 
     @staticmethod
@@ -79,7 +74,7 @@ class TrainSetup:
         return criterion_type
 
     @staticmethod
-    def parse_scheduler(cfg: Dict):
+    def parse_scheduler(cfg: dict):
         """Setup the scheduler following Pytorch Lightning's requirements."""
         assert "type" in cfg and "optimizer_args" in cfg and "monitor" in cfg["optimizer_args"], cfg
         scheduler_type = {
@@ -89,7 +84,7 @@ class TrainSetup:
         return partial(scheduler_type, **cfg["args"]), cfg["optimizer_args"]
 
     @staticmethod
-    def parse_metrics(cfg: Dict) -> Dict[str, Tuple[Callable, str]]:
+    def parse_metrics(cfg: dict) -> dict[str, tuple[Callable, str]]:
         """Setup the metrics from the config file. Only a couple of them are available."""
         metrics = {}
         for metric_dict in cfg:
@@ -109,6 +104,6 @@ class TrainSetup:
 
     @staticmethod
     # pylint: disable=unused-argument
-    def parse_callbacks(cfg: Dict):
+    def parse_callbacks(cfg: dict):
         """TODO: callbacks"""
         return None

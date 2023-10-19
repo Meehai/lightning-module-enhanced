@@ -18,7 +18,7 @@ def test_plot_metrics_1():
     """simple tests: at the end of training we should have 3 entries on l1/loss due to 3 epochs"""
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"},
         "metrics": [{"type": "l1"}]
     }
@@ -36,7 +36,7 @@ def test_plot_metrics_2():
     """fine-tuning also should yield 3 epochs, even thouh we start from a pre-trained one"""
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"},
         "metrics": [{"type": "l1"}]
     }
@@ -59,7 +59,7 @@ def test_plot_metrics_3():
     """reload a training from first/2nd epoch. The metrics/training should continue"""
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"},
         "metrics": [{"type": "l1"}]
     }

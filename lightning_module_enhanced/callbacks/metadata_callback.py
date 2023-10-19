@@ -231,7 +231,7 @@ class MetadataCallback(pl.Callback):
         cb = [cb for cb in pl_module.trainer.checkpoint_callbacks if cb.monitor == f"{prefix}{monitor}"]
         if len(cb) > 1:
             logger.warning(f"More than one callback for monitor '{monitor}' found: {cb}")
-        assert len(cb) > 0, f"Monitor '{monitor}' not found in model checkpoints: {monitors}"
+        assert len(cb) > 0, f"Monitor '{monitor}' not found in model checkpoints: {monitors} (prefix: {prefix})"
         return cb[0]
 
     def _log_model_checkpoint_fit_start(self, pl_module: LightningModule):

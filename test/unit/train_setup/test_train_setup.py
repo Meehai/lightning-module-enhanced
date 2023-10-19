@@ -11,7 +11,7 @@ import torch as tr
 def test_train_setup_basic():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"}
     }
     TrainSetup(model, cfg)
@@ -22,7 +22,7 @@ def test_train_setup_basic():
 def test_train_setup_scheduler_1():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"},
         "scheduler": {"type": "ReduceLROnPlateau",
                       "args": {"factor": 0.9, "patience": 5},
@@ -37,7 +37,7 @@ def test_train_setup_scheduler_1():
 def test_train_setup_scheduler_2():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"},
         "scheduler": {"type": "ReduceLROnPlateauWithBurnIn",
                       "args": {"factor": 0.9, "patience": 5, "burn_in_epochs": 20},
@@ -53,7 +53,7 @@ def test_train_setup_scheduler_2():
 def test_train_setup_scheduler_3():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"},
         "scheduler": {"type": "ReduceLROnPlateau", "args": {"factor": 0.9, "patience": 5}}
     }
@@ -66,7 +66,7 @@ def test_train_setup_scheduler_3():
 def test_train_setup_metrics_accuracy_1():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 5), nn.ReLU()))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"},
         "metrics": [{"type": "accuracy", "args": {"task": "multiclass", "num_classes": 5, "average": "none"}}]
     }
@@ -76,7 +76,7 @@ def test_train_setup_metrics_accuracy_1():
 def test_train_setup_metrics_accuracy_2():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"},
         "metrics": [{"type": "accuracy"}]
     }
@@ -89,7 +89,7 @@ def test_train_setup_metrics_accuracy_2():
 def test_train_setup_metrics_multi():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"},
         "metrics": [{"type": "accuracy", "args": {"task": "multiclass", "num_classes": 5, "average": "none"}}]
     }

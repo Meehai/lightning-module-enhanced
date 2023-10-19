@@ -16,7 +16,7 @@ class Reader:
 def test_metadata_callback_train_1():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"},
         "metrics": [{"type": "l1"}]
     }
@@ -38,7 +38,7 @@ def test_metadata_callback_train_1():
 def test_metadata_callback_test_1():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"},
         "metrics": [{"type": "l1"}]
     }
@@ -60,7 +60,7 @@ def test_metadata_callback_test_1():
 def test_metadata_callback_no_checkpoint():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"},
     }
     TrainSetup(model, cfg)
@@ -70,7 +70,7 @@ def test_metadata_callback_no_checkpoint():
 def test_metadata_callback_two_ModelCheckpoints():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"},
         "metrics": [{"type": "l1"}]
     }
@@ -93,7 +93,7 @@ def test_metadata_callback_two_ModelCheckpoints():
 def test_metadata_callback_two_monitors():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     cfg = {
-        "optimizer": {"type": "sgd", "args": {"lr": 0.01}},
+        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
         "criterion": {"type": "mse"},
         "metrics": [{"type": "l1"}]
     }

@@ -24,11 +24,11 @@ class MyReader:
     def __getitem__(self, ix):
         return {"data": tr.randn(self.in_c), "labels": tr.randn(self.out_c)}
 
-def my_model_algo(model: LME, batch: dict, prefix="") -> dict[str, tr.Tensor]:
+def my_model_algo(model: LME, batch: dict) -> dict[str, tr.Tensor]:
     x = batch["data"]
     y = model.forward(x)
     gt = to_device(to_tensor(batch["labels"]), model.device)
-    res = model.lme_metrics(y, gt, prefix, include_loss=False) # if set to True, remove next line
+    res = model.lme_metrics(y, gt, include_loss=False) # if set to True, remove next line
     res["loss"] = model.criterion_fn(y, gt)
     return res
 
