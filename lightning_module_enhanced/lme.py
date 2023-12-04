@@ -55,6 +55,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         self._active_run_metrics: dict[str, dict[str, CoreMetric]] = {}
         self._summary: ModelStatistics = None
         self._model_algorithm = LightningModuleEnhanced.feed_forward_algorithm
+        self.cache_result = None
 
     # Getters and setters for properties
 
@@ -292,6 +293,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         assert isinstance(x, (dict, tr.Tensor)), type(x)
         # This allows {"data": {"a": ..., "b": ...}} to be mapped to forward(a, b)
         y = model.forward(x)
+        model.cache_result = tr_detach_data(y)
         gt = to_device(to_tensor(batch["labels"]), model.device)
         return model.lme_metrics(y, gt, include_loss=True)
 
