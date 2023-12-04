@@ -26,7 +26,7 @@ class PlotCallbackGeneric(Callback):
         if hasattr(pl_module, "cache_result") and pl_module.cache_result is not None:
             y = pl_module.cache_result
         else:
-            logger.debug2(f"Prediction was not cached or PlotCallback. Recomputing it. This may be expensive!")
+            logger.debug2("Prediction was not cached or PlotCallback. Recomputing it. This may be expensive!")
             with tr.no_grad():
                 y = pl_module.forward(batch)
         return y
