@@ -149,7 +149,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         for opt in opts:
             opt.zero_grad()
         batch_prediction, train_metrics = self.model_algorithm(self, batch)
-        self.cache_result = batch_prediction
+        self.cache_result = tr_detach_data(batch_prediction)
         assert isinstance(train_metrics, dict), type(train_metrics)
         assert "loss" in train_metrics.keys(), train_metrics.keys()
         self._update_metrics_at_batch_end(train_metrics)
@@ -162,7 +162,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
     def validation_step(self, batch: dict, batch_idx: int, *args, **kwargs):
         """Validation step: returns batch validation loss and metrics."""
         batch_prediction, val_metrics = self.model_algorithm(self, batch)
-        self.cache_result = batch_prediction
+        self.cache_result = tr_detach_data(batch_prediction)
         assert isinstance(val_metrics, dict), type(val_metrics)
         assert "loss" in val_metrics.keys(), val_metrics.keys()
         self._update_metrics_at_batch_end(val_metrics)
@@ -171,7 +171,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
     def test_step(self, batch: dict, batch_idx: int, *args, **kwargs):
         """Testing step: returns batch test loss and metrics."""
         batch_prediction, test_metrics = self.model_algorithm(self, batch)
-        self.cache_result = batch_prediction
+        self.cache_result = tr_detach_data(batch_prediction)
         assert isinstance(test_metrics, dict), type(test_metrics)
         self._update_metrics_at_batch_end(test_metrics)
 
