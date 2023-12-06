@@ -1,6 +1,6 @@
-"""Generic Pytorch Lightning Graph module on top of a Graph module"""
+"""Generic Pytorch Lightning module on top of a Pytorch nn.Module"""
 from __future__ import annotations
-from typing import Any, Sequence, Callable, Union
+from typing import Any, Sequence, Callable
 from copy import deepcopy
 from pathlib import Path
 import shutil
@@ -17,6 +17,9 @@ from .trainable_module import TrainableModuleMixin
 from .metrics import CoreMetric
 from .logger import logger
 from .utils import to_tensor, to_device, tr_detach_data
+
+# (predition, {metric_name: metric_result})
+ModelAlgorithmOutput = tuple[tr.Tensor, dict[str, tr.Tensor]]
 
 # pylint: disable=too-many-ancestors, arguments-differ, unused-argument, abstract-method
 class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
@@ -53,7 +56,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         self.base_model = base_model
         self.automatic_optimization = False
         self._active_run_metrics: dict[str, dict[str, CoreMetric]] = {}
-        self._summary: ModelStatistics = None
+        self._summary: ModelStatistics | None = None
         self._model_algorithm = LightningModuleEnhanced.feed_forward_algorithm
         self.cache_result = None
 
@@ -95,13 +98,13 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         self._summary = None
 
     @property
-    def model_algorithm(self) -> callable:
+    def model_algorithm(self) -> Callable:
         """The model algorithm, used at both training, validation, test and inference."""
         return self._model_algorithm
 
     @model_algorithm.setter
-    def model_algorithm(self, value: callable):
-        assert isinstance(value, Callable), f"Expected a callable, got {type(value)}"
+    def model_algorithm(self, value: Callable):
+        assert isinstance(value, Callable), f"Expected a Callable, got {type(value)}"
         self._model_algorithm = value
 
     # Overrides on top of the standard pytorch lightning module
@@ -133,8 +136,8 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         self._unset_metrics_running_model()
         self._active_run_metrics = {}
 
-    @overrides
-    def training_step(self, batch: dict, batch_idx: int, *args, **kwargs) -> Union[tr.Tensor, dict[str, Any]]:
+    @overrides(check_signature=False)
+    def training_step(self, batch: dict, batch_idx: int, *args, **kwargs):
         """Training step: returns batch training loss and metrics."""
         # Warning: if not using lightning's self.optimizers(), and rather trying to user our self.optimizer, will
         # result in checkpoints not being saved.
@@ -145,7 +148,8 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         opts: list[LightningOptimizer] = _opt if isinstance(_opt, list) else [_opt]
         for opt in opts:
             opt.zero_grad()
-        train_metrics = self.model_algorithm(self, batch)
+        batch_prediction, train_metrics = self.model_algorithm(self, batch)
+        self.cache_result = batch_prediction
         assert isinstance(train_metrics, dict), type(train_metrics)
         assert "loss" in train_metrics.keys(), train_metrics.keys()
         self._update_metrics_at_batch_end(train_metrics)
@@ -157,7 +161,8 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
     @overrides
     def validation_step(self, batch: dict, batch_idx: int, *args, **kwargs):
         """Validation step: returns batch validation loss and metrics."""
-        val_metrics = self.model_algorithm(self, batch)
+        batch_prediction, val_metrics = self.model_algorithm(self, batch)
+        self.cache_result = batch_prediction
         assert isinstance(val_metrics, dict), type(val_metrics)
         assert "loss" in val_metrics.keys(), val_metrics.keys()
         self._update_metrics_at_batch_end(val_metrics)
@@ -165,7 +170,8 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
     @overrides
     def test_step(self, batch: dict, batch_idx: int, *args, **kwargs):
         """Testing step: returns batch test loss and metrics."""
-        test_metrics = self.model_algorithm(self, batch)
+        batch_prediction, test_metrics = self.model_algorithm(self, batch)
+        self.cache_result = batch_prediction
         assert isinstance(test_metrics, dict), type(test_metrics)
         self._update_metrics_at_batch_end(test_metrics)
 
@@ -181,7 +187,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
     def on_train_epoch_end(self) -> None:
         """Computes epoch average train loss and metrics for logging."""
         # If validation is enabled (for train loops), add "val_" metrics for all logged metrics.
-        self._run_and_log_metrics_at_epoch_end(self.metrics.keys())
+        self._run_and_log_metrics_at_epoch_end(list(self.metrics.keys()))
         self._reset_all_active_metrics()
         if self.scheduler_dict is not None:
             scheduler: optim.lr_scheduler.LRScheduler = self.scheduler_dict["scheduler"]
@@ -248,7 +254,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
             y_tr = self.forward(*tr_args, **tr_kwargs)
         return y_tr
 
-    def reset_parameters(self, seed: int = None):
+    def reset_parameters(self, seed: int | None = None):
         """Resets the parameters of the base model. Applied recursively as much as possible."""
         if seed is not None:
             seed_everything(seed)
@@ -283,7 +289,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         return self.base_model.load_state_dict(state_dict, strict)
 
     @staticmethod
-    def feed_forward_algorithm(model: LightningModuleEnhanced, batch: dict) -> dict[str, tr.Tensor]:
+    def feed_forward_algorithm(model: LightningModuleEnhanced, batch: dict) -> ModelAlgorithmOutput:
         """
         Generic step for computing the forward pass, loss and metrics. Simple feed-forward algorithm by default.
         Must return a dict of type: {metric_name: metric_tensor} for all metrics.
@@ -293,9 +299,8 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         assert isinstance(x, (dict, tr.Tensor)), type(x)
         # This allows {"data": {"a": ..., "b": ...}} to be mapped to forward(a, b)
         y = model.forward(x)
-        model.cache_result = tr_detach_data(y)
         gt = to_device(to_tensor(batch["labels"]), model.device)
-        return model.lme_metrics(y, gt, include_loss=True)
+        return y, model.lme_metrics(y, gt, include_loss=True)
 
     def lme_metrics(self, y: tr.Tensor, gt: tr.Tensor, include_loss: bool = True) -> dict[str, tr.Tensor]:
         """
@@ -315,10 +320,9 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         for metric_name, metric_fn in self._active_run_metrics[prefix].items():
             if metric_name == "loss" and not include_loss:
                 continue
-            metric_fn: CoreMetric = self._active_run_metrics[prefix][metric_name]
             # Call the metric and update its state
             with (tr.enable_grad if metric_fn.requires_grad else tr.no_grad)():
-                metrics[metric_name]: tr.Tensor = metric_fn.forward(y, gt)
+                metrics[metric_name] = metric_fn.forward(y, gt)
         return metrics
 
     # Private methods

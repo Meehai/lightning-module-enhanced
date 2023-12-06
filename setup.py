@@ -22,7 +22,7 @@ def get_reqs(requirements):
     return required, dependency_links
 
 name = "lightning-module-enhanced"
-version = "0.2"
+version = "0.21"
 description = "Lightning Module Enhanced"
 url = "https://gitlab.com/mihaicristianpirvu/lightning-module-enhanced"
 
