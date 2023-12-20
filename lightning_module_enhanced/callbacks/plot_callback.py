@@ -23,7 +23,7 @@ class PlotCallbackGeneric(Callback):
             out_dir.mkdir(exist_ok=True, parents=True)
         return out_dir
 
-    def _get_prediction(self, pl_module: LightningModule, batch):
+    def _get_prediction(self, pl_module: LightningModule):
         assert hasattr(pl_module, "cache_result") and pl_module.cache_result is not None
         y = pl_module.cache_result
         return y
@@ -41,18 +41,18 @@ class PlotCallbackGeneric(Callback):
     # pylint: disable=unused-argument
     def on_validation_batch_end(self, trainer: Trainer, pl_module: LightningModule,
                                 outputs, batch, batch_idx: int, dataloader_idx: int = 0) -> None:
-        self._do_call(trainer, pl_module, batch, batch_idx, "validation", self._get_prediction(pl_module, batch))
+        self._do_call(trainer, pl_module, batch, batch_idx, "validation", self._get_prediction(pl_module))
 
     @overrides
     # pylint: disable=unused-argument
     def on_train_batch_end(self, trainer: Trainer, pl_module: LightningModule,
                            outputs, batch, batch_idx: int, unused: int = 0):
-        self._do_call(trainer, pl_module, batch, batch_idx, "train", self._get_prediction(pl_module, batch))
+        self._do_call(trainer, pl_module, batch, batch_idx, "train", self._get_prediction(pl_module))
 
     @overrides
     def on_test_batch_end(self, trainer: Trainer, pl_module: LightningModule,
                           outputs, batch, batch_idx: int, dataloader_idx: int = 0) -> None:
-        self._do_call(trainer, pl_module, batch, batch_idx, "test", self._get_prediction(pl_module, batch))
+        self._do_call(trainer, pl_module, batch, batch_idx, "test", self._get_prediction(pl_module))
 
 class PlotCallback(PlotCallbackGeneric):
     """Above implementation + assumption about data/labels keys"""
