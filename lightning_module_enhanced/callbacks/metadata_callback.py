@@ -1,7 +1,6 @@
 """Metadata Callback module"""
-from typing import Dict, Any, List
+from typing import Dict, Any, IO
 from pathlib import Path
-from io import FileIO
 from datetime import datetime
 import json
 import pytorch_lightning as pl
@@ -9,7 +8,7 @@ import torch as tr
 from overrides import overrides
 from torch.optim import Optimizer
 from pytorch_lightning import LightningModule, Trainer
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, Checkpoint
 
 from ..logger import logger
 from ..utils import parsed_str_type
@@ -20,7 +19,7 @@ class MetadataCallback(pl.Callback):
     def __init__(self):
         self.log_dir = None
         self.log_file_path = None
-        self.metadata = None
+        self.metadata: dict[str, Any] = None
 
     def log_epoch_metric(self, key: str, value: tr.Tensor, epoch: int, prefix: str):
         """Adds a epoch metric to the current metadata. Called from LME"""
@@ -75,7 +74,7 @@ class MetadataCallback(pl.Callback):
         """At the start of the .test() loop, add the sizes of all test dataloaders"""
         self._setup(trainer, prefix="test")
         self.metadata["test_start_hparams"] = pl_module.hparams
-        self.metadata["test_dataset_size"] = len(pl_module.trainer.test_dataloaders.dataset)
+        self.metadata["test_dataset_size"] = len(pl_module.trainer.test_dataloaders.dataset) # type: ignore
         self._log_model_summary(pl_module)
         self.metadata["test_hparams"] = pl_module.hparams
         self._log_timestamp_start(prefix="test")
@@ -87,11 +86,11 @@ class MetadataCallback(pl.Callback):
 
     @overrides
     def state_dict(self) -> Dict[str, Any]:
-        return json.dumps(self.metadata)
+        return json.dumps(self.metadata) # type: ignore
 
     @overrides
     def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
-        self.metadata = json.loads(state_dict)
+        self.metadata = json.loads(state_dict) # type: ignore
 
     def save(self):
         """Saves the file on disk"""
@@ -109,6 +108,12 @@ class MetadataCallback(pl.Callback):
 
     # private methods
 
+    def _flush_metadata(self):
+        self.metadata = {
+            "epoch_metrics": {},
+            "hparams_current": None,
+        }
+
     def _setup(self, trainer: pl.Trainer, prefix: str):
         """Called to set the log dir based on the first logger for train and test modes"""
         assert prefix in ("fit", "test"), prefix
@@ -118,14 +123,12 @@ class MetadataCallback(pl.Callback):
         #    Note, in this case we also need to check for ckpt_path, becaus at this point current_epoch is 0, but we
         #    may be resuning.
         # 3) metadata is not None, we are testing the model, so we don't want to have a test metadata with train metrics
-        if self.metadata is None or \
-           (self.metadata is not None and prefix == "fit" and trainer.current_epoch == 0
-                and trainer.ckpt_path is None) or \
-           (self.metadata is not None and prefix == "test"):
-            self.metadata = {
-                "epoch_metrics": {},
-                "hparams_current": None,
-            }
+        if self.metadata is None:
+            self._flush_metadata()
+        elif self.metadata is not None and prefix == "fit" and trainer.current_epoch == 0 and trainer.ckpt_path is None:
+            self._flush_metadata()
+        elif self.metadata is not None and prefix == "test":
+            self._flush_metadata()
 
         # using trainer.logger.log_dir will have errors for non TensorBoardLogger (at least in lightning 1.8)
         log_dir = None
@@ -221,18 +224,21 @@ class MetadataCallback(pl.Callback):
         res["layer_summary"] = layer_summary
         self.metadata["model_parameters"] = res
 
-    def _get_monitored_model_checkpoint(self, pl_module: LightningModule) -> ModelCheckpoint:
-        monitors: List[str] = pl_module.checkpoint_monitors
+    def _get_monitored_model_checkpoint(self, pl_module: LightningModule) -> Checkpoint:
+        monitors: list[str] = pl_module.checkpoint_monitors # type: ignore
         assert len(monitors) > 0, "At least one monitor must be present."
         if len(monitors) > 1:
             logger.warning(f"More than one monitor provided: {monitors}. Keeping only first")
         monitor = monitors[0]
         prefix = "val_" if pl_module.trainer.enable_validation else ""
-        cb = [cb for cb in pl_module.trainer.checkpoint_callbacks if cb.monitor == f"{prefix}{monitor}"]
-        if len(cb) > 1:
-            logger.warning(f"More than one callback for monitor '{monitor}' found: {cb}")
-        assert len(cb) > 0, f"Monitor '{monitor}' not found in model checkpoints: {monitors} (prefix: {prefix})"
-        return cb[0]
+        callbacks: list[Checkpoint] = pl_module.trainer.checkpoint_callbacks
+        cbs: list[ModelCheckpoint] = [_cb for _cb in callbacks if isinstance(_cb, ModelCheckpoint)]
+        cbs = [_cb for _cb in cbs if _cb.monitor == f"{prefix}{monitor}"]
+        if len(cbs) > 1:
+            logger.warning(f"More than one callback for monitor '{monitor}' found: {cbs}")
+        assert len(cbs) > 0, f"Monitor '{monitor}' not found in model checkpoints: {monitors} (prefix: {prefix})"
+        cb: Checkpoint = cbs[0]
+        return cb
 
     def _log_model_checkpoint_fit_start(self, pl_module: LightningModule):
         cb = self._get_monitored_model_checkpoint(pl_module)
@@ -279,13 +285,15 @@ class MetadataCallback(pl.Callback):
         timestamps = tr.DoubleTensor([start, *self.metadata["epoch_timestamps"]], device="cpu")
         self.metadata["epoch_average_duration"] = (timestamps[1:] - timestamps[0:-1]).mean().item()
 
-    def _debug_metadata_json_dump(self, metadata: Dict[str, Any], fp: FileIO) -> None:
+    def _debug_metadata_json_dump(self, metadata: Dict[str, Any], fp: IO) -> None:
         # for debugging purposes
+        logger.debug("=================== Debug metadata =====================")
         for k in metadata:
             try:
                 json.dump({k: metadata[k]}, fp)
             except TypeError:
                 logger.debug(f"Cannot serialize key '{k}'")
+        logger.debug("=================== Debug metadata =====================")
 
     def __str__(self):
         return f"Metadata Callback. Log dir: '{self.log_dir}'"
