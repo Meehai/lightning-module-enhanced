@@ -9,6 +9,7 @@ from overrides import overrides
 from torch.optim import Optimizer
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, Checkpoint
+from pytorch_lightning.loggers import WandbLogger
 
 from ..logger import logger
 from ..utils import parsed_str_type
@@ -51,6 +52,9 @@ class MetadataCallback(pl.Callback):
         self._log_scheduler_train_end(pl_module)
         self._log_timestamp_end("fit")
         self.save()
+        if any([isinstance(x, WandbLogger) for x in trainer.loggers]):
+            wandb_logger: WandbLogger = [x for x in trainer.loggers if isinstance(x, WandbLogger)][0]
+            wandb_logger.experiment.log_artifact(self.log_file_path)
 
     @overrides
     def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
