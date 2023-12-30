@@ -52,7 +52,7 @@ class MetadataCallback(pl.Callback):
         self._log_scheduler_train_end(pl_module)
         self._log_timestamp_end("fit")
         self.save()
-        if any([isinstance(x, WandbLogger) for x in trainer.loggers]):
+        if any(isinstance(x, WandbLogger) for x in trainer.loggers):
             wandb_logger: WandbLogger = [x for x in trainer.loggers if isinstance(x, WandbLogger)][0]
             wandb_logger.experiment.log_artifact(self.log_file_path)
 
