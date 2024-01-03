@@ -282,11 +282,21 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
             self.save_hyperparameters(ckpt_data["hyper_parameters"])
         return self
 
+    @overrides(check_signature=False)
     def state_dict(self):
         return self.base_model.state_dict()
 
-    def load_state_dict(self, state_dict: dict[str, Any], strict: bool = True):
-        return self.base_model.load_state_dict(state_dict, strict)
+    @overrides(check_signature=False)
+    def load_state_dict(self, *args, **kwargs):
+        return self.base_model.load_state_dict(*args, **kwargs)
+
+    @overrides(check_signature=False)
+    def register_buffer(self, *args, **kwargs):
+        self.base_model.register_buffer(*args, **kwargs)
+
+    @overrides(check_signature=False)
+    def get_buffer(self, *args, **kwargs) -> tr.Tensor:
+        return self.base_model.get_buffer(*args, **kwargs)
 
     @staticmethod
     def feed_forward_algorithm(model: LightningModuleEnhanced, batch: dict) -> ModelAlgorithmOutput:
