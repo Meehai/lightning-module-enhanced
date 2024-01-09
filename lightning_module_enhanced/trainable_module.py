@@ -1,9 +1,10 @@
 """
 TrainableModule is a standalone mixin class used to add the necessary properties to train a model:
-    criterion_fn, metrics, optimizer, scheduler & callbacks. It is comaptible with TrainSetup class.
+    criterion_fn, metrics, optimizer, scheduler & callbacks.
 """
+from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Dict, Union, Any, Callable, List, Tuple, Type
+from typing import Dict, Union, Any, Callable, Type, List
 from torch import optim, nn
 import torch as tr
 import pytorch_lightning as pl
@@ -13,8 +14,8 @@ from .callbacks import MetadataCallback
 from .logger import logger
 from .utils import parsed_str_type
 
-OptimizerType = optim.Optimizer | list[optim.Optimizer]
-SchedulerType = dict | list[dict]
+OptimizerType = Union[optim.Optimizer, List[optim.Optimizer]]
+SchedulerType = Union[Dict, List[Dict]]
 CriterionFnType = Callable[[tr.Tensor, tr.Tensor], tr.Tensor]
 
 
@@ -28,7 +29,7 @@ class TrainableModule(nn.Module, ABC):
 
     @property
     @abstractmethod
-    def callbacks(self) -> List[pl.Callback]:
+    def callbacks(self) -> list[pl.Callback]:
         """The callbacks"""
 
     @property
@@ -187,15 +188,15 @@ class TrainableModuleMixin(TrainableModule):
         return self._metrics
 
     @metrics.setter
-    def metrics(self, metrics: Dict[str, Tuple[Callable, str]]):
+    def metrics(self, metrics: Dict[str, tuple[Callable, str]]):
         assert not isinstance(self.base_model, TrainableModule), "Nested trainable modules"
         if self._metrics is not None:
             logger.debug(f"Overwriting existing metrics {list(self.metrics.keys())} to {list(metrics.keys())}")
         self._metrics = {}
 
         for metric_name, metric_fn in metrics.items():
-            # Our metrics can be a CoreMetric already, a Tuple (callable, min/max) or just a Callable
-            assert isinstance(metric_fn, (CoreMetric, Tuple)), (
+            # Our metrics can be a CoreMetric already, a tuple (callable, min/max) or just a Callable
+            assert isinstance(metric_fn, (CoreMetric, tuple)), (
                 f"Unknown metric type: '{type(metric_fn)}'. "
                 'Expcted CoreMetric, or a tuple of form (Callable, "min"/"max").'
             )
@@ -204,7 +205,7 @@ class TrainableModuleMixin(TrainableModule):
                 assert isinstance(metric_fn, CallableCoreMetric) and metric_fn.requires_grad is True
 
             # If we get a tuple, we will assume it's a 2 piece: a callable function (or class) and a
-            if isinstance(metric_fn, Tuple):
+            if isinstance(metric_fn, tuple):
                 logger.debug(f"Metric '{metric_name}' is a callable. Converting to CallableCoreMetric.")
                 metric_fn, min_or_max = metric_fn
                 assert not isinstance(metric_fn, CoreMetric), "Cannot use tuple syntax with metric instances"

@@ -1,5 +1,6 @@
 """Metadata Callback module"""
-from typing import Dict, Any, IO
+from __future__ import annotations
+from typing import Any, IO
 from pathlib import Path
 from datetime import datetime
 import json
@@ -89,11 +90,11 @@ class MetadataCallback(pl.Callback):
         self.save()
 
     @overrides
-    def state_dict(self) -> Dict[str, Any]:
+    def state_dict(self) -> dict[str, Any]:
         return json.dumps(self.metadata) # type: ignore
 
     @overrides
-    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
+    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
         self.metadata = json.loads(state_dict) # type: ignore
 
     def save(self):
@@ -289,7 +290,7 @@ class MetadataCallback(pl.Callback):
         timestamps = tr.DoubleTensor([start, *self.metadata["epoch_timestamps"]], device="cpu")
         self.metadata["epoch_average_duration"] = (timestamps[1:] - timestamps[0:-1]).mean().item()
 
-    def _debug_metadata_json_dump(self, metadata: Dict[str, Any], fp: IO) -> None:
+    def _debug_metadata_json_dump(self, metadata: dict[str, Any], fp: IO) -> None:
         # for debugging purposes
         logger.debug("=================== Debug metadata =====================")
         for k in metadata:

@@ -1,3 +1,4 @@
+from __future__ import annotations
 from functools import partial
 from lightning_module_enhanced import LME
 from lightning_module_enhanced.utils import to_device, to_tensor

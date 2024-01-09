@@ -1,6 +1,6 @@
 """Generic Pytorch Lightning module on top of a Pytorch nn.Module"""
 from __future__ import annotations
-from typing import Any, Sequence, Callable
+from typing import Any, Sequence, Callable, Tuple, Dict
 from copy import deepcopy
 from pathlib import Path
 import shutil
@@ -19,7 +19,7 @@ from .logger import logger
 from .utils import to_tensor, to_device, tr_detach_data
 
 # (predition, {metric_name: metric_result})
-ModelAlgorithmOutput = tuple[tr.Tensor, dict[str, tr.Tensor]]
+ModelAlgorithmOutput = Tuple[tr.Tensor, Dict[str, tr.Tensor]]
 
 # pylint: disable=too-many-ancestors, arguments-differ, unused-argument, abstract-method
 class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):

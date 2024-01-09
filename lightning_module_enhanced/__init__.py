@@ -5,7 +5,6 @@ import warnings
 # pylint: disable=reimported
 from .lme import LightningModuleEnhanced as LME, ModelAlgorithmOutput
 from .trainable_module import TrainableModule
-from .train_setup import TrainSetup
 
 # disable seed messages from pytorch lightning
 logging.getLogger("lightning_fabric.utilities.seed").setLevel(logging.CRITICAL)
