@@ -65,8 +65,7 @@ def test_train_setup_scheduler_good():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
-    model.scheduler_dict = {"scheduler": ReduceLROnPlateau(model.optimizer, factor=0.9, patience=5),
-                            "monitor": "val_loss"}
+    model.scheduler_dict = {"scheduler": ReduceLROnPlateau(model.optimizer, factor=0.9, patience=5), "monitor": "loss"}
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
 
 def test_train_setup_metrics_good_accuracy():
