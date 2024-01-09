@@ -43,14 +43,14 @@ def test_all_are_none():
 
 def test_train_setup_minimal():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    model.optimizer = tr.optim.SGB(lr=0.01)
-    model.criterion = lambda y, gt: (y - gt).pow(2).mean()
+    model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
 
 def test_train_setup_scheduler_bad_2():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    model.optimizer = tr.optim.SGB(lr=0.01)
-    model.criterion = lambda y, gt: (y - gt).pow(2).mean()
+    model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.scheduler_dict = {"scheduler": ReduceLROnPlateau(model.optimizer, factor=0.9, patience=5),
                             "monitor": "val_loss"}
     # fails because no val_loss is available. We cannot make a pre-flight check because this is set up at .fit() time
@@ -63,16 +63,16 @@ def test_train_setup_scheduler_bad_2():
 
 def test_train_setup_scheduler_good():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    model.optimizer = tr.optim.SGB(lr=0.01)
-    model.criterion = lambda y, gt: (y - gt).pow(2).mean()
+    model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.scheduler_dict = {"scheduler": ReduceLROnPlateau(model.optimizer, factor=0.9, patience=5),
                             "monitor": "val_loss"}
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
 
 def test_train_setup_metrics_good_accuracy():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 5), nn.ReLU()))
-    model.optimizer = tr.optim.SGB(lr=0.01)
-    model.criterion = lambda y, gt: (y - gt).pow(2).mean()
+    model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.metrics = {"accuracy": (partial(multiclass_accuracy, num_classes=5, average="none"), "max")}
     assert model.metadata_callback.metadata is None
     Trainer(max_epochs=7).fit(model, DataLoader(ReaderClassification(n_dims=5)))
@@ -81,15 +81,15 @@ def test_train_setup_metrics_good_accuracy():
 
 def test_train_setup_metrics_l1():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    model.optimizer = tr.optim.SGB(lr=0.01)
-    model.criterion = lambda y, gt: (y - gt).pow(2).mean()
+    model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
 
 def test_train_setup_metrics_mse():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    model.optimizer = tr.optim.SGB(lr=0.01)
-    model.criterion = lambda y, gt: (y - gt).pow(2).mean()
+    model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.metrics = {"mse": (lambda y, gt: (y - gt).pow(2).mean(), "min")}
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
 

@@ -30,7 +30,7 @@ def test_core_metric_1():
 def test_core_metric_running_model_1():
     fn = MyMetric()
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    model.optimizer = tr.optim.SGD(lr=0.01)
+    model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.metrics = {"mymetric": fn}
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
