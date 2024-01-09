@@ -1,4 +1,4 @@
-from lightning_module_enhanced import LME, TrainSetup
+from lightning_module_enhanced import LME
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.utils.data import DataLoader
@@ -15,12 +15,9 @@ class Reader:
 
 def test_metadata_callback_train_1():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    cfg = {
-        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
-        "criterion": {"type": "mse"},
-        "metrics": [{"type": "l1"}]
-    }
-    TrainSetup(model, cfg)
+    model.optimizer = tr.optim.SGB(lr=0.01)
+    model.criterion = lambda y, gt: (y - gt).pow(2).mean()
+    model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
 
     assert model.metadata_callback.metadata is None
     Trainer(max_epochs=2).fit(model, DataLoader(Reader()))
@@ -37,12 +34,9 @@ def test_metadata_callback_train_1():
 
 def test_metadata_callback_test_1():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    cfg = {
-        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
-        "criterion": {"type": "mse"},
-        "metrics": [{"type": "l1"}]
-    }
-    TrainSetup(model, cfg)
+    model.optimizer = tr.optim.SGB(lr=0.01)
+    model.criterion = lambda y, gt: (y - gt).pow(2).mean()
+    model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
 
     assert model.metadata_callback.metadata is None
     Trainer().test(model, DataLoader(Reader()))
@@ -59,22 +53,15 @@ def test_metadata_callback_test_1():
 
 def test_metadata_callback_no_checkpoint():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    cfg = {
-        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
-        "criterion": {"type": "mse"},
-    }
-    TrainSetup(model, cfg)
+    model.optimizer = tr.optim.SGB(lr=0.01)
+    model.criterion = lambda y, gt: (y - gt).pow(2).mean()
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
-
 
 def test_metadata_callback_two_ModelCheckpoints():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    cfg = {
-        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
-        "criterion": {"type": "mse"},
-        "metrics": [{"type": "l1"}]
-    }
-    TrainSetup(model, cfg)
+    model.optimizer = tr.optim.SGB(lr=0.01)
+    model.criterion = lambda y, gt: (y - gt).pow(2).mean()
+    model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
     model.callbacks = [ModelCheckpoint(save_last=True, save_top_k=1, monitor="loss")]
 
     assert model.metadata_callback.metadata is None
@@ -92,12 +79,9 @@ def test_metadata_callback_two_ModelCheckpoints():
 
 def test_metadata_callback_two_monitors():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    cfg = {
-        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
-        "criterion": {"type": "mse"},
-        "metrics": [{"type": "l1"}]
-    }
-    TrainSetup(model, cfg)
+    model.optimizer = tr.optim.SGB(lr=0.01)
+    model.criterion = lambda y, gt: (y - gt).pow(2).mean()
+    model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
     model.checkpoint_monitors = ["loss", "l1"]
 
     assert model.metadata_callback.metadata is None

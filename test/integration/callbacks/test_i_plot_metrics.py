@@ -1,5 +1,5 @@
 from copy import copy
-from lightning_module_enhanced import LME, TrainSetup
+from lightning_module_enhanced import LME
 from lightning_module_enhanced.callbacks import PlotMetrics
 from pytorch_lightning import Trainer
 from torch.utils.data import DataLoader
@@ -17,12 +17,9 @@ class Reader:
 def test_plot_metrics_1():
     """simple tests: at the end of training we should have 3 entries on l1/loss due to 3 epochs"""
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    cfg = {
-        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
-        "criterion": {"type": "mse"},
-        "metrics": [{"type": "l1"}]
-    }
-    TrainSetup(model, cfg)
+    model.optimizer = tr.optim.SGB(lr=0.01)
+    model.criterion = lambda y, gt: (y - gt).pow(2).mean()
+    model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
     pm = PlotMetrics()
     model.callbacks = [pm]
     Trainer(max_epochs=3).fit(model, DataLoader(Reader()), DataLoader(Reader()))
@@ -35,12 +32,9 @@ def test_plot_metrics_1():
 def test_plot_metrics_2():
     """fine-tuning also should yield 3 epochs, even thouh we start from a pre-trained one"""
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    cfg = {
-        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
-        "criterion": {"type": "mse"},
-        "metrics": [{"type": "l1"}]
-    }
-    TrainSetup(model, cfg)
+    model.optimizer = tr.optim.SGB(lr=0.01)
+    model.criterion = lambda y, gt: (y - gt).pow(2).mean()
+    model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
     pm = PlotMetrics()
     model.callbacks = [pm]
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()), DataLoader(Reader()))
@@ -58,12 +52,9 @@ def test_plot_metrics_2():
 def test_plot_metrics_3():
     """reload a training from first/2nd epoch. The metrics/training should continue"""
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    cfg = {
-        "optimizer": {"type": "SGD", "args": {"lr": 0.01}},
-        "criterion": {"type": "mse"},
-        "metrics": [{"type": "l1"}]
-    }
-    TrainSetup(model, cfg)
+    model.optimizer = tr.optim.SGB(lr=0.01)
+    model.criterion = lambda y, gt: (y - gt).pow(2).mean()
+    model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
     pm = PlotMetrics()
     model.callbacks = [pm]
     Trainer(max_epochs=2).fit(model, DataLoader(Reader()), DataLoader(Reader()))

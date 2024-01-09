@@ -83,7 +83,7 @@ def tr_detach_data(data: T) -> T:
 def accelerator_params_from_module(module: nn.Module) -> Dict[str, int]:
     """
     Some pytorch lightning madness.
-    TODO: multi-device support based on some config params. Could be integrated in TrainSetup using a cfg perhaps.
+    TODO: multi-device support based on some config params.
     """
     # Assume the device based on this.
     device = next(module.parameters()).device

@@ -1,6 +1,6 @@
 """
 TrainableModule is a standalone mixin class used to add the necessary properties to train a model:
-    criterion_fn, metrics, optimizer, scheduler & callbacks. It is comaptible with TrainSetup class.
+    criterion_fn, metrics, optimizer, scheduler & callbacks.
 """
 from abc import ABC, abstractmethod
 from typing import Dict, Union, Any, Callable, List, Tuple, Type
