@@ -59,13 +59,14 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         self._summary: ModelStatistics | None = None
         self._model_algorithm = LightningModuleEnhanced.feed_forward_algorithm
         self.cache_result = None
+        self.is_parametric_model = self.num_params > 0
 
     # Getters and setters for properties
 
     @property
     def device(self) -> tr.device:
         """Gets the device of the model, assuming all parameters are on the same device."""
-        return next(self.base_model.parameters()).device
+        return next(self.base_model.parameters()).device if self.is_parametric_model else tr.device("cpu")
 
     @property
     def num_params(self) -> int:
