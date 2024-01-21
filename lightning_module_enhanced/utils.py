@@ -38,6 +38,8 @@ def to_tensor(data):
 
 def to_device(data, device: tr.device):
     """Moves a generic parameter to the desired torch device."""
+    if data is None:
+        return None
     if isinstance(data, (tr.Tensor, nn.Module)):
         return data.to(device)
     if isinstance(data, list):
