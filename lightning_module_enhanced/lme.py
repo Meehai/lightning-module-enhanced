@@ -326,13 +326,17 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         - include_loss Whether to include the loss in the returned metrics. This can be useful when using a different
         model_algorithm, where we want to compute the loss manually as well.
         """
-        prefix = self._prefix_from_trainer()
-        if prefix not in self._active_run_metrics:
-            raise KeyError(f"Prefix '{prefix}' not found in active run metrics. Set model.metrics={{...}} first. "
-                           "Also, this method is meant to be ran from a pl.Trainer.fit() call, not manually.")
+        try:
+            prefix = self._prefix_from_trainer()
+            active_run_metrics = self._active_run_metrics[prefix]
+            if prefix not in self._active_run_metrics:
+                raise KeyError(f"Prefix '{prefix}' not found in active run metrics. Set model.metrics={{...}} first.")
+        except RuntimeError:
+            logger.debug("No trainer attached. Probably calling model_algorithm w/o training. Using self.metrics.")
+            active_run_metrics = self.metrics
 
         metrics = {}
-        for metric_name, metric_fn in self._active_run_metrics[prefix].items():
+        for metric_name, metric_fn in active_run_metrics.items():
             if metric_name == "loss" and not include_loss:
                 continue
             # Call the metric and update its state
