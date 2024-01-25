@@ -138,7 +138,7 @@ class TrainableModuleMixin(TrainableModule):
         trainer_cbs = [callback for callback in self.trainer.callbacks
                        if isinstance(callback, ModelCheckpoint) and callback.monitor is not None]
         if len(trainer_cbs) > 0:
-            logger.info("ModelCheckpoint callbacks were provided in the Trainer. Not using the checkpoint_monitors!")
+            logger.debug2("ModelCheckpoint callbacks were provided in the Trainer. Not using the checkpoint_monitors!")
             return [*self.default_callbacks, *self._callbacks, *trainer_cbs]
 
         prefix = "val_" if self.trainer.enable_validation else ""

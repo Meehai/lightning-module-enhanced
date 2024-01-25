@@ -88,6 +88,16 @@ def test_reset_parameters_2():
     for p1, p2 in zip(params, new_params):
         assert not tr.allclose(p1, p2)
 
+def test_model_algorithm_no_trainer_1():
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    x = {"data": tr.randn(10, 2), "labels": tr.randn(10, 1)}
+    y, metrics = model.model_algorithm(model, x)
+    assert y.shape == (10, 1)
+    assert metrics.keys() == {"l1", "loss"}
+    assert metrics["l1"].grad_fn is None and isinstance(metrics["l1"].item(), float)
+    assert metrics["loss"].grad_fn is not None and isinstance(metrics["loss"].item(), float)
 
 if __name__ == "__main__":
     test_set_criterion_1()
