@@ -19,3 +19,7 @@ class ReduceLROnPlateauWithBurnIn(ReduceLROnPlateau):
             self.last_epoch += 1
             return
         super().step(metrics, epoch)
+
+    @overrides
+    def get_lr(self):
+        return super().get_lr()
