@@ -82,25 +82,6 @@ def tr_detach_data(data: T) -> T:
     logger.debug2(f"Got unknown type {type(data)}. Returning as is.")
     return data
 
-def accelerator_params_from_module(module: nn.Module) -> Dict[str, int]:
-    """
-    Some pytorch lightning madness.
-    TODO: multi-device support based on some config params.
-    """
-    # Assume the device based on this.
-    device = next(module.parameters()).device
-    if device.type == "cuda":
-        accelerator = "gpu"
-        # cuda:5 => "gpu" and [5]. "cuda" => "gpu" and [0]
-        index = [device.index] if isinstance(device.index, int) else [0]
-    elif device.type == "cpu":
-        # cpu:XX => "cpu" and 1 => this fails otherwise in torch >= 2.0 or lightning >= 2.0
-        accelerator = "cpu"
-        index = 1
-    else:
-        assert False, f"Unknown device type: {device}"
-    return {"accelerator": accelerator, "devices": index}
-
 def parsed_str_type(item: Any) -> str:
     """Given an object with a type of the format: <class 'A.B.C.D'>, parse it and return 'A.B.C.D'"""
     return str(type(item)).rsplit(".", maxsplit=1)[-1][0:-2]
