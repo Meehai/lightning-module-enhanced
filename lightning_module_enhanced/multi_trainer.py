@@ -19,10 +19,11 @@ from .logger import logger as lme_logger
 
 class MultiTrainer:
     """MultiTrainer class implementation. Extends Trainer to train >1 identical networks w/ diff seeds seamlessly"""
-    def __init__(self, trainer: Trainer, num_trains: int, relevant_metric: str = "loss", n_devices: int = 0):
+    def __init__(self, trainer: Trainer, num_trains: int, relevant_metric: str = "loss", n_devices: int = -1):
         assert isinstance(trainer, Trainer), f"Expected pl.Trainer, got {type(trainer)}"
         if len(trainer.device_ids) > 1:
-            raise ValueError(f"Expected trainer to have at most one device id, got {trainer.device_ids}")
+            lme_logger.warning(f"Trainer found to have more than one device ID: {trainer.device_ids}. This is not going"
+                               " to be used. We use one device per each train in a MultiTrainer")
 
         self.trainer: Trainer = trainer
         self.num_trains = num_trains
@@ -113,7 +114,7 @@ class MultiTrainer:
         lme_logger.debug(f"Accelerator: '{'cpu' if isinstance(self.trainer.accelerator, CPUAccelerator) else 'gpu'}'")
         if isinstance(self.trainer.accelerator, CPUAccelerator):
             assert cpu_count() >= self.n_devices, f"Expected {self.n_devices}, got {cpu_count()}"
-            return [TorchResource(f"cpu:{ix}") for ix in range(self.n_devices)]
+            return [TorchResource(f"cpu:{ix + 1}") for ix in range(self.n_devices)] # Cpu cannot start with 0 ffs.
         assert tr.cuda.device_count() >= self.n_devices, f"Expected {self.n_devices}, got {tr.cuda.device_count()}"
         return [TorchResource(f"cuda:{ix}") for ix in range(self.n_devices)]
 
@@ -153,10 +154,10 @@ class MultiTrainer:
         # PS: do not put version=ix (as int). Lightning will add a 'version_' prefix to it and it will be a mess.
         iter_logger = type(self.trainer.logger)(save_dir=self.trainer.logger.log_dir,
                                                 name=self.experiment_dir_name, version=f"{ix}")
-        device_ix = "auto" if iter_model.device.index is None else [iter_model.device.index]
-        # TODO: find a better way to pass trainer's params here...
-        iter_trainer = Trainer(logger=iter_logger, accelerator=self.trainer.accelerator, devices=device_ix,
-                               max_epochs=self.trainer.max_epochs)
+        # 1 device per training only. Either 1 GPU or 1 CPU.
+        devices = [self.resources[ix].device.index] if isinstance(self.trainer.accelerator, CUDAAccelerator) else 1
+        iter_trainer = Trainer(logger=iter_logger, accelerator=self.trainer.accelerator,
+                               devices=devices, max_epochs=self.trainer.max_epochs)
 
         # Train on train
         iter_trainer.fit(iter_model, dataloader, val_dataloaders, **kwargs)
