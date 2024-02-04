@@ -32,6 +32,7 @@ class MultiTrainer:
         self.resources = self._get_parallel_devices()
         self.done = False
 
+        self.is_cuda_accelerator = isinstance(self.trainer.accelerator, CUDAAccelerator)
         self.pool_map = PoolResources(self.resources, timeout=1, pbar=False).map if self.resources else map
 
     # Properties
@@ -155,7 +156,7 @@ class MultiTrainer:
         iter_logger = type(self.trainer.logger)(save_dir=self.trainer.logger.log_dir,
                                                 name=self.experiment_dir_name, version=f"{ix}")
         # 1 device per training only. Either 1 GPU or 1 CPU.
-        devices = [self.resources[ix].device.index] if isinstance(self.trainer.accelerator, CUDAAccelerator) else 1
+        devices = [self.resources[ix % len(self.resources)].device.index] if self.is_cuda_accelerator else 1
         iter_trainer = Trainer(logger=iter_logger, accelerator=self.trainer.accelerator,
                                devices=devices, max_epochs=self.trainer.max_epochs)
 
