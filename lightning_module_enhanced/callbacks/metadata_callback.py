@@ -39,8 +39,10 @@ class MetadataCallback(pl.Callback):
             return
         self._setup(trainer, prefix="fit")
         self.metadata["optimizer"] = self._log_optimizer_fit_start(pl_module)
-        self.metadata["scheduler"] = self._log_scheduler_fit_start(pl_module)
-        self.metadata["Early Stopping"] = self._log_early_stopping_fit_start(pl_module)
+        if (sch := self._log_scheduler_fit_start(pl_module)) is not None:
+            self.metadata["scheduler"] = sch
+        if (es := self._log_early_stopping_fit_start(pl_module)) is not None:
+            self.metadata["early_stopping"] = es
         self.metadata["model_checkpoint"] = self._log_model_checkpoint_fit_start(pl_module)
         self.metadata["model_parameters"] = self._log_model_summary(pl_module)
         self.metadata["fit_params"] = pl_module.hparams
@@ -182,6 +184,7 @@ class MetadataCallback(pl.Callback):
         early_stopping_cb: EarlyStopping = early_stopping_cbs[0]
         es_dict = {
             "monitor": early_stopping_cb.monitor,
+            "min_delta": early_stopping_cb.min_delta,
             "mode": early_stopping_cb.mode,
             "patience": early_stopping_cb.patience
         }
@@ -230,8 +233,7 @@ class MetadataCallback(pl.Callback):
         if not hasattr(sch := cfg_optim[0]["lr_scheduler"]["scheduler"], "factor"):
             logger.debug(f"Scheduler {sch} doesn't have a factor attribute")
             return None
-        first_lr = best_model_dict["optimizers_lr"][0]
-        last_lr = best_model_dict["optimizers_lr"][-1]
+        first_lr, last_lr = best_model_dict["optimizers_lr"][0], best_model_dict["optimizers_lr"][-1]
         return 0 if first_lr == last_lr else int((last_lr / first_lr) / sch.factor)
 
     def _log_best_model_epoch_end(self, pl_module: LightningModule) -> dict:
