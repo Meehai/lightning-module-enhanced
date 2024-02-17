@@ -153,7 +153,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         _opt = self.optimizers()
         opts: list[LightningOptimizer] = _opt if isinstance(_opt, list) else [_opt]
         for opt in opts:
-            opt.zero_grad()
+            opt.optimizer.zero_grad()
         batch_prediction, train_metrics = self.model_algorithm(self, batch)
         self.cache_result = tr_detach_data(batch_prediction)
         assert isinstance(train_metrics, dict), type(train_metrics)

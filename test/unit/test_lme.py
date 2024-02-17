@@ -1,3 +1,4 @@
+# pylint: disable=all
 import torch as tr
 from lightning_module_enhanced import LME
 from torch import nn
@@ -42,6 +43,15 @@ def test_trainable_params_1():
     assert module.is_trainable_model is False
     module.trainable_params = True
     assert module.is_trainable_model is True
+
+def test_is_parametric_model_1():
+    class NonParametricModule(nn.Module):
+        def forward(self, x: tr.Tensor) -> tr.Tensor:
+            return x ** 2
+    module = LME(NonParametricModule())
+    assert not module.is_parametric_model
+    assert not module.is_trainable_model
+    assert module.num_params == 0
 
 def test_set_metrics_1():
     module = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
