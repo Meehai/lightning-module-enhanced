@@ -147,10 +147,10 @@ def test_fit_with_scheduler():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
-    model.scheduler_dict = {"scheduler": ReduceLROnPlateau(model.optimizer, factor=0.9, patience=5), "monitor": "loss"}
+    model.scheduler = {"scheduler": ReduceLROnPlateau(model.optimizer, factor=0.9, patience=5), "monitor": "loss"}
 
     Trainer(max_epochs=2).fit(model, DataLoader(Reader()))
-    assert model.scheduler_dict["scheduler"].last_epoch == 2
+    assert model.scheduler["scheduler"].last_epoch == 2
 
 def test_fit_different_forward_params_1():
     class MyReader:

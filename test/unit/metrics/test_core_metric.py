@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader
 from pytorch_lightning import Trainer
 import torch as tr
 from torch import nn
+from copy import deepcopy
 
 class MyMetric(CallableCoreMetric):
     def __init__(self):
@@ -35,6 +36,21 @@ def test_core_metric_running_model_1():
     model.metrics = {"mymetric": fn}
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
     assert fn.running_model is None
+
+def test_deepcopy_metric():
+    """
+    Metrics can be deepcopied properly.
+    https://gitlab.com/mihaicristianpirvu/lightning-module-enhanced/-/commit/a784cc8d0fa45e2ad2f9efe4b535dc4dde542420
+    """
+    def metric_l1(y, gt):
+        res = (y - gt).abs().mean()
+        return res
+
+    m1 = CallableCoreMetric(metric_l1, higher_is_better=True, requires_grad=False, epoch_fn="sum")
+    m2 = deepcopy(m1)
+
+    assert m1.metric_fn == m2.metric_fn
+    assert m1.epoch_fn(10, 5) == m2.epoch_fn(10, 5)
 
 if __name__ == "__main__":
     test_core_metric_running_model_1()
