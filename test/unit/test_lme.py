@@ -39,9 +39,9 @@ def test_num_trainable_params_2():
 def test_trainable_params_1():
     module = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     module.trainable_params = False
-    assert module.trainable_params is False
+    assert module.is_trainable_model is False
     module.trainable_params = True
-    assert module.trainable_params is True
+    assert module.is_trainable_model is True
 
 def test_set_metrics_1():
     module = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
@@ -100,4 +100,4 @@ def test_model_algorithm_no_trainer_1():
     assert metrics["loss"].grad_fn is not None and isinstance(metrics["loss"].item(), float)
 
 if __name__ == "__main__":
-    test_set_criterion_1()
+    test_trainable_params_1()
