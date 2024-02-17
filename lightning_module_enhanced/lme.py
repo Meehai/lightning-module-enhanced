@@ -36,7 +36,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         Attributes:
             base_model: The base :class:`torch.nn.Module`
             optimizer: The optimizer used for training runs
-            scheduler_dict: The oprimizer scheduler used for training runs, as well as the monitored metric
+            scheduler: The oprimizer scheduler used for training runs, as well as the monitored metric
             criterion_fn: The criterion function used for training runs
             metrics: The dictionary (Name => CoreMetric) of all implemented metrics for this module
             callbacks: The list of callbacks for this module
@@ -195,9 +195,9 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         # If validation is enabled (for train loops), add "val_" metrics for all logged metrics.
         self._run_and_log_metrics_at_epoch_end(list(self.metrics.keys()))
         self._reset_all_active_metrics()
-        if self.scheduler_dict is not None:
-            scheduler: optim.lr_scheduler.LRScheduler = self.scheduler_dict["scheduler"]
-            monitor: str = self.scheduler_dict["monitor"]
+        if self.scheduler is not None:
+            scheduler: optim.lr_scheduler.LRScheduler = self.cheduler["scheduler"]
+            monitor: str = self.scheduler["monitor"]
             # on_train_epoch_end.val_loss
             # TODO: perhaps find some better way to do this
             # pylint: disable=protected-access

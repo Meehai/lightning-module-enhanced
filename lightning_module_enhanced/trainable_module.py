@@ -107,15 +107,12 @@ class TrainableModuleMixin(TrainableModule):
         return self._optimizer
 
     @optimizer.setter
-    def optimizer(self, optimizer: OptimizerType):
+    def optimizer(self, optimizer: OptimizerType | optim.Optimizer):
         assert not isinstance(self.base_model, TrainableModule), "Cannot have nested Trainable Modules"
         assert isinstance(optimizer, (optim.Optimizer, list)), type(optimizer)
-        if isinstance(optimizer, list):
-            for o in optimizer:
-                assert isinstance(o, optim.Optimizer), f"Got {o} (type {type(o)})"
-            logger.debug(f"Set the optimizer to {[parsed_str_type(x) for x in optimizer]}")
-        else:
-            logger.debug(f"Set the optimizer to {parsed_str_type(optimizer)}")
+        optimizer = [optimizer] if isinstance(optimizer, optim.Optimizer) else optimizer
+        assert all(lambda x: isinstance(x, optim.optimizer) for x in optimizer), (type(x) for x in optimizer)
+        logger.debug(f"Set the optimizer to {', '.join(parsed_str_type(o) for o in optimizer)}")
         self._optimizer = optimizer
 
     @property

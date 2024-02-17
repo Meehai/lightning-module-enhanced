@@ -168,14 +168,13 @@ class MetadataCallback(pl.Callback):
 
     def _log_scheduler_fit_start(self, pl_module: LightningModule):
         """logs information about the scheduler, if it exists"""
-        if not hasattr(pl_module, "scheduler_dict"):
+        if not hasattr(pl_module, "scheduler") or (scheduler := pl_module.scheduler) is None:
             return
-        if pl_module.scheduler_dict is None:
-            return
-        scheduler = pl_module.scheduler_dict["scheduler"]
+        breakpoint()
+        # TODO: scheduler is a list.
         scheduler_metadata = {
             "type": parsed_str_type(scheduler),
-            **{k: v for k, v in pl_module.scheduler_dict.items() if k != "scheduler"}
+            **{k: v for k, v in scheduler.items() if k != "scheduler"}
         }
         if hasattr(scheduler, "mode"):
             scheduler_metadata["mode"] = scheduler.mode
@@ -187,16 +186,13 @@ class MetadataCallback(pl.Callback):
 
     def _log_scheduler_train_end(self, pl_module: LightningModule):
         """updates bset model dict with the number of learning rate reduces done by the scheduler during training"""
-        if not hasattr(pl_module, "scheduler_dict"):
-            return
-        if pl_module.scheduler_dict is None:
-            return
-        if not hasattr(pl_module.scheduler_dict["scheduler"], "factor"):
+        if not hasattr(pl_module, "scheduler") or (scheduler := pl_module.scheduler) is None \
+                or not hasattr(scheduler["scheduler"], "factor"):
             return
         best_model_dict = self.metadata["best_model"]
         first_lr = self.metadata["optimizer"][0]["starting_lr"][0]
         last_lr = best_model_dict["optimizers_lr"][0]
-        factor = pl_module.scheduler_dict["scheduler"].factor
+        factor = scheduler["scheduler"].factor
         num_reduces = 0 if first_lr == last_lr else int((last_lr / first_lr) / factor)
         best_model_dict["scheduler_num_lr_reduced"] = num_reduces
 
