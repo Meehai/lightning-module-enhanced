@@ -147,48 +147,31 @@ class MetadataCallback(pl.Callback):
 
         self.save()
 
-    def _log_one_optimizer(self, optimizer: tr.optim.Optimizer) -> dict:
+    def _log_one_optimizer_fit_start(self, optimizer: tr.optim.Optimizer) -> dict:
         return {
             "type": parsed_str_type(optimizer),
             "starting_lr": [o["lr"] for o in optimizer.state_dict()["param_groups"]]
         }
 
-    def _log_optimizer_fit_start(self, pl_module: LightningModule):
+    def _log_optimizer_fit_start(self, pl_module: LightningModule) -> dict | list[dict]:
         """optimizer metadata at fit start"""
-        assert isinstance((cfg_optim := pl_module.configure_optimizers()), list), cfg_optim
-        res = [self._log_one_optimizer(optim_dict["optimizer"]) for optim_dict in cfg_optim]
+        assert isinstance((cfg_optim := pl_module.configure_optimizers()), list) and len(cfg_optim) > 0, cfg_optim
+        res = [self._log_one_optimizer_fit_start(optim_dict["optimizer"]) for optim_dict in cfg_optim]
         return res[0] if len(res) == 1 else res
 
-    def _log_scheduler_fit_start(self, pl_module: LightningModule) -> dict:
-        """logs information about the scheduler, if it exists"""
-        assert isinstance((cfg_optim := pl_module.configure_optimizers()), list), cfg_optim
-        if not hasattr(pl_module, "scheduler") or (scheduler := pl_module.scheduler) is None:
-            return
-        breakpoint()
-        # TODO: scheduler is a list.
-        scheduler_metadata = {
-            "type": parsed_str_type(scheduler),
-            **{k: v for k, v in scheduler.items() if k != "scheduler"}
+    def _log_one_scheduler_fit_start(self, scheduler_dict: dict) -> dict:
+        return {
+            "type": parsed_str_type(scheduler_dict["scheduler"]),
+            **{k: v for k, v in scheduler_dict.items() if k != "scheduler"}
         }
-        if hasattr(scheduler, "mode"):
-            scheduler_metadata["mode"] = scheduler.mode
-        if hasattr(scheduler, "factor"):
-            scheduler_metadata["factor"] = scheduler.factor
-        if hasattr(scheduler, "patience"):
-            scheduler_metadata["patience"] = scheduler.patience
-        return scheduler_metadata
 
-    def _log_scheduler_train_end(self, pl_module: LightningModule):
-        """updates bset model dict with the number of learning rate reduces done by the scheduler during training"""
-        if not hasattr(pl_module, "scheduler") or (scheduler := pl_module.scheduler) is None \
-                or not hasattr(scheduler["scheduler"], "factor"):
+    def _log_scheduler_fit_start(self, pl_module: LightningModule) -> dict | list[dict] | None:
+        """logs information about the scheduler, if it exists"""
+        assert isinstance((cfg_optim := pl_module.configure_optimizers()), list) and len(cfg_optim) > 0, cfg_optim
+        if "lr_scheduler" not in cfg_optim[0].keys():
             return
-        best_model_dict = self.metadata["best_model"]
-        first_lr = self.metadata["optimizer"][0]["starting_lr"][0]
-        last_lr = best_model_dict["optimizers_lr"][0]
-        factor = scheduler["scheduler"].factor
-        num_reduces = 0 if first_lr == last_lr else int((last_lr / first_lr) / factor)
-        return num_reduces
+        res = [self._log_one_scheduler_fit_start(optim_dict["lr_scheduler"]) for optim_dict in cfg_optim]
+        return res[0] if len(res) == 1 else res
 
     def _log_early_stopping_fit_start(self, pl_module: LightningModule):
         assert pl_module.trainer is not None, "Invalid call to this function, trainer is not set."
@@ -239,6 +222,19 @@ class MetadataCallback(pl.Callback):
         cb = self._get_monitored_model_checkpoint(pl_module)
         return {"monitors": cb.monitor, "mode": cb.mode}
 
+    def _log_scheduler_best_model_train_end(self, pl_module: LightningModule, best_model_dict: dict):
+        """updates bset model dict with the number of learning rate reduces done by the scheduler during training"""
+        assert isinstance((cfg_optim := pl_module.configure_optimizers()), list) and len(cfg_optim) > 0, cfg_optim
+        if "lr_scheduler" not in cfg_optim[0].keys():
+            return
+        assert len(cfg_optim) == 1, "Not supporting >1 optimizers with scheduler for now"
+        if not hasattr(sch := cfg_optim[0]["lr_scheduler"]["scheduler"], "factor"):
+            logger.debug(f"Scheduler {sch} doesn't have a factor attribute")
+            return
+        first_lr = best_model_dict["optimizers_lr"][0]
+        last_lr = best_model_dict["optimizers_lr"][-1]
+        return 0 if first_lr == last_lr else int((last_lr / first_lr) / sch.factor)
+
     def _log_best_model_epoch_end(self, pl_module: LightningModule) -> dict:
         # find best and last modelcheckpoint callbacks. best will be None if we don't use a validation set loader.
         cb = self._get_monitored_model_checkpoint(pl_module)
@@ -247,12 +243,12 @@ class MetadataCallback(pl.Callback):
 
         best_model_pkl = tr.load(ckpt_path, map_location="cpu")
         best_model_dict = {
-            "path": str(ckpt_path),
+            "path": f"{ckpt_path}",
             "hyper_parameters": best_model_pkl.get("hyper_parameters", {}),
             "optimizers_lr": [o["param_groups"][0]["lr"] for o in best_model_pkl["optimizer_states"]],
             "epoch": best_model_pkl["epoch"],
         }
-        if (sch := self._log_scheduler_train_end(pl_module)) is not None:
+        if (sch := self._log_scheduler_best_model_train_end(pl_module, best_model_dict)) is not None:
             best_model_dict["scheduler_num_lr_reduced"] = sch
         return best_model_dict
 
@@ -261,7 +257,7 @@ class MetadataCallback(pl.Callback):
         now = datetime.now()
         res = {
             f"{prefix}_start_timestamp": datetime.timestamp(now),
-            f"{prefix}_start_date": str(now),
+            f"{prefix}_start_date": f"{now}",
         }
         if prefix == "fit":
             res["epoch_timestamps"] = []
@@ -273,8 +269,8 @@ class MetadataCallback(pl.Callback):
         start_timestamp = datetime.fromtimestamp(self.metadata[f"{prefix}_start_timestamp"])
         res = {
             f"{prefix}_end_timestamp": datetime.timestamp(now),
-            f"{prefix}_end_date": str(now),
-            f"{prefix}_duration": str(now - start_timestamp)
+            f"{prefix}_end_date": f"{now}",
+            f"{prefix}_duration": f"{now - start_timestamp}"
         }
         return res
 
@@ -286,7 +282,6 @@ class MetadataCallback(pl.Callback):
         self.metadata["epoch_average_duration"] = (timestamps[1:] - timestamps[0:-1]).mean().item()
 
     def _debug_metadata_json_dump(self, metadata: dict[str, Any], fp: IO) -> None:
-        # for debugging purposes
         logger.debug("=================== Debug metadata =====================")
         for k in metadata:
             try:

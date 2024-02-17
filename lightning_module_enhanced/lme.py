@@ -196,7 +196,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         self._run_and_log_metrics_at_epoch_end(list(self.metrics.keys()))
         self._reset_all_active_metrics()
         if self.scheduler is not None:
-            scheduler: optim.lr_scheduler.LRScheduler = self.cheduler["scheduler"]
+            scheduler: optim.lr_scheduler.LRScheduler = self.scheduler["scheduler"]
             monitor: str = self.scheduler["monitor"]
             # on_train_epoch_end.val_loss
             # TODO: perhaps find some better way to do this

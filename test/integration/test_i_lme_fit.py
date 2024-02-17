@@ -150,7 +150,7 @@ def test_fit_with_scheduler():
     model.scheduler = {"scheduler": ReduceLROnPlateau(model.optimizer, factor=0.9, patience=5), "monitor": "loss"}
 
     Trainer(max_epochs=2).fit(model, DataLoader(Reader()))
-    assert model.scheduler[0]["scheduler"].last_epoch == 2
+    assert model.scheduler["scheduler"].last_epoch == 2
 
 def test_fit_different_forward_params_1():
     class MyReader:
