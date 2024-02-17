@@ -59,7 +59,6 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         self._summary: ModelStatistics | None = None
         self._model_algorithm = LightningModuleEnhanced.feed_forward_algorithm
         self.cache_result = None
-        self.is_parametric_model = self.num_params > 0
 
     # Getters and setters for properties
 
@@ -81,15 +80,10 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
     @property
     def summary(self) -> ModelStatistics:
         """Prints the summary (layers, num params, size in MB), with the help of torchinfo module."""
-        self._summary = summary(self.base_model, verbose=0, depth=3) if self._summary is None else self._summary
+        if self._summary is None:
+            self._summary = summary(self.base_model, verbose=0, depth=3)
         return self._summary
 
-    @property
-    def trainable_params(self) -> bool:
-        """Checks if the module is trainable"""
-        return self.num_trainable_params > 0
-
-    @trainable_params.setter
     def trainable_params(self, value: bool):
         """Sets all the parameters of this module to trainable or untrainable"""
         logger.debug(f"Setting parameters of the model to '{value}'.")
@@ -97,6 +91,17 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
             param.requires_grad_(value)
         # Reset summary such that it is recomputted if necessary (like for counting num trainable params)
         self._summary = None
+    trainable_params = property(None, trainable_params)
+
+    @property
+    def is_trainable_model(self) -> bool:
+        """retursn true if the model has any trainable (grad=True) parameters"""
+        return self.num_trainable_params > 0
+
+    @property
+    def is_parametric_model(self) -> bool:
+        """returns true if the model has any trainable parameters (grad = True or False) at all"""
+        return self.num_params > 0
 
     @property
     def model_algorithm(self) -> Callable:
