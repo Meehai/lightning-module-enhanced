@@ -1,4 +1,5 @@
 """Utils module"""
+from __future__ import annotations
 from typing import T, Any
 
 import torch as tr
@@ -85,3 +86,7 @@ def tr_detach_data(data: T) -> T:
 def parsed_str_type(item: Any) -> str:
     """Given an object with a type of the format: <class 'A.B.C.D'>, parse it and return 'A.B.C.D'"""
     return str(type(item)).rsplit(".", maxsplit=1)[-1][0:-2]
+
+def make_list(item: T | list[T]) -> list[T]:
+    """makes a list of 1 item it isn't already"""
+    return item if isinstance(item, list) else [item]

@@ -16,7 +16,7 @@ from torchinfo import summary, ModelStatistics
 from .trainable_module import TrainableModuleMixin, TrainableModule
 from .metrics import CoreMetric
 from .logger import logger
-from .utils import to_tensor, to_device, tr_detach_data
+from .utils import to_tensor, to_device, tr_detach_data, make_list
 
 # (predition, {metric_name: metric_result})
 ModelAlgorithmOutput = Tuple[tr.Tensor, Dict[str, tr.Tensor]]
@@ -227,12 +227,11 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         """
         if self.optimizer is None:
             raise ValueError("No optimizer. Use model.optimizer=optim.XXX or add an optimizer property in base model")
-        assert isinstance(self.optimizer, list), f"self.optimizer must return a list, got {type(self.optimizer)}"
         if self.scheduler is None:
-            return [{"optimizer": o} for o in self.optimizer]
-        assert isinstance(self.scheduler, list), f"self.scheduler must return a list, got {type(self.scheduler)}"
-        assert (l_opt := len(self.optimizer)) == (l_sch := len(self.scheduler)), f"lens differ: {l_opt} vs {l_sch}"
-        return [{"optimizer": o, "lr_scheduler": sch} for o, sch in zip(self.optimizer, self.scheduler)]
+            return [{"optimizer": o} for o in make_list(self.optimizer)]
+        optimizer, scheduler = make_list(self.optimizer), make_list(self.scheduler)
+        assert (l_opt := len(optimizer)) == (l_sch := len(scheduler)), f"lens differ: {l_opt} vs {l_sch}"
+        return [{"optimizer": o, "lr_scheduler": sch} for o, sch in zip(optimizer, scheduler)]
 
     # Public methods
 

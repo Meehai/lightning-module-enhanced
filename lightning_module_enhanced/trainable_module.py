@@ -12,10 +12,11 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from .metrics import CoreMetric, CallableCoreMetric
 from .callbacks import MetadataCallback
 from .logger import logger
-from .utils import parsed_str_type
+from .utils import parsed_str_type, make_list
 
-OptimizerType = List[optim.Optimizer]
-SchedulerType = Union[List[Dict[str, Union[optim.lr_scheduler.LRScheduler, str]]], None]
+OptimizerType = Union[optim.Optimizer, List[optim.Optimizer]]
+_SchedulerType = Dict[str, Union[optim.lr_scheduler.LRScheduler, str]]
+SchedulerType = Union[_SchedulerType, List[_SchedulerType], None]
 CriterionFnType = Callable[[tr.Tensor, tr.Tensor], tr.Tensor]
 
 
@@ -110,9 +111,9 @@ class TrainableModuleMixin(TrainableModule):
     def optimizer(self, optimizer: OptimizerType | optim.Optimizer):
         assert not isinstance(self.base_model, TrainableModule), "Cannot have nested Trainable Modules"
         assert isinstance(optimizer, (optim.Optimizer, list)), type(optimizer)
-        optimizer = [optimizer] if isinstance(optimizer, optim.Optimizer) else optimizer
-        assert all(lambda x: isinstance(x, optim.optimizer) for x in optimizer), (type(x) for x in optimizer)
-        logger.debug(f"Set the optimizer to {', '.join(parsed_str_type(o) for o in optimizer)}")
+        optimizer_types = (type(x) for x in make_list(optimizer))
+        assert all(lambda x: isinstance(x, optim.optimizer) for x in optimizer_types), optimizer_types
+        logger.debug(f"Set the optimizer to {', '.join(parsed_str_type(o) for o in make_list(optimizer))}")
         self._optimizer = optimizer
 
     @property
@@ -216,8 +217,7 @@ class TrainableModuleMixin(TrainableModule):
     @scheduler.setter
     def scheduler(self, scheduler: SchedulerType | dict):
         assert isinstance(scheduler, (dict, list)), scheduler
-        scheduler = [scheduler] if isinstance(scheduler, dict) else scheduler
-        for sch in scheduler:
+        for sch in make_list(scheduler):
             assert isinstance(sch, dict) and "scheduler" in sch, sch
             assert hasattr(sch["scheduler"], "step"), f"Scheduler {sch} does not have a step method"
         logger.debug(f"Set the scheduler to {scheduler}")

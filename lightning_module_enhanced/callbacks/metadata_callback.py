@@ -170,7 +170,7 @@ class MetadataCallback(pl.Callback):
         """logs information about the scheduler, if it exists"""
         if not hasattr(pl_module, "scheduler") or (scheduler := pl_module.scheduler) is None:
             return
-        breakpoint()
+        raise NotImplementedError
         # TODO: scheduler is a list.
         scheduler_metadata = {
             "type": parsed_str_type(scheduler),
