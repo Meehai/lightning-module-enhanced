@@ -1,6 +1,6 @@
 from lightning_module_enhanced import LME
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from torch.utils.data import DataLoader
 from torch import nn
 import torch as tr
@@ -96,3 +96,39 @@ def test_metadata_callback_two_monitors():
     assert len(meta["epoch_metrics"]["l1"]) == 2
     assert "optimizer" in meta
     assert "best_model" in meta
+    assert "scheduler" not in meta
+    assert "early_stopping" not in meta
+
+def test_metadata_callback_scheduler():
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
+    model.scheduler = {"scheduler": tr.optim.lr_scheduler.ReduceLROnPlateau(model.optimizer, "min"), "monitor": "loss"}
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
+
+    assert model.metadata_callback.metadata is None
+    Trainer(max_epochs=2).fit(model, DataLoader(Reader()))
+    assert model.metadata_callback.metadata is not None
+    meta = model.metadata_callback.metadata
+    assert "scheduler" in meta
+    assert meta["scheduler"]["type"] == "ReduceLROnPlateau"
+    assert meta["scheduler"]["monitor"] == "loss"
+    assert "early_stopping" not in meta
+
+def test_metadata_callback_early_stopping():
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
+    model.scheduler = {"scheduler": tr.optim.lr_scheduler.ReduceLROnPlateau(model.optimizer, "min"), "monitor": "loss"}
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
+    model.callbacks = [EarlyStopping("loss", min_delta=0.1, patience=1, mode="min")]
+
+    Trainer(max_epochs=2).fit(model, DataLoader(Reader()))
+    assert model.metadata_callback.metadata is not None
+    meta = model.metadata_callback.metadata
+    assert "early_stopping" in meta
+    assert meta["early_stopping"]["monitor"] == "loss"
+    assert meta["early_stopping"]["patience"] == 1
+    assert meta["early_stopping"]["mode"] == "min"
+    assert meta["early_stopping"]["min_delta"] == -0.1
+
