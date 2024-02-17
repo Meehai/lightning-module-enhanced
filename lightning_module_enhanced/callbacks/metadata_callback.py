@@ -7,7 +7,6 @@ import json
 import pytorch_lightning as pl
 import torch as tr
 from overrides import overrides
-from torch.optim import Optimizer
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, Checkpoint
 from pytorch_lightning.loggers import WandbLogger
@@ -169,7 +168,7 @@ class MetadataCallback(pl.Callback):
         """logs information about the scheduler, if it exists"""
         assert isinstance((cfg_optim := pl_module.configure_optimizers()), list) and len(cfg_optim) > 0, cfg_optim
         if "lr_scheduler" not in cfg_optim[0].keys():
-            return
+            return None
         res = [self._log_one_scheduler_fit_start(optim_dict["lr_scheduler"]) for optim_dict in cfg_optim]
         return res[0] if len(res) == 1 else res
 
@@ -178,7 +177,7 @@ class MetadataCallback(pl.Callback):
         early_stopping_cbs = list(filter(lambda x: isinstance(x, EarlyStopping), pl_module.trainer.callbacks))
         # no early stopping for this train, simply return
         if len(early_stopping_cbs) == 0:
-            return
+            return None
         assert len(early_stopping_cbs) == 1, early_stopping_cbs
         early_stopping_cb: EarlyStopping = early_stopping_cbs[0]
         es_dict = {
@@ -222,15 +221,15 @@ class MetadataCallback(pl.Callback):
         cb = self._get_monitored_model_checkpoint(pl_module)
         return {"monitors": cb.monitor, "mode": cb.mode}
 
-    def _log_scheduler_best_model_train_end(self, pl_module: LightningModule, best_model_dict: dict):
+    def _log_scheduler_best_model_train_end(self, pl_module: LightningModule, best_model_dict: dict) -> int | None:
         """updates bset model dict with the number of learning rate reduces done by the scheduler during training"""
         assert isinstance((cfg_optim := pl_module.configure_optimizers()), list) and len(cfg_optim) > 0, cfg_optim
         if "lr_scheduler" not in cfg_optim[0].keys():
-            return
+            return None
         assert len(cfg_optim) == 1, "Not supporting >1 optimizers with scheduler for now"
         if not hasattr(sch := cfg_optim[0]["lr_scheduler"]["scheduler"], "factor"):
             logger.debug(f"Scheduler {sch} doesn't have a factor attribute")
-            return
+            return None
         first_lr = best_model_dict["optimizers_lr"][0]
         last_lr = best_model_dict["optimizers_lr"][-1]
         return 0 if first_lr == last_lr else int((last_lr / first_lr) / sch.factor)
