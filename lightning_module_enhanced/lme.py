@@ -13,7 +13,7 @@ from pytorch_lightning.core.optimizer import LightningOptimizer
 from torch import nn, optim
 from torchinfo import summary, ModelStatistics
 
-from .trainable_module import TrainableModuleMixin
+from .trainable_module import TrainableModuleMixin, TrainableModule
 from .metrics import CoreMetric
 from .logger import logger
 from .utils import to_tensor, to_device, tr_detach_data
@@ -50,7 +50,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
     """
     def __init__(self, base_model: nn.Module):
         assert isinstance(base_model, nn.Module), f"Expected a nn.Module, got {type(base_model)}"
-        if isinstance(base_model, LightningModuleEnhanced):
+        if isinstance(base_model, (LightningModuleEnhanced, TrainableModule)):
             raise ValueError("Cannot have nested LME modules. LME must extend only a basic torch nn.Module")
         super().__init__()
         self.base_model = base_model
@@ -215,34 +215,24 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         self._run_and_log_metrics_at_epoch_end(self.metrics.keys())
         self._reset_all_active_metrics()
 
-    # TODO: perhaps refactor this since we don't need to have a dict like this with automatic optimization turned off
-    # main idea would be to return just the optimizer here, and no scheduler dict (throws warning now) and have
-    # a self.scheduler that does this behind the scenes
-    @overrides
-    def configure_optimizers(self) -> dict:
-        """Configure the optimizer/scheduler/monitor."""
+    @overrides(check_signature=False)
+    def configure_optimizers(self) -> list:
+        """
+        Configure the optimizer(s) and scheduler(s)
+        We aim for this structure because it is the most generic and supported by PL (from their docs):
+        return [
+            {"optimizer": optimizer1, "lr_scheduler": {"scheduler": scheduler1, "monitor": "metric_to_track"}},
+            {"optimizer": optimizer2, "lr_scheduler": scheduler2},
+        ]
+        """
         if self.optimizer is None:
             raise ValueError("No optimizer. Use model.optimizer=optim.XXX or add an optimizer property in base model")
-
-        if isinstance(self.optimizer, list):
-            res = [{"optimizer": o} for o in self.optimizer]
-        else:
-            res = [{"optimizer": self.optimizer}]
-
-        if self.scheduler_dict is None:
-            return res
-
-        if isinstance(self.scheduler_dict, list):
-            res_scheduler = [{"lr_scheduler": s} for s in self.scheduler_dict]
-        else:
-            res_scheduler = [{"lr_scheduler": self.scheduler_dict}]
-
-        assert len(res) == len(res_scheduler), "Something is messed up in your configs. Num optimizer: " \
-            f"{res} ({len(res)}), schedulers: {res_scheduler} ({len(res_scheduler)})"
-
-        for i in range(len(res)):
-            res[i] = {**res[i], **res_scheduler[i]}
-        return res
+        assert isinstance(self.optimizer, list), f"self.optimizer must return a list, got {type(self.optimizer)}"
+        if self.scheduler is None:
+            return [{"optimizer": o} for o in self.optimizer]
+        assert isinstance(self.scheduler, list), f"self.scheduler must return a list, got {type(self.scheduler)}"
+        assert (l_opt := len(self.optimizer)) == (l_sch := len(self.scheduler)), f"lens differ: {l_opt} vs {l_sch}"
+        return [{"optimizer": o, "lr_scheduler": sch} for o, sch in zip(self.optimizer, self.scheduler)]
 
     # Public methods
 
