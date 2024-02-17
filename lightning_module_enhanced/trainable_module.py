@@ -15,7 +15,7 @@ from .logger import logger
 from .utils import parsed_str_type
 
 OptimizerType = List[optim.Optimizer]
-SchedulerType = Union[List[Dict[str, optim.lr_scheduler.LRScheduler | str]], None]
+SchedulerType = Union[List[Dict[str, Union[optim.lr_scheduler.LRScheduler, str]]], None]
 CriterionFnType = Callable[[tr.Tensor, tr.Tensor], tr.Tensor]
 
 
