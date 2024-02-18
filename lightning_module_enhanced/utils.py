@@ -90,3 +90,8 @@ def parsed_str_type(item: Any) -> str:
 def make_list(item: T | list[T]) -> list[T]:
     """makes a list of 1 item it isn't already"""
     return item if isinstance(item, list) else [item]
+
+def flat_if_one(item: T | list[T]) -> T | list[T]:
+    """picks the element inside a list of 1 element, otherwise returns the list as is"""
+    assert isinstance(item, list), type(item)
+    return item[0] if isinstance(item, list) and len(item) == 1 else item

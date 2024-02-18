@@ -7,12 +7,11 @@ import json
 import pytorch_lightning as pl
 import torch as tr
 from overrides import overrides
-from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, Checkpoint
 from pytorch_lightning.loggers import WandbLogger
 
 from ..logger import logger
-from ..utils import parsed_str_type
+from ..utils import parsed_str_type, make_list, flat_if_one
 
 
 class MetadataCallback(pl.Callback):
@@ -32,8 +31,8 @@ class MetadataCallback(pl.Callback):
             raise ValueError(f"Metric '{prefixed_key}' at epoch {epoch} already exists in metadata")
         self.metadata["epoch_metrics"][prefixed_key][epoch] = value.tolist()
 
-    @overrides
-    def on_fit_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
+    @overrides(check_signature=False)
+    def on_fit_start(self, trainer: pl.Trainer, pl_module: "LME") -> None:
         """At the start of the .fit() loop, add the sizes of all train/validation dataloaders"""
         if pl_module.trainer.state.stage == "sanity_check":
             return
@@ -48,17 +47,17 @@ class MetadataCallback(pl.Callback):
         self.metadata["fit_params"] = pl_module.hparams
         self.metadata = {**self.metadata, **self._log_timestamp_start(prefix="fit")}
 
-    @overrides
-    def on_fit_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
-        self.metadata["best_model"] = self._log_best_model_epoch_end(pl_module)
+    @overrides(check_signature=False)
+    def on_fit_end(self, trainer: pl.Trainer, pl_module: "LME") -> None:
+        self.metadata["best_model"] = self._log_best_model_fit_end(pl_module)
         self.metadata = {**self.metadata, **self._log_timestamp_end("fit")}
         self.save()
         if any(isinstance(x, WandbLogger) for x in trainer.loggers):
             wandb_logger: WandbLogger = [x for x in trainer.loggers if isinstance(x, WandbLogger)][0]
             wandb_logger.experiment.log_artifact(self.log_file_path)
 
-    @overrides
-    def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
+    @overrides(check_signature=False)
+    def on_train_epoch_start(self, trainer: pl.Trainer, pl_module: "LME") -> None:
         if pl_module.trainer.state.stage == "sanity_check":
             return
         if "train_dataset_size" not in self.metadata:
@@ -66,16 +65,21 @@ class MetadataCallback(pl.Callback):
         if "validation_dataset_size" not in self.metadata and trainer.val_dataloaders is not None:
             self.metadata["validation_dataset_size"] = len(pl_module.trainer.val_dataloaders.dataset)
 
-    @overrides
-    def on_train_epoch_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
+    @overrides(check_signature=False)
+    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: "LME") -> None:
         """Saves the metadata as a json on the train dir"""
         # Always update the current hparams such that, for test modes, we get the loaded stats
         self.metadata["hparams_current"] = pl_module.hparams
-        self._log_timestamp_epoch_end()
+        hist = self._log_optimizer_lr_history_epoch_end(pl_module)
+        assert len(hist) == len(optims := make_list(self.metadata["optimizer"])), f"{len(hist)} vs {len(optims)}"
+        # TODO: make a test with >1 optimizer and test that this works
+        for o_history, o_hist in zip(optims, hist):
+            o_history["lr_history"] = o_hist
+        self.metadata = {**self.metadata, **self._log_timestamp_train_epoch_end()}
         self.save()
 
-    @overrides
-    def on_test_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
+    @overrides(check_signature=False)
+    def on_test_start(self, trainer: pl.Trainer, pl_module: "LME") -> None:
         """At the start of the .test() loop, add the sizes of all test dataloaders"""
         self._setup(trainer, prefix="test")
         self.metadata["test_start_hparams"] = pl_module.hparams
@@ -84,16 +88,16 @@ class MetadataCallback(pl.Callback):
         self.metadata["test_hparams"] = pl_module.hparams
         self.metadata = {**self.metadata, **self._log_timestamp_start(prefix="test")}
 
-    @overrides
-    def on_test_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+    @overrides(check_signature=False)
+    def on_test_end(self, trainer: pl.Trainer, pl_module: "LME") -> None:
         self._log_timestamp_end("test")
         self.save()
 
-    @overrides
+    @overrides(check_signature=False)
     def state_dict(self) -> dict[str, Any]:
         return json.dumps(self.metadata) # type: ignore
 
-    @overrides
+    @overrides(check_signature=False)
     def load_state_dict(self, state_dict: dict[str, Any]) -> None:
         self.metadata = json.loads(state_dict) # type: ignore
 
@@ -148,49 +152,14 @@ class MetadataCallback(pl.Callback):
 
         self.save()
 
-    def _log_one_optimizer_fit_start(self, optimizer: tr.optim.Optimizer) -> dict:
-        return {
-            "type": parsed_str_type(optimizer),
-            "starting_lr": [o["lr"] for o in optimizer.state_dict()["param_groups"]]
-        }
+    def _get_optimizer_current_lr(self, optimizer: tr.optim.Optimizer | dict) -> float:
+        assert isinstance(optimizer, (tr.optim.Optimizer, dict)), f"Must be optimizer or state_dict: {type(optimizer)}"
+        sd = optimizer.state_dict() if isinstance(optimizer, tr.optim.Optimizer) else optimizer
+        res = [o["lr"] for o in sd["param_groups"]]
+        assert all(x == res[0] for x in res), f"Not supporting differnt lrs at param groups in same optim: {res}"
+        return res[0]
 
-    def _log_optimizer_fit_start(self, pl_module: LightningModule) -> dict | list[dict]:
-        """optimizer metadata at fit start"""
-        assert isinstance((cfg_optim := pl_module.configure_optimizers()), list) and len(cfg_optim) > 0, cfg_optim
-        res = [self._log_one_optimizer_fit_start(optim_dict["optimizer"]) for optim_dict in cfg_optim]
-        return res[0] if len(res) == 1 else res
-
-    def _log_one_scheduler_fit_start(self, scheduler_dict: dict) -> dict:
-        return {
-            "type": parsed_str_type(scheduler_dict["scheduler"]),
-            **{k: v for k, v in scheduler_dict.items() if k != "scheduler"}
-        }
-
-    def _log_scheduler_fit_start(self, pl_module: LightningModule) -> dict | list[dict] | None:
-        """logs information about the scheduler, if it exists"""
-        assert isinstance((cfg_optim := pl_module.configure_optimizers()), list) and len(cfg_optim) > 0, cfg_optim
-        if "lr_scheduler" not in cfg_optim[0].keys():
-            return None
-        res = [self._log_one_scheduler_fit_start(optim_dict["lr_scheduler"]) for optim_dict in cfg_optim]
-        return res[0] if len(res) == 1 else res
-
-    def _log_early_stopping_fit_start(self, pl_module: LightningModule):
-        assert pl_module.trainer is not None, "Invalid call to this function, trainer is not set."
-        early_stopping_cbs = list(filter(lambda x: isinstance(x, EarlyStopping), pl_module.trainer.callbacks))
-        # no early stopping for this train, simply return
-        if len(early_stopping_cbs) == 0:
-            return None
-        assert len(early_stopping_cbs) == 1, early_stopping_cbs
-        early_stopping_cb: EarlyStopping = early_stopping_cbs[0]
-        es_dict = {
-            "monitor": early_stopping_cb.monitor,
-            "min_delta": early_stopping_cb.min_delta,
-            "mode": early_stopping_cb.mode,
-            "patience": early_stopping_cb.patience
-        }
-        return es_dict
-
-    def _log_model_summary(self, pl_module: LightningModule):
+    def _log_model_summary(self, pl_module: "LME") -> dict:
         """model's layers and number of parameters"""
         assert hasattr(pl_module, "base_model")
         res = {"name": pl_module.base_model.__class__.__name__}
@@ -204,7 +173,8 @@ class MetadataCallback(pl.Callback):
         res["layer_summary"] = layer_summary
         return res
 
-    def _get_monitored_model_checkpoint(self, pl_module: LightningModule) -> Checkpoint:
+    def _get_monitored_model_checkpoint(self, pl_module: "LME") -> Checkpoint:
+        """returns the (first) model checkpoint, as provided by model.checkpoint_monitors. Usually the 'loss' monitor"""
         monitors: list[str] = pl_module.checkpoint_monitors # type: ignore
         assert len(monitors) > 0, "At least one monitor must be present."
         if len(monitors) > 1:
@@ -220,38 +190,7 @@ class MetadataCallback(pl.Callback):
         cb: Checkpoint = cbs[0]
         return cb
 
-    def _log_model_checkpoint_fit_start(self, pl_module: LightningModule) -> dict:
-        cb = self._get_monitored_model_checkpoint(pl_module)
-        return {"monitors": cb.monitor, "mode": cb.mode}
-
-    def _log_scheduler_best_model_train_end(self, pl_module: LightningModule, best_model_dict: dict) -> int | None:
-        """updates bset model dict with the number of learning rate reduces done by the scheduler during training"""
-        assert isinstance((cfg_optim := pl_module.configure_optimizers()), list) and len(cfg_optim) > 0, cfg_optim
-        if "lr_scheduler" not in cfg_optim[0].keys():
-            return None
-        assert len(cfg_optim) == 1, "Not supporting >1 optimizers with scheduler for now"
-        if not hasattr(sch := cfg_optim[0]["lr_scheduler"]["scheduler"], "factor"):
-            logger.debug(f"Scheduler {sch} doesn't have a factor attribute")
-            return None
-        first_lr, last_lr = best_model_dict["optimizers_lr"][0], best_model_dict["optimizers_lr"][-1]
-        return 0 if first_lr == last_lr else int((last_lr / first_lr) / sch.factor)
-
-    def _log_best_model_epoch_end(self, pl_module: LightningModule) -> dict:
-        # find best and last modelcheckpoint callbacks. best will be None if we don't use a validation set loader.
-        cb = self._get_monitored_model_checkpoint(pl_module)
-        ckpt_path = Path(cb.best_model_path)
-        assert ckpt_path.exists() and ckpt_path.is_file(), "Best checkpoint does not exist."
-
-        best_model_pkl = tr.load(ckpt_path, map_location="cpu")
-        best_model_dict = {
-            "path": f"{ckpt_path}",
-            "hyper_parameters": best_model_pkl.get("hyper_parameters", {}),
-            "optimizers_lr": [o["param_groups"][0]["lr"] for o in best_model_pkl["optimizer_states"]],
-            "epoch": best_model_pkl["epoch"],
-        }
-        if (sch := self._log_scheduler_best_model_train_end(pl_module, best_model_dict)) is not None:
-            best_model_dict["scheduler_num_lr_reduced"] = sch
-        return best_model_dict
+    # [fit/test/predict]_start private methods
 
     def _log_timestamp_start(self, prefix: str) -> dict:
         """Logs the timestamp of fit_start or test_start"""
@@ -264,6 +203,51 @@ class MetadataCallback(pl.Callback):
             res["epoch_timestamps"] = []
         return res
 
+    def _log_optimizer_fit_start(self, pl_module: "LME") -> dict | list[dict]:
+        """optimizer metadata at fit start"""
+        def _log_one_optimizer_fit_start(optimizer: tr.optim.Optimizer) -> dict:
+            return {
+                "type": parsed_str_type(optimizer),
+                "starting_lr": self._get_optimizer_current_lr(optimizer),
+                "lr_history": [],
+            }
+        res = [_log_one_optimizer_fit_start(o) for o in make_list(pl_module.optimizer)]
+        return flat_if_one(res)
+
+    def _log_scheduler_fit_start(self, pl_module: "LME") -> dict | list[dict] | None:
+        """logs information about the scheduler, if it exists"""
+        def _log_one_scheduler_fit_start(scheduler_dict: dict) -> dict:
+            return {
+                "type": parsed_str_type(scheduler_dict["scheduler"]),
+                **{k: v for k, v in scheduler_dict.items() if k != "scheduler"}
+            }
+        if pl_module.scheduler is None:
+            return None
+        res = [_log_one_scheduler_fit_start(sch) for sch in make_list(pl_module.scheduler)]
+        return flat_if_one(res)
+
+    def _log_early_stopping_fit_start(self, pl_module: "LME"):
+        assert pl_module.trainer is not None, "Invalid call to this function, trainer is not set."
+        early_stopping_cbs = list(filter(lambda x: isinstance(x, EarlyStopping), pl_module.trainer.callbacks))
+        # no early stopping for this train, simply return
+        if len(early_stopping_cbs) == 0:
+            return None
+        assert len(early_stopping_cbs) == 1, early_stopping_cbs
+        early_stopping_cb: EarlyStopping = early_stopping_cbs[0]
+        es_dict = {
+            "monitor": early_stopping_cb.monitor,
+            "min_delta": early_stopping_cb.min_delta,
+            "mode": early_stopping_cb.mode,
+            "patience": early_stopping_cb.patience
+        }
+        return es_dict
+
+    def _log_model_checkpoint_fit_start(self, pl_module: "LME") -> dict:
+        cb = self._get_monitored_model_checkpoint(pl_module)
+        return {"monitors": cb.monitor, "mode": cb.mode}
+
+    # [fit/test/predict]_end private methods
+
     def _log_timestamp_end(self, prefix: str):
         """Adds the end timestamp and saves the json on the disk for train and test modes."""
         now = datetime.now()
@@ -275,12 +259,65 @@ class MetadataCallback(pl.Callback):
         }
         return res
 
-    def _log_timestamp_epoch_end(self):
-        """compute the average durations from fit_start to now (might be wrong for retrainings though)"""
-        self.metadata["epoch_timestamps"].append(datetime.timestamp(datetime.now()))
-        start = self.metadata["fit_start_timestamp"]
-        timestamps = tr.DoubleTensor([start, *self.metadata["epoch_timestamps"]], device="cpu")
-        self.metadata["epoch_average_duration"] = (timestamps[1:] - timestamps[0:-1]).mean().item()
+    def _log_scheduler_best_model_fit_end(self, pl_module: "LME", best_epoch: int) -> int | None:
+        """updates bset model dict with the number of learning rate reduces done by the scheduler during training"""
+        if pl_module.scheduler is None:
+            return None
+        assert len(make_list(pl_module.optimizer)) == 1 # TODO: also in TrainableMododule
+        assert len(make_list(pl_module.scheduler)) == 1, f"Only 1 scheduler support now, got {len(pl_module.scheduler)}"
+        sch: tr.optim.lr_scheduler.LRScheduler = pl_module.scheduler["scheduler"]
+        if not hasattr(sch, "factor"):
+            logger.debug(f"Scheduler {sch} doesn't have a factor attribute")
+            return None
+        first_lr = self.metadata["optimizer"]["lr_history"][0]
+        last_lr = self.metadata["optimizer"]["lr_history"][best_epoch]
+        res = 0 if first_lr == last_lr else int(first_lr / last_lr * sch.factor)
+        return res
+
+    def _log_best_model_fit_end(self, pl_module: "LME") -> dict:
+        # find best and last modelcheckpoint callbacks. best will be None if we don't use a validation set loader.
+        cb = self._get_monitored_model_checkpoint(pl_module)
+        ckpt_path = Path(cb.best_model_path)
+        assert ckpt_path.exists() and ckpt_path.is_file(), "Best checkpoint does not exist."
+
+        best_model_pkl = tr.load(ckpt_path, map_location="cpu")
+        best_model_dict = {
+            "path": f"{ckpt_path}",
+            "hyper_parameters": best_model_pkl.get("hyper_parameters", {}),
+            "epoch": best_model_pkl["epoch"],
+            "optimizer_lr": flat_if_one([self._get_optimizer_current_lr(o) for o in best_model_pkl["optimizer_states"]])
+        }
+        if (sch := self._log_scheduler_best_model_fit_end(pl_module, best_model_pkl["epoch"])) is not None:
+            best_model_dict["scheduler_num_lr_reduced"] = sch
+        return best_model_dict
+
+    # train_epoch_end private methods
+
+    def _log_timestamp_train_epoch_end(self) -> dict:
+        """
+        Compute the average durations from fit_start to now. If we retrain, this will be wron, because the first epochs
+        will have appened at some timestamps and the new one to another timestamp.
+        TODO: remove old ones or linearly approximate based on epoch_averagae_duration when they would've happen?
+        """
+        new_timestamps = [*self.metadata["epoch_timestamps"], datetime.timestamp(datetime.now())]
+        tr_timestamps = tr.DoubleTensor([self.metadata["fit_start_timestamp"], *new_timestamps], device="cpu")
+        res = {
+            "epoch_timestamps": new_timestamps,
+            "epoch_average_duration": (tr_timestamps[1:] - tr_timestamps[0:-1]).mean().item()
+        }
+        return res
+
+    def _log_optimizer_lr_history_epoch_end(self, pl_module: "LME") -> list[list[float]]:
+        """
+        At the end of each epoch, for each optimizer (can be >1), append the current LR. Only 1 LR allowed per optim.
+        Return: A list of list (all lrs for each optim), even if just 1: [[0.01, 0.001] (o1), [0.01, 0.01] (o2)]
+        """
+        res = []
+        for o, o_meta in zip(make_list(pl_module.optimizer), make_list(self.metadata["optimizer"])):
+            res.append([*o_meta["lr_history"], self._get_optimizer_current_lr(o)])
+        return res
+
+        # return flat_if_one([self._get_optimizer_current_lr(o) for o in make_list(pl_module.optimizer)])
 
     def _debug_metadata_json_dump(self, metadata: dict[str, Any], fp: IO) -> None:
         logger.debug("=================== Debug metadata =====================")

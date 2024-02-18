@@ -190,25 +190,15 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         return self.callbacks
 
     @overrides
+    def on_train_epoch_start(self):
+        self._apply_scheduler_epoch_start()
+
+    @overrides
     def on_train_epoch_end(self) -> None:
         """Computes epoch average train loss and metrics for logging."""
         # If validation is enabled (for train loops), add "val_" metrics for all logged metrics.
         self._run_and_log_metrics_at_epoch_end(list(self.metrics.keys()))
         self._reset_all_active_metrics()
-        if self.scheduler is not None:
-            scheduler: optim.lr_scheduler.LRScheduler = self.scheduler["scheduler"]
-            monitor: str = self.scheduler["monitor"]
-            # on_train_epoch_end.val_loss
-            # TODO: perhaps find some better way to do this
-            # pylint: disable=protected-access
-            try:
-                epoch_result: tr.Tensor = self._trainer._results[f"on_train_epoch_end.{monitor}"].value
-            except KeyError:
-                logger.debug(f"It may be the case that your scheduler monitor is wrong. Monitor: '{monitor}'. "
-                             f"All results: {list(self._trainer._results.keys())}")
-                raise MisconfigurationException
-            # TODO: this assumes that it's reduce lr on plateau and not something else.
-            scheduler.step(epoch_result)
 
     @overrides
     def on_test_epoch_end(self):
@@ -216,22 +206,15 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         self._reset_all_active_metrics()
 
     @overrides(check_signature=False)
-    def configure_optimizers(self) -> list:
+    def configure_optimizers(self) -> list[optim.Optimizer]:
         """
-        Configure the optimizer(s) and scheduler(s)
-        We aim for this structure because it is the most generic and supported by PL (from their docs):
-        return [
-            {"optimizer": optimizer1, "lr_scheduler": {"scheduler": scheduler1, "monitor": "metric_to_track"}},
-            {"optimizer": optimizer2, "lr_scheduler": scheduler2},
-        ]
+        Configure the optimizer(s). We always return a list of optimizers (even if just 1)
         """
         if self.optimizer is None:
             raise ValueError("No optimizer. Use model.optimizer=optim.XXX or add an optimizer property in base model")
-        if self.scheduler is None:
-            return [{"optimizer": o} for o in make_list(self.optimizer)]
-        optimizer, scheduler = make_list(self.optimizer), make_list(self.scheduler)
-        assert (l_opt := len(optimizer)) == (l_sch := len(scheduler)), f"lens differ: {l_opt} vs {l_sch}"
-        return [{"optimizer": o, "lr_scheduler": sch} for o, sch in zip(optimizer, scheduler)]
+        res = make_list(self.optimizer)
+        assert all(isinstance(x, optim.Optimizer) for x in res), (type(x) for x in res)
+        return res
 
     # Public methods
 
@@ -402,3 +385,23 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
             or self.trainer.sanity_checking, self.trainer.state
         prefix = "" if self.trainer.training or self.trainer.testing else "val_"
         return prefix
+
+    def _apply_scheduler_epoch_start(self):
+        if self.scheduler is None or not self.trainer.training:
+            return
+        if "monitor" not in self.scheduler:
+            self.scheduler["scheduler"].step() # TODO: tests for non monitor schedulers (wtf are these even?)
+            return
+
+        is_val = (monitor := self.scheduler["monitor"]).startswith("val_")
+        monitor = monitor[4:] if is_val else monitor
+        prefix = "val" if is_val else ""
+        if is_val and "val" not in self._active_run_metrics:
+            raise MisconfigurationException(f"Monitor: {self.scheduler['monitor']} but no validation set provided")
+        if monitor not in self.metrics:
+            raise MisconfigurationException(f"Monitor: {self.scheduler['monitor']} not in metrics: {self.metrics}")
+        if self.trainer.current_epoch == 0:
+            return
+
+        metric = self._active_run_metrics[prefix][self.scheduler["monitor"]] # pylint: disable=protected-access
+        self.scheduler["scheduler"].step(metric.epoch_result_reduced(metric.epoch_result()))
