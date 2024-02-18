@@ -149,7 +149,7 @@ def test_fit_with_scheduler():
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     model.scheduler = {"scheduler": ReduceLROnPlateau(model.optimizer, factor=0.9, patience=5), "monitor": "loss"}
 
-    Trainer(max_epochs=2).fit(model, DataLoader(Reader()))
+    Trainer(max_epochs=3).fit(model, DataLoader(Reader()))
     assert model.scheduler["scheduler"].last_epoch == 2
 
 def test_fit_different_forward_params_1():

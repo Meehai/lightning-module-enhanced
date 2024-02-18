@@ -387,19 +387,21 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         return prefix
 
     def _apply_scheduler_epoch_start(self):
-        if self.scheduler is None or self.trainer.current_epoch == 0:
+        if self.scheduler is None or not self.trainer.training:
+            return
+        if "monitor" not in self.scheduler:
+            self.scheduler["scheduler"].step() # TODO: tests for non monitor schedulers (wtf are these even?)
             return
 
-        scheduler: optim.lr_scheduler.LRScheduler = self.scheduler["scheduler"]
-        monitor: str = self.scheduler["monitor"]
-        # on_train_epoch_end.val_loss
-        # TODO: perhaps find some better way to do this
-        # pylint: disable=protected-access
-        try:
-            epoch_result: tr.Tensor = self._trainer._results[f"on_train_epoch_end.{monitor}"].value
-        except KeyError:
-            logger.debug(f"It may be the case that your scheduler monitor is wrong. Monitor: '{monitor}'. "
-                         f"All results: {list(self._trainer._results.keys())}")
-            raise MisconfigurationException
-        # TODO: this assumes that it's reduce lr on plateau and not something else.
-        scheduler.step(epoch_result)
+        is_val = (monitor := self.scheduler["monitor"]).startswith("val_")
+        monitor = monitor[4:] if is_val else monitor
+        prefix = "val" if is_val else ""
+        if is_val and "val" not in self._active_run_metrics:
+            raise MisconfigurationException(f"Monitor: {self.scheduler['monitor']} but no validation set provided")
+        if monitor not in self.metrics:
+            raise MisconfigurationException(f"Monitor: {self.scheduler['monitor']} not in metrics: {self.metrics}")
+        if self.trainer.current_epoch == 0:
+            return
+
+        metric = self._active_run_metrics[prefix][self.scheduler["monitor"]] # pylint: disable=protected-access
+        self.scheduler["scheduler"].step(metric.epoch_result_reduced(metric.epoch_result()))
