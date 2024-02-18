@@ -190,25 +190,15 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         return self.callbacks
 
     @overrides
+    def on_train_epoch_start(self):
+        self._apply_scheduler_epoch_start()
+
+    @overrides
     def on_train_epoch_end(self) -> None:
         """Computes epoch average train loss and metrics for logging."""
         # If validation is enabled (for train loops), add "val_" metrics for all logged metrics.
         self._run_and_log_metrics_at_epoch_end(list(self.metrics.keys()))
         self._reset_all_active_metrics()
-        if self.scheduler is not None:
-            scheduler: optim.lr_scheduler.LRScheduler = self.scheduler["scheduler"]
-            monitor: str = self.scheduler["monitor"]
-            # on_train_epoch_end.val_loss
-            # TODO: perhaps find some better way to do this
-            # pylint: disable=protected-access
-            try:
-                epoch_result: tr.Tensor = self._trainer._results[f"on_train_epoch_end.{monitor}"].value
-            except KeyError:
-                logger.debug(f"It may be the case that your scheduler monitor is wrong. Monitor: '{monitor}'. "
-                             f"All results: {list(self._trainer._results.keys())}")
-                raise MisconfigurationException
-            # TODO: this assumes that it's reduce lr on plateau and not something else.
-            scheduler.step(epoch_result)
 
     @overrides
     def on_test_epoch_end(self):
@@ -395,3 +385,21 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
             or self.trainer.sanity_checking, self.trainer.state
         prefix = "" if self.trainer.training or self.trainer.testing else "val_"
         return prefix
+
+    def _apply_scheduler_epoch_start(self):
+        if self.scheduler is None or self.trainer.current_epoch == 0:
+            return
+
+        scheduler: optim.lr_scheduler.LRScheduler = self.scheduler["scheduler"]
+        monitor: str = self.scheduler["monitor"]
+        # on_train_epoch_end.val_loss
+        # TODO: perhaps find some better way to do this
+        # pylint: disable=protected-access
+        try:
+            epoch_result: tr.Tensor = self._trainer._results[f"on_train_epoch_end.{monitor}"].value
+        except KeyError:
+            logger.debug(f"It may be the case that your scheduler monitor is wrong. Monitor: '{monitor}'. "
+                         f"All results: {list(self._trainer._results.keys())}")
+            raise MisconfigurationException
+        # TODO: this assumes that it's reduce lr on plateau and not something else.
+        scheduler.step(epoch_result)

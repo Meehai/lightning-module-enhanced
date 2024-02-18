@@ -221,6 +221,7 @@ class TrainableModuleMixin(TrainableModule):
                 'Use model.scheduler={"scheduler": sch, ["monitor": ...]} (or a list of dicts if >1 optimizers)'
             assert hasattr(sch["scheduler"], "step"), f"Scheduler {sch} does not have a step method"
         logger.debug(f"Set the scheduler to {scheduler}")
+        assert len(make_list(self.optimizer)) == 1, f"Can have scheduler only with 1 optimizer: {self.optimizer}" # TODO
         self._scheduler = scheduler
 
     @property
