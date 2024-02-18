@@ -216,22 +216,15 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         self._reset_all_active_metrics()
 
     @overrides(check_signature=False)
-    def configure_optimizers(self) -> list:
+    def configure_optimizers(self) -> list[optim.Optimizer]:
         """
-        Configure the optimizer(s) and scheduler(s)
-        We aim for this structure because it is the most generic and supported by PL (from their docs):
-        return [
-            {"optimizer": optimizer1, "lr_scheduler": {"scheduler": scheduler1, "monitor": "metric_to_track"}},
-            {"optimizer": optimizer2, "lr_scheduler": scheduler2},
-        ]
+        Configure the optimizer(s). We always return a list of optimizers (even if just 1)
         """
         if self.optimizer is None:
             raise ValueError("No optimizer. Use model.optimizer=optim.XXX or add an optimizer property in base model")
-        if self.scheduler is None:
-            return [{"optimizer": o} for o in make_list(self.optimizer)]
-        optimizer, scheduler = make_list(self.optimizer), make_list(self.scheduler)
-        assert (l_opt := len(optimizer)) == (l_sch := len(scheduler)), f"lens differ: {l_opt} vs {l_sch}"
-        return [{"optimizer": o, "lr_scheduler": sch} for o, sch in zip(optimizer, scheduler)]
+        res = make_list(self.optimizer)
+        assert all(isinstance(x, optim.Optimizer) for x in res), (type(x) for x in res)
+        return res
 
     # Public methods
 
