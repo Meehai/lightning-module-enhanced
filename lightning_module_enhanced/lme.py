@@ -182,7 +182,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         self._update_metrics_at_batch_end(test_metrics)
 
     @overrides
-    def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
+    def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0, *args, **kwargs) -> Any:
         return self.forward(batch["data"])
 
     @overrides
