@@ -1,6 +1,6 @@
 """Generic Pytorch Lightning module on top of a Pytorch nn.Module"""
 from __future__ import annotations
-from typing import Any, Sequence, Callable, Tuple, Dict
+from typing import Any, Sequence, Callable, NamedTuple, Dict, Union
 from copy import deepcopy
 from pathlib import Path
 import shutil
@@ -18,8 +18,8 @@ from .metrics import CoreMetric
 from .logger import logger
 from .utils import to_tensor, to_device, tr_detach_data, make_list
 
-# (predition, {metric_name: metric_result})
-ModelAlgorithmOutput = Tuple[tr.Tensor, Dict[str, tr.Tensor]]
+ModelAlgorithmOutput = NamedTuple("ModelAlgorithmOutput", y=tr.Tensor, metrics=Dict[str, tr.Tensor],
+                                  x=Union[None, tr.Tensor, Dict[str, tr.Tensor]], gt=Union[None, tr.Tensor])
 
 # pylint: disable=too-many-ancestors, arguments-differ, unused-argument, abstract-method
 class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
@@ -154,36 +154,36 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         opts: list[LightningOptimizer] = _opt if isinstance(_opt, list) else [_opt]
         for opt in opts:
             opt.optimizer.zero_grad()
-        batch_prediction, train_metrics = self.model_algorithm(self, batch)
-        self.cache_result = tr_detach_data(batch_prediction)
-        assert isinstance(train_metrics, dict), type(train_metrics)
+        y, train_metrics, _, _ = self.model_algorithm(self, batch)
+        self.cache_result = tr_detach_data(y)
         assert "loss" in train_metrics.keys(), train_metrics.keys()
         self._update_metrics_at_batch_end(train_metrics)
         # Manual optimization like real men. We disable automatic_optimization in the constructor.
         self.manual_backward(train_metrics["loss"])
         for opt in opts:
             opt.step()
+        return train_metrics["loss"]
 
     @overrides
     def validation_step(self, batch: dict, batch_idx: int, *args, **kwargs):
         """Validation step: returns batch validation loss and metrics."""
-        batch_prediction, val_metrics = self.model_algorithm(self, batch)
-        self.cache_result = tr_detach_data(batch_prediction)
-        assert isinstance(val_metrics, dict), type(val_metrics)
+        y, val_metrics, _, _ = self.model_algorithm(self, batch)
+        self.cache_result = tr_detach_data(y)
         assert "loss" in val_metrics.keys(), val_metrics.keys()
         self._update_metrics_at_batch_end(val_metrics)
+        return val_metrics["loss"]
 
     @overrides
     def test_step(self, batch: dict, batch_idx: int, *args, **kwargs):
         """Testing step: returns batch test loss and metrics."""
-        batch_prediction, test_metrics = self.model_algorithm(self, batch)
-        self.cache_result = tr_detach_data(batch_prediction)
-        assert isinstance(test_metrics, dict), type(test_metrics)
+        y, test_metrics, _, _ = self.model_algorithm(self, batch)
+        self.cache_result = tr_detach_data(y)
         self._update_metrics_at_batch_end(test_metrics)
+        return test_metrics["loss"]
 
     @overrides
     def predict_step(self, batch: Any, batch_idx: int, *args, dataloader_idx: int = 0, **kwargs) -> Any:
-        return self.forward(batch["data"])
+        return self.model_algorithm(self, batch)[0]
 
     @overrides
     def configure_callbacks(self) -> Sequence[pl.Callback] | pl.Callback:
@@ -202,7 +202,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
 
     @overrides
     def on_test_epoch_end(self):
-        self._run_and_log_metrics_at_epoch_end(self.metrics.keys())
+        self._run_and_log_metrics_at_epoch_end(list(self.metrics.keys()))
         self._reset_all_active_metrics()
 
     @overrides(check_signature=False)
@@ -288,11 +288,10 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         'loss' must be in there as well unless you update `training_step` as well in your module.
         """
         x = batch["data"]
-        assert isinstance(x, (dict, tr.Tensor)), type(x)
-        # This allows {"data": {"a": ..., "b": ...}} to be mapped to forward(a, b)
         y = model.forward(x)
         gt = to_device(to_tensor(batch["labels"]), model.device)
-        return y, model.lme_metrics(y, gt, include_loss=True)
+        metrics = model.lme_metrics(y, gt, include_loss=True)
+        return ModelAlgorithmOutput(y=y, metrics=metrics, x=x, gt=gt)
 
     def lme_metrics(self, y: tr.Tensor, gt: tr.Tensor, include_loss: bool = True) -> dict[str, tr.Tensor]:
         """
@@ -324,6 +323,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
     # Private methods
 
     def _update_metrics_at_batch_end(self, batch_results: dict[str, tr.Tensor]):
+        assert isinstance(batch_results, dict), f"Expected dict, got {type(batch_results)}"
         prefix = self._prefix_from_trainer()
         if set(batch_results.keys()) != set(self.metrics.keys()):
             raise ValueError(f"Not all expected metrics ({self.metrics.keys()}) were computed "

@@ -1,6 +1,6 @@
 from __future__ import annotations
 from functools import partial
-from lightning_module_enhanced import LME
+from lightning_module_enhanced import LME, ModelAlgorithmOutput
 from lightning_module_enhanced.utils import to_device, to_tensor
 from pytorch_lightning import Trainer
 from torch.utils.data import DataLoader
@@ -22,13 +22,13 @@ class MultiArgsLME(LME):
         self.model_algorithm = self.model_algorithm_multi_args
 
     @staticmethod
-    def model_algorithm_multi_args(self, train_batch: dict) -> tuple[tr.Tensor, dict[str, tr.Tensor]]:
+    def model_algorithm_multi_args(self, train_batch: dict) -> ModelAlgorithmOutput:
         x = train_batch["data"]
         assert isinstance(x, (dict, tr.Tensor)), type(x)
         # This allows {"data": {"a": ..., "b": ...}} to be mapped to forward(a, b)
         y = self.forward(**x) if isinstance(x, dict) else self.forward(x)
         gt = to_device(to_tensor(train_batch["labels"]), self.device)
-        return y, self.lme_metrics(y, gt)
+        return y, self.lme_metrics(y, gt), x, gt
 
 def test_fit_1():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
@@ -309,7 +309,7 @@ def test_fit_model_algorithm_not_include_loss():
         res = model.lme_metrics(y, gt, include_loss=False)
         assert "loss" not in res
         res["loss"] = model.criterion_fn(y, gt)
-        return y, res
+        return y, res, x, gt
 
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
