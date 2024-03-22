@@ -118,7 +118,7 @@ def test_model_algorithm_no_trainer_1():
     model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     x = {"data": tr.randn(10, 2), "labels": tr.randn(10, 1)}
-    y, metrics = model.model_algorithm(model, x)
+    y, metrics, _, _ = model.model_algorithm(model, x)
     assert y.shape == (10, 1)
     assert metrics.keys() == {"l1", "loss"}
     assert metrics["l1"].grad_fn is None and isinstance(metrics["l1"].item(), float)

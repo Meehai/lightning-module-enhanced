@@ -207,7 +207,6 @@ class TrainableModuleMixin(TrainableModule):
             self._metrics["loss"] = self.criterion_fn
         logger.debug(f"Set module metrics: {list(self.metrics.keys())} ({len(self.metrics)})")
 
-    # TODO: perhaps refactor this since we don't need to have a dict like this with automatic optimization turned off
     @property
     def scheduler(self) -> SchedulerType:
         """Returns the scheduler dict"""
