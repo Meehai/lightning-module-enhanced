@@ -33,7 +33,9 @@ class MultiTrainer:
         self.done = False
 
         self.is_cuda_accelerator = isinstance(self.trainer.accelerator, CUDAAccelerator)
-        self.pool_map = PoolResources(self.resources, timeout=1, pbar=False).map if self.resources else map
+        self.pool_map = map
+        if len(self.resources) > 0:
+            self.pool_map = PoolResources(self.resources, timeout=1, pbar=False, n_raises_allowed=5).map
 
     # Properties
 
