@@ -11,14 +11,14 @@ class Reader:
         return 10
 
     def __getitem__(self, ix):
-        return {"data": tr.randn(2), "labels": tr.randn(1)}
-
+        return tr.randn(2), tr.randn(1)
 
 def test_plot_metrics_1():
     """simple tests: at the end of training we should have 3 entries on l1/loss due to 3 epochs"""
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
     pm = PlotMetrics()
     model.callbacks = [pm]
@@ -33,6 +33,7 @@ def test_plot_metrics_2():
     """fine-tuning also should yield 3 epochs, even thouh we start from a pre-trained one"""
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
     pm = PlotMetrics()
@@ -53,6 +54,7 @@ def test_plot_metrics_3():
     """reload a training from first/2nd epoch. The metrics/training should continue"""
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
     pm = PlotMetrics()

@@ -12,7 +12,7 @@ class Reader:
     def __len__(self):
         return 10
     def __getitem__(self, ix):
-        return {"data": tr.randn(2), "labels": tr.randn(1)}
+        return tr.randn(2), tr.randn(1)
 
 class CustomScheduler(ReduceLROnPlateau):
     def step(self, metrics, epoch=None):
@@ -23,6 +23,7 @@ def test_metadata_callback_train_1():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
 
     assert model.metadata_callback.metadata is None
@@ -42,6 +43,7 @@ def test_metadata_callback_test_1():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
 
     assert model.metadata_callback.metadata is None
@@ -61,6 +63,7 @@ def test_metadata_callback_no_checkpoint():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
 
 def test_metadata_callback_two_ModelCheckpoints():
@@ -68,6 +71,7 @@ def test_metadata_callback_two_ModelCheckpoints():
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     model.callbacks = [ModelCheckpoint(save_last=True, save_top_k=1, monitor="loss")]
 
     assert model.metadata_callback.metadata is None
@@ -88,6 +92,7 @@ def test_metadata_callback_two_monitors():
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     model.checkpoint_monitors = ["loss", "l1"]
 
     assert model.metadata_callback.metadata is None
@@ -110,6 +115,7 @@ def test_metadata_callback_scheduler_ReduceLROnPlateau():
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.scheduler = {"scheduler": tr.optim.lr_scheduler.ReduceLROnPlateau(model.optimizer, "min"), "monitor": "loss"}
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
 
     assert model.metadata_callback.metadata is None
@@ -126,6 +132,7 @@ def test_metadata_callback_scheduler_CustomScheduler():
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.scheduler = {"scheduler": CustomScheduler(model.optimizer, "min", factor=0.5), "monitor": "loss"}
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     Trainer(max_epochs=3).fit(model, DataLoader(Reader()))
     best_epoch = model.metadata_callback.metadata["best_model"]["epoch"]
     assert model.metadata_callback.metadata["best_model"]["scheduler_num_lr_reduced"] == best_epoch
@@ -138,6 +145,7 @@ def test_metadata_callback_early_stopping():
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
     model.callbacks = [EarlyStopping("loss", min_delta=0.1, patience=1, mode="min")]
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
 
     Trainer(max_epochs=2).fit(model, DataLoader(Reader()))
     assert model.metadata_callback.metadata is not None

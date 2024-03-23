@@ -19,17 +19,18 @@ class ReaderClassification:
     def __getitem__(self, ix):
         res = tr.zeros(self.n_dims)
         res[tr.randn(self.n_dims).argmax()] = 1
-        return {"data": tr.randn(2), "labels": res}
+        return tr.randn(2), res
 
 class Reader:
     def __len__(self):
         return 10
 
     def __getitem__(self, ix):
-        return {"data": tr.randn(2), "labels": tr.randn(1)}
+        return tr.randn(2), tr.randn(1)
 
 def test_all_are_none():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     assert len(model.metrics) == 1
     assert model.criterion_fn.metric_fn == TrainableModuleMixin._default_criterion_fn
     assert model.optimizer is None
@@ -43,12 +44,14 @@ def test_all_are_none():
 
 def test_train_setup_minimal():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
 
 def test_train_setup_scheduler_bad_2():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.scheduler = {"scheduler": ReduceLROnPlateau(model.optimizer, factor=0.9, patience=5), "monitor": "val_loss"}
@@ -62,6 +65,7 @@ def test_train_setup_scheduler_bad_2():
 
 def test_train_setup_scheduler_good():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.scheduler = {"scheduler": ReduceLROnPlateau(model.optimizer, factor=0.9, patience=5), "monitor": "loss"}
@@ -69,6 +73,7 @@ def test_train_setup_scheduler_good():
 
 def test_train_setup_metrics_good_accuracy():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 5), nn.ReLU()))
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.metrics = {"accuracy": (partial(multiclass_accuracy, num_classes=5, average="none"), "max")}
@@ -79,6 +84,7 @@ def test_train_setup_metrics_good_accuracy():
 
 def test_train_setup_metrics_l1():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
@@ -86,6 +92,7 @@ def test_train_setup_metrics_l1():
 
 def test_train_setup_metrics_mse():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.metrics = {"mse": (lambda y, gt: (y - gt).pow(2).mean(), "min")}

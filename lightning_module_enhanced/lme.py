@@ -48,7 +48,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         Args:
             base_model: The base :class:`torch.nn.Module`
     """
-    def __init__(self, base_model: nn.Module):
+    def __init__(self, base_model: nn.Module, model_algorithm: Callable = None):
         assert isinstance(base_model, nn.Module), f"Expected a nn.Module, got {type(base_model)}"
         if isinstance(base_model, (LightningModuleEnhanced, TrainableModule)):
             raise ValueError("Cannot have nested LME modules. LME must extend only a basic torch nn.Module")
@@ -57,11 +57,10 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         self.automatic_optimization = False
         self._active_run_metrics: dict[str, dict[str, CoreMetric]] = {}
         self._summary: ModelStatistics | None = None
-        self._model_algorithm = LightningModuleEnhanced.feed_forward_algorithm
+        self._model_algorithm = model_algorithm if model_algorithm is not None else type(self)._default_algorithm
         self.cache_result = None
 
     # Getters and setters for properties
-
     @property
     def device(self) -> tr.device:
         """Gets the device of the model, assuming all parameters are on the same device."""
@@ -84,8 +83,13 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
             self._summary = summary(self.base_model, verbose=0, depth=3)
         return self._summary
 
+    @property
+    def has_trainer(self) -> bool:
+        """returns True is the underlying LightningModule has a trainer attached w/o RuntimeError"""
+        return self._trainer is not None # pylint: disable=protected-access
+
     def trainable_params(self, value: bool):
-        """Sets all the parameters of this module to trainable or untrainable"""
+        """Setter only property that makes all the parameters of this module to be trainable or untrainable"""
         logger.debug(f"Setting parameters of the model to '{value}'.")
         for param in self.base_model.parameters():
             param.requires_grad_(value)
@@ -143,7 +147,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         self._active_run_metrics = {}
 
     @overrides(check_signature=False)
-    def training_step(self, batch: dict, batch_idx: int, *args, **kwargs):
+    def training_step(self, batch: Any, batch_idx: int, *args, **kwargs):
         """Training step: returns batch training loss and metrics."""
         # Warning: if not using lightning's self.optimizers(), and rather trying to user our self.optimizer, will
         # result in checkpoints not being saved.
@@ -165,7 +169,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         return train_metrics["loss"]
 
     @overrides
-    def validation_step(self, batch: dict, batch_idx: int, *args, **kwargs):
+    def validation_step(self, batch: Any, batch_idx: int, *args, **kwargs):
         """Validation step: returns batch validation loss and metrics."""
         y, val_metrics, _, _ = self.model_algorithm(self, batch)
         self.cache_result = tr_detach_data(y)
@@ -174,7 +178,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         return val_metrics["loss"]
 
     @overrides
-    def test_step(self, batch: dict, batch_idx: int, *args, **kwargs):
+    def test_step(self, batch: Any, batch_idx: int, *args, **kwargs):
         """Testing step: returns batch test loss and metrics."""
         y, test_metrics, _, _ = self.model_algorithm(self, batch)
         self.cache_result = tr_detach_data(y)
@@ -183,7 +187,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
 
     @overrides
     def predict_step(self, batch: Any, batch_idx: int, *args, dataloader_idx: int = 0, **kwargs) -> Any:
-        return self.model_algorithm(self, batch)[0]
+        return self.np_forward(batch)
 
     @overrides
     def configure_callbacks(self) -> Sequence[pl.Callback] | pl.Callback:
@@ -280,19 +284,6 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
     def get_buffer(self, *args, **kwargs) -> tr.Tensor:
         return self.base_model.get_buffer(*args, **kwargs)
 
-    @staticmethod
-    def feed_forward_algorithm(model: LightningModuleEnhanced, batch: dict) -> ModelAlgorithmOutput:
-        """
-        Generic step for computing the forward pass, loss and metrics. Simple feed-forward algorithm by default.
-        Must return a dict of type: {metric_name: metric_tensor} for all metrics.
-        'loss' must be in there as well unless you update `training_step` as well in your module.
-        """
-        x = batch["data"]
-        y = model.forward(x)
-        gt = to_device(to_tensor(batch["labels"]), model.device)
-        metrics = model.lme_metrics(y, gt, include_loss=True)
-        return ModelAlgorithmOutput(y=y, metrics=metrics, x=x, gt=gt)
-
     def lme_metrics(self, y: tr.Tensor, gt: tr.Tensor, include_loss: bool = True) -> dict[str, tr.Tensor]:
         """
         Pass through all the metrics of this batch and call forward. This updates the metric state for this batch
@@ -321,6 +312,10 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         return metrics
 
     # Private methods
+
+    @staticmethod
+    def _default_algorithm(model: LightningModuleEnhanced, batch: Any) -> ModelAlgorithmOutput:
+        raise NotImplementedError("Use model.model_algorithm=xxx to define your forward & metrics function")
 
     def _update_metrics_at_batch_end(self, batch_results: dict[str, tr.Tensor]):
         assert isinstance(batch_results, dict), f"Expected dict, got {type(batch_results)}"

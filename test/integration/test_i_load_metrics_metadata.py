@@ -15,7 +15,7 @@ class Reader(Dataset):
         self.gt = tr.randn(100, 1)
 
     def __getitem__(self, ix):
-        return {"data": self.x[ix], "labels": self.gt[ix]}
+        return self.x[ix], self.gt[ix]
 
     def __len__(self):
         return len(self.x)
@@ -29,6 +29,7 @@ def test_load_metrics_metadata():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = optim.SGD(model.parameters(), lr=0.1)
     model.criterion_fn = F.mse_loss
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
 
     pl_logger = CSVLogger(Path(__file__).parent, name=log_dir_name, version=0)
     t1 = Trainer(max_epochs=3, logger=pl_logger)

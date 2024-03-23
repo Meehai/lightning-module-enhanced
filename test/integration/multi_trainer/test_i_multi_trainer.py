@@ -17,11 +17,10 @@ class Reader:
         self.labels = tr.randn(n_data, n_dims)
 
     def __getitem__(self, ix):
-        return {"data": self.data[ix], "labels": self.labels[ix]}
+        return self.data[ix], self.labels[ix]
 
     def __len__(self):
         return self.n_data
-
 
 class Model(nn.Module):
     def __init__(self, n_dims: int):
@@ -43,6 +42,7 @@ def test_multi_trainer_2():
     model = LME(Model(n_dims=train_data.n_dims))
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     train_dataloader = DataLoader(train_data)
     val_dataloader = DataLoader(validation_data)
     save_dir = "/tmp/save_dir_2" if __name__ == "__main__" else TemporaryDirectory().name
@@ -81,6 +81,7 @@ def test_multi_trainer_3():
     model = LME(Model(n_dims=train_data.n_dims))
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     train_dataloader = DataLoader(train_data)
     save_dir = "/tmp/save_dir_3" if __name__ == "__main__" else TemporaryDirectory().name
     shutil.rmtree(save_dir, ignore_errors=True)
@@ -96,6 +97,7 @@ def test_multi_trainer_parallel_cpu():
     model = LME(Model(n_dims=train_data.n_dims))
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     train_dataloader = DataLoader(train_data)
     save_dir = "/tmp/save_dir_parallel" if __name__ == "__main__" else TemporaryDirectory().name
     shutil.rmtree(save_dir, ignore_errors=True)

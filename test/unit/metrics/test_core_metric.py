@@ -19,7 +19,7 @@ class Reader:
         return 10
 
     def __getitem__(self, ix):
-        return {"data": tr.randn(2), "labels": tr.randn(1)}
+        return tr.randn(2), tr.randn(1)
 
 def test_core_metric_1():
     fn = CallableCoreMetric(lambda y, gt: (y - gt).pow(2).mean(), higher_is_better=False)
@@ -33,6 +33,7 @@ def test_core_metric_running_model_1():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     model.metrics = {"mymetric": fn}
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
     assert fn.running_model is None
