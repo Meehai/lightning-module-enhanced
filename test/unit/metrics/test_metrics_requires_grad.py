@@ -19,7 +19,7 @@ counters = {"metric_grad": 0, "metric_non_grad": 0}
 
 class TrainReader:
     def __getitem__(self, ix):
-        return tr.rannd(3, 10), tr.randn(3, 3)
+        return tr.randn(3, 10), tr.randn(3, 3)
 
     def __len__(self):
         return 5
