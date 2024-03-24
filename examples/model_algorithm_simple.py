@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """simple usage of model_algorithm callback"""
+from __future__ import annotations
 from pytorch_lightning import Trainer
 import torch as tr
 from lightning_module_enhanced import LME
@@ -15,15 +16,14 @@ class MyReader:
         return self.n
 
     def __getitem__(self, ix):
-        return {"data": tr.randn(self.in_c), "labels": tr.randn(self.out_c)}
+        return tr.randn(self.in_c), tr.randn(self.out_c)
 
 def my_model_algo(model: LME, batch: dict) -> tuple[tr.Tensor, dict[str, tr.Tensor]]:
-    x = batch["data"]
+    x, gt = batch[0], to_device(to_tensor(batch[1]), model.device)
     y = model.forward(x)
-    gt = to_device(to_tensor(batch["labels"]), model.device)
     res = model.lme_metrics(y, gt, include_loss=False) # if set to True, remove next line
     res["loss"] = model.criterion_fn(y, gt)
-    return y, res
+    return y, res, x, gt
 
 if __name__ == "__main__":
     in_c, out_c = 5, 10
