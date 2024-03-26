@@ -28,10 +28,12 @@ class PlotMetrics(Callback):
         fig = plt.figure()
         ax = fig.gca()
         metric_history = self.history[metric_name]
+        def _norm(x):
+            return np.clip(x, -2 * np.sign(np.median(x)) * np.median(x), 2 * np.sign(np.median(x)) * np.median(x))
         _range = range(1, len(metric_history["train"]) + 1)
-        ax.plot(_range, metric_history["train"], label="train")
+        ax.plot(_range, _norm(metric_history["train"]), label="train")
         if None not in metric_history["val"]:
-            ax.plot(_range, metric_history["val"], label="validation")
+            ax.plot(_range, _norm(metric_history["val"]), label="validation")
         self._plot_best_dot(ax, pl_module, metric_name)
         ax.set_xlabel("Epoch")
         ax.set_ylabel(metric_name)
