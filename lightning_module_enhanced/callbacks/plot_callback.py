@@ -29,12 +29,18 @@ class PlotCallbackGeneric(Callback):
         y = pl_module.cache_result
         return y
 
-    def _do_call(self, trainer: Trainer, pl_module: LightningModule, batch, batch_idx, key, prediction):
+    def _do_call(self, trainer: Trainer, pl_module: LightningModule, batch, batch_idx, key: str):
         if batch_idx != 0:
             return
         if len(trainer.loggers) == 0:
             logger.warning("No lightning logger found. Not calling PlotCallbacks()")
             return
+        try:
+            prediction = self._get_prediction(pl_module)
+        except Exception:
+            logger.warning("No prediction yet, somehow called before model_algorithm. Returning")
+            return
+
         out_dir = PlotCallbackGeneric._get_out_dir(trainer, key, self.mkdir)
         self.plot_callback(model=pl_module, batch=batch, y=prediction, out_dir=out_dir)
 
@@ -42,27 +48,32 @@ class PlotCallbackGeneric(Callback):
     # pylint: disable=unused-argument
     def on_validation_batch_end(self, trainer: Trainer, pl_module: LightningModule,
                                 outputs, batch, batch_idx: int, dataloader_idx: int = 0) -> None:
-        self._do_call(trainer, pl_module, batch, batch_idx, "validation", self._get_prediction(pl_module))
+        self._do_call(trainer, pl_module, batch, batch_idx, "validation")
 
     @overrides
     # pylint: disable=unused-argument
     def on_train_batch_end(self, trainer: Trainer, pl_module: LightningModule,
                            outputs, batch, batch_idx: int, unused: int = 0):
-        self._do_call(trainer, pl_module, batch, batch_idx, "train", self._get_prediction(pl_module))
+        self._do_call(trainer, pl_module, batch, batch_idx, "train")
 
     @overrides
     def on_test_batch_end(self, trainer: Trainer, pl_module: LightningModule,
                           outputs, batch, batch_idx: int, dataloader_idx: int = 0) -> None:
-        self._do_call(trainer, pl_module, batch, batch_idx, "test", self._get_prediction(pl_module))
+        self._do_call(trainer, pl_module, batch, batch_idx, "test")
 
 class PlotCallback(PlotCallbackGeneric):
     """Above implementation + assumption about data/labels keys"""
     @overrides
-    def _do_call(self, trainer, pl_module, batch, batch_idx, key, prediction):
+    def _do_call(self, trainer, pl_module, batch, batch_idx, key):
         if batch_idx != 0:
             return
         if len(trainer.loggers) == 0:
             logger.warning("No lightning logger found. Not calling PlotCallbacks()")
+            return
+        try:
+            prediction = self._get_prediction(pl_module)
+        except Exception:
+            logger.warning("No prediction yet, somehow called before model_algorithm. Returning")
             return
 
         out_dir = PlotCallbackGeneric._get_out_dir(trainer, key, self.mkdir)
