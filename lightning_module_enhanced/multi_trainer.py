@@ -63,15 +63,10 @@ class MultiTrainer:
         """Converts the fit metrics to a dataframe"""
         res = {}
         for i in range(self.num_trains):
-            results_file = Path(self.logger.log_dir) / self.experiment_dir_name / f"{i}" / "results.npy"
+            results_file = Path(f"{self.logger.log_dir}/MultiTrainer/{i}/results.npy")
             if results_file.exists():
                 res[i] = np.load(results_file, allow_pickle=True).item()
         return pd.DataFrame(res).transpose()
-
-    @property
-    def experiment_dir_name(self) -> str:
-        """The experiment's directory name in the logger. Defaults to the str of the type"""
-        return str(type(self)).split(".")[-1][0:-2]
 
     @property
     def done_so_far(self) -> int:
@@ -132,7 +127,7 @@ class MultiTrainer:
     def _post_fit(self):
         """called after all experiments have finished. symlink the best experiment's files to the root of the logger"""
         best_id = self.fit_metrics[self.relevant_metric].argmin()
-        best_experiment_path = Path(self.logger.log_dir) / self.experiment_dir_name / f"{best_id}"
+        best_experiment_path = Path(f"{self.logger.log_dir}/MultiTrainer/{best_id}")
         assert best_experiment_path.exists() and len(list(best_experiment_path.iterdir())) > 0, best_experiment_path
         # symlink the best experiment to the root of the logger
         for file in best_experiment_path.iterdir():
@@ -146,7 +141,7 @@ class MultiTrainer:
                 else:
                     out_path.unlink()
             os.symlink(file.relative_to(out_path.parent), out_path)
-        self.fit_metrics.to_csv(Path(self.logger.log_dir) / self.experiment_dir_name / "fit_metrics.csv")
+        self.fit_metrics.to_csv(Path(f"{self.logger.log_dir}/MultiTrainer/fit_metrics.csv"))
 
     def _do_one_iteration(self, params: tuple[int, PLTrainerArgs]):
         """The main function of this experiment. Does all the rewriting logger logic and starts the experiment."""
@@ -164,11 +159,11 @@ class MultiTrainer:
         # the index of the experiment to the version resulting in `save_dir/name/version/MultiTrainer/ix`
         # PS: do not put version=ix (as int). Lightning will add a 'version_' prefix to it and it will be a mess.
         iter_logger = type(self.trainer.logger)(save_dir=self.trainer.logger.log_dir,
-                                                name=self.experiment_dir_name, version=f"{ix}")
+                                                name="MultiTrainer", version=f"{ix}")
         # 1 device per training only. Either 1 GPU or 1 CPU.
         devices = [self.resources[ix % len(self.resources)].device.index] if self.is_cuda_accelerator else 1
         iter_trainer = Trainer(logger=iter_logger, accelerator=self.trainer.accelerator,
-                               devices=devices, max_epochs=self.trainer.max_epochs)
+                               devices=devices, max_epochs=self.trainer.max_epochs, enable_model_summary=False)
 
         # Train on train
         iter_trainer.fit(**trainer_args)
