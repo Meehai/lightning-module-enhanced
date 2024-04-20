@@ -3,19 +3,24 @@ from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
 from multiprocessing import cpu_count
+from typing import NamedTuple, Optional
 import os
 import shutil
 import pandas as pd
 import numpy as np
 import torch as tr
 from lightning_fabric.utilities.seed import seed_everything
-from pytorch_lightning import Trainer, LightningModule
+from pytorch_lightning import Trainer, LightningModule, LightningDataModule
 from pytorch_lightning.loggers import Logger
 from pytorch_lightning.accelerators import CPUAccelerator, CUDAAccelerator
 from torch.utils.data import DataLoader
 from pool_resources import PoolResources, TorchResource
 
 from .logger import logger as lme_logger
+
+PLTrainerArgs = NamedTuple("PLTrainerArgs", model=LightningModule, train_dataloaders=Optional[DataLoader],
+                           val_dataloaders=Optional[DataLoader], datamodule=Optional[LightningDataModule],
+                           ckpt_path=Optional[Path])
 
 class MultiTrainer:
     """MultiTrainer class implementation. Extends Trainer to train >1 identical networks w/ diff seeds seamlessly"""
@@ -87,7 +92,8 @@ class MultiTrainer:
         return self.trainer.test(*args, **kwargs)
 
     def fit(self, model: LightningModule, train_dataloaders: DataLoader,
-            val_dataloaders: list[DataLoader] | None = None, **kwargs):
+            val_dataloaders: list[DataLoader] | None = None, datamodule: LightningDataModule | None = None,
+            ckpt_path: Path | None = None):
         """The main function, uses same args as a regular pl.Trainer"""
         assert self.done is False, "Cannot fit twice"
 
@@ -96,7 +102,9 @@ class MultiTrainer:
             if i in self.fit_metrics.index:
                 lme_logger.debug(f"MultiTrain id '{i}' already exists. Returning early.")
                 continue
-            train_fit_params.append((i, deepcopy(model), train_dataloaders, val_dataloaders, kwargs))
+            train_fit_params.append((i, {"model": deepcopy(model), "train_dataloaders": train_dataloaders,
+                                         "val_dataloaders": val_dataloaders, "datamodule": datamodule,
+                                         "ckpt_path": ckpt_path}))
 
         _ = list(self.pool_map(self._do_one_iteration, train_fit_params))
         self._post_fit()
@@ -140,15 +148,15 @@ class MultiTrainer:
             os.symlink(file.relative_to(out_path.parent), out_path)
         self.fit_metrics.to_csv(Path(self.logger.log_dir) / self.experiment_dir_name / "fit_metrics.csv")
 
-    def _do_one_iteration(self, params: tuple[int, LightningModule, DataLoader, list[DataLoader] | None, dict]):
+    def _do_one_iteration(self, params: tuple[int, PLTrainerArgs]):
         """The main function of this experiment. Does all the rewriting logger logic and starts the experiment."""
-        ix, iter_model, dataloader, val_dataloaders, kwargs = params
+        ix, trainer_args = params
 
         # Iter model setup
         # Seed the model with the index of the experiment
         seed_everything(ix + self.num_trains)
-        if hasattr(iter_model, "reset_parameters"):
-            iter_model.reset_parameters()
+        if hasattr(trainer_args["model"], "reset_parameters"):
+            trainer_args["model"].reset_parameters()
 
         # Iter trainer setup
         # update the version based on the logger, experiment dir name and index. We are reusing log_dir which
@@ -163,20 +171,21 @@ class MultiTrainer:
                                devices=devices, max_epochs=self.trainer.max_epochs)
 
         # Train on train
-        iter_trainer.fit(iter_model, dataloader, val_dataloaders, **kwargs)
+        iter_trainer.fit(**trainer_args)
 
         # Test on best ckpt and validation (or train if no validation set is provided)
         model_ckpt = iter_trainer.checkpoint_callback
         assert model_ckpt is not None
-        test_loader = val_dataloaders if val_dataloaders is not None else dataloader
-        res = iter_trainer.test(iter_model, test_loader, ckpt_path=model_ckpt.best_model_path)[0]
+        test_loader = trainer_args["val_dataloaders"]
+        if test_loader is None:
+            lme_logger.warning("No validation set was provided. Testing on train set, this can lead to bad results!")
+            test_loader = trainer_args["train_dataloaders"]
+        res = iter_trainer.test(trainer_args["model"], test_loader, ckpt_path=model_ckpt.best_model_path)[0]
         # Save this experiment's results as 'iteration_results.npy'
         np.save(f"{iter_logger.log_dir}/results.npy", res)
 
         # Cleanup. Remove the model, restore old trainer and return the experiment's metrics
-        del iter_model
-        del iter_trainer
-        del iter_logger
+        del trainer_args
 
     def __len__(self):
         return self.num_trains
