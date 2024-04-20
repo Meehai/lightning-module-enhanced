@@ -1,6 +1,7 @@
 from tempfile import TemporaryDirectory
 import shutil
 import torch as tr
+import pytest
 from torch import nn, optim
 from torch.utils.data import DataLoader
 from pytorch_lightning import Trainer
@@ -30,13 +31,13 @@ class Model(nn.Module):
     def forward(self, x: tr.Tensor):
         return self.fc(x)
 
-def test_multi_trainer_1():
+def test_multi_trainer_ctor():
     trainer = Trainer()
     e = MultiTrainer(trainer, num_trains=5)
     assert e is not None
     assert e.done_so_far == 0
 
-def test_multi_trainer_2():
+def test_multi_trainer_fit():
     train_data = Reader(n_data=100, n_dims=3)
     validation_data = Reader(n_data=100, n_dims=3)
     model = LME(Model(n_dims=train_data.n_dims))
@@ -103,13 +104,11 @@ def test_multi_trainer_parallel_cpu():
     shutil.rmtree(save_dir, ignore_errors=True)
 
     trainer = Trainer(max_epochs=3, logger=CSVLogger(save_dir=save_dir, name="", version="12"), accelerator="cpu")
-    try:
+    with pytest.raises(AssertionError, match=f"Expected {1 << 20}, got"):
         mt2 = MultiTrainer(trainer, num_trains=5, n_devices=1 << 20)
-    except AssertionError:
-        pass
 
     mt2 = MultiTrainer(trainer, num_trains=5, n_devices=-1)
-    mt2.fit(model, train_dataloader)
+    mt2.fit(model, train_dataloader, ckpt_path=None)
     assert (Path(save_dir) / "12").exists()
     assert "checkpoints" in [x.name for x in (Path(save_dir) / "12").iterdir()]
     assert "fit_metadata.json" in [x.name for x in (Path(save_dir) / "12").iterdir()]
