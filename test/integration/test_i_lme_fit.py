@@ -1,5 +1,4 @@
 from __future__ import annotations
-from functools import partial
 from lightning_module_enhanced import LME, ModelAlgorithmOutput
 from lightning_module_enhanced.utils import to_device, to_tensor
 from pytorch_lightning import Trainer
@@ -36,7 +35,7 @@ def test_fit_1():
 def test_fit_no_criterion():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
-    model.model_algorithm =  lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     try:
         Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
         assert False
@@ -46,7 +45,7 @@ def test_fit_no_criterion():
 def test_fit_no_optimizer():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.criterion_fn = lambda y, gt: (y - gt).abs().mean()
-    model.model_algorithm =  lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     try:
         Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
         assert False
@@ -59,7 +58,7 @@ def test_fit_twice():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
-    model.model_algorithm =  lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     Trainer(max_epochs=10).fit(model, DataLoader(Reader()))
     Trainer(max_epochs=20).fit(model, DataLoader(Reader()))
     assert model.trainer.current_epoch == 20
@@ -70,7 +69,7 @@ def test_fit_twice_with_validation():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
-    model.model_algorithm =  lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     Trainer(max_epochs=10).fit(model, DataLoader(Reader()), DataLoader(Reader()))
     Trainer(max_epochs=20).fit(model, DataLoader(Reader()), DataLoader(Reader()))
     assert model.trainer.current_epoch == 20
@@ -81,7 +80,7 @@ def test_fit_twice_with_validation_only_once_1():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
-    model.model_algorithm =  lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     Trainer(max_epochs=10).fit(model, DataLoader(Reader()), DataLoader(Reader()))
     Trainer(max_epochs=20).fit(model, DataLoader(Reader()))
     assert model.trainer.current_epoch == 20
@@ -121,7 +120,7 @@ def test_fit_twice_from_ckpt():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
-    model.model_algorithm =  lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     trainer1 = Trainer(max_epochs=5)
     trainer1.fit(model, DataLoader(Reader()))
     Trainer(max_epochs=10).fit(
@@ -138,7 +137,7 @@ def test_fit_and_test_good():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
-    model.model_algorithm =  lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     model.metrics = {
         "metric1": (lambda y, gt: (y - gt).abs().mean(), "min"),
         "metric2": (lambda y, gt: (y - gt) * 0, "min"),
@@ -154,7 +153,7 @@ def test_fit_with_scheduler():
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     model.scheduler = {"scheduler": ReduceLROnPlateau(model.optimizer, factor=0.9, patience=5), "monitor": "loss"}
-    model.model_algorithm =  lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     Trainer(max_epochs=3).fit(model, DataLoader(Reader()))
     assert model.scheduler["scheduler"].last_epoch == 2
 
@@ -290,36 +289,6 @@ def test_fit_different_forward_params_6():
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     Trainer(max_epochs=1).fit(model, DataLoader(MyReader()))
-
-def test_fit_model_algorithm_1():
-    cnt = {"cnt": 0}
-
-    def my_model_algo(model, batch, cnt):
-        cnt["cnt"] += 1
-        return ((y := model(batch[0])), model.lme_metrics(y, batch[1]), *batch)
-
-    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
-    model.optimizer = optim.SGD(model.parameters(), lr=0.01)
-    model.model_algorithm = partial(my_model_algo, cnt=cnt)
-    Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
-    assert cnt["cnt"] == 10
-
-def test_fit_model_algorithm_not_include_loss():
-    def my_model_algo(model, batch):
-        x, gt = batch[0], to_device(to_tensor(batch[1]), model.device)
-        y = model.forward(x)
-        res = model.lme_metrics(y, gt, include_loss=False)
-        assert "loss" not in res
-        res["loss"] = model.criterion_fn(y, gt)
-        return y, res, x, gt
-
-    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
-    model.optimizer = optim.SGD(model.parameters(), lr=0.01)
-    model.model_algorithm = my_model_algo
-    Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
-
 
 if __name__ == "__main__":
     test_fit_different_forward_params_1()

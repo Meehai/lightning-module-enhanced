@@ -321,8 +321,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         assert isinstance(batch_results, dict), f"Expected dict, got {type(batch_results)}"
         prefix = self._prefix_from_trainer()
         if set(batch_results.keys()) != set(self.metrics.keys()):
-            raise ValueError(f"Not all expected metrics ({self.metrics.keys()}) were computed "
-                             f"this batch: {batch_results.keys()}")
+            raise ValueError(f"Expected metrics: {self.metrics.keys()} vs.this batch: {batch_results.keys()}")
         for metric_name, metric in self._active_run_metrics[prefix].items():
             metric.batch_update(tr_detach_data(batch_results[metric_name]))
 
