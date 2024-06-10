@@ -121,10 +121,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
 
     @overrides
     def on_fit_start(self) -> None:
-        self._active_run_metrics[""] = self.metrics
-        if self.trainer.enable_validation:
-            cloned_metrics = deepcopy(self.metrics)
-            self._active_run_metrics["val_"] = cloned_metrics
+        self._setup_active_metrics()
         self._reset_all_active_metrics()
         self._set_metrics_running_model()
         self._copy_loaded_checkpoints()
@@ -321,7 +318,14 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         assert isinstance(batch_results, dict), f"Expected dict, got {type(batch_results)}"
         prefix = self._prefix_from_trainer()
         if set(batch_results.keys()) != set(self.metrics.keys()):
-            raise ValueError(f"Expected metrics: {self.metrics.keys()} vs.this batch: {batch_results.keys()}")
+            if (self.trainer.training or self.trainer.sanity_checking) and self.current_epoch == 0:
+                assert list(self.metrics) == ["loss"], f"For implicit metrics, no others must be set: {self.metrics}"
+                new_metrics = [metric for metric in batch_results.keys() if metric != "loss"]
+                logger.info(f"Implicit metrics set from model_algorithm: {new_metrics}. All must be lower_is_better!")
+                self.metrics = {m: (lambda y, _: (y - y).mean(), "min") for m in new_metrics} # stub to create instsance
+                self._setup_active_metrics()
+            else:
+                raise ValueError(f"Expected metrics: {self.metrics.keys()} vs. this batch: {batch_results.keys()}")
         for metric_name, metric in self._active_run_metrics[prefix].items():
             metric.batch_update(tr_detach_data(batch_results[metric_name]))
 
@@ -342,6 +346,13 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
                 # Call the metadata callback for the full result, since it can handle any sort of metrics
                 self.metadata_callback.log_epoch_metric(metric_name, metric_epoch_result,
                                                         self.trainer.current_epoch, prefix)
+
+    def _setup_active_metrics(self):
+        """sets up self.active_run_metrics based on metrics for this train run. Called at on_fit_start"""
+        self._active_run_metrics[""] = self.metrics
+        if self.trainer.enable_validation:
+            cloned_metrics = deepcopy(self.metrics)
+            self._active_run_metrics["val_"] = cloned_metrics
 
     def _reset_all_active_metrics(self):
         """ran at epoch end to reset the metrics"""
