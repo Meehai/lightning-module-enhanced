@@ -322,7 +322,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
                 assert list(self.metrics) == ["loss"], f"For implicit metrics, no others must be set: {self.metrics}"
                 new_metrics = [metric for metric in batch_results.keys() if metric != "loss"]
                 logger.info(f"Implicit metrics set from model_algorithm: {new_metrics}. All must be lower_is_better!")
-                self.metrics = {m: (lambda y, _: (y - y).mean(), "min") for m in new_metrics} # stub to create instsance
+                self.metrics = {m: (lambda y, _: (y - y).mean(), "min") for m in new_metrics} # stub to create instance
                 self._setup_active_metrics()
             else:
                 raise ValueError(f"Expected metrics: {self.metrics.keys()} vs. this batch: {batch_results.keys()}")
