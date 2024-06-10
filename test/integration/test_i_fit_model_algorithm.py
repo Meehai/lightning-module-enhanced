@@ -42,3 +42,26 @@ def test_fit_model_algorithm_not_include_loss():
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     model.model_algorithm = my_model_algo
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
+
+def test_fit_model_algorithm_implicit_metrics():
+    def my_model_algo(model, batch) -> ModelAlgorithmOutput:
+        x, gt = batch[0], to_device(to_tensor(batch[1]), model.device)
+        y = model.forward(x)
+        metrics = {"loss": model.criterion_fn(y, gt), "lala": (y - gt).mean()}
+        return y, metrics, x, gt
+
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.optimizer = optim.SGD(model.parameters(), lr=0.01)
+    model.model_algorithm = my_model_algo
+    assert set(model.metrics) == {"loss"}
+    Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
+    assert set(model.metrics) == {"loss", "lala"}
+
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.optimizer = optim.SGD(model.parameters(), lr=0.01)
+    model.model_algorithm = my_model_algo
+    assert set(model.metrics) == {"loss"}
+    Trainer(max_epochs=1).fit(model, DataLoader(Reader()), DataLoader(Reader()))
+    assert set(model.metrics) == {"loss", "lala"}

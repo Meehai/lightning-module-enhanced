@@ -8,3 +8,4 @@ lightning_logs/
 *.npy
 exception.txt
 *.egg-info
+dist/
