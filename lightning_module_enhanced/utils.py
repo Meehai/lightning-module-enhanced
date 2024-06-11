@@ -41,7 +41,7 @@ def to_device(data, device: tr.device):
     """Moves a generic parameter to the desired torch device."""
     if data is None:
         return None
-    if isinstance(data, (tr.Tensor, nn.Module)):
+    if isinstance(data, (tr.Tensor, nn.Module)) or hasattr(data, "to"):
         return data.to(device)
     if isinstance(data, list):
         return [to_device(x, device) for x in data]
@@ -64,19 +64,14 @@ def tr_detach_data(data: T) -> T:
     """Calls detach on compounded torch data"""
     if data is None:
         return None
-
-    if isinstance(data, tr.Tensor):
+    if isinstance(data, tr.Tensor) or hasattr(data, "detach"):
         return data.detach()
-
     if isinstance(data, list):
         return [tr_detach_data(x) for x in data]
-
     if isinstance(data, tuple):
         return tuple(tr_detach_data(x) for x in data)
-
     if isinstance(data, set):
         return {tr_detach_data(x) for x in data}
-
     if isinstance(data, dict):
         return {k: tr_detach_data(data[k]) for k in data}
 
