@@ -53,5 +53,16 @@ def test_deepcopy_metric():
     assert m1.metric_fn == m2.metric_fn
     assert m1.epoch_fn(10, 5) == m2.epoch_fn(10, 5)
 
+def test_core_metric_with_nones():
+    fn = CallableCoreMetric(lambda y, gt: (y - gt).pow(2).mean(), higher_is_better=False)
+    y = tr.randn(5, 3)
+    gt = tr.randn(5, 3)
+    fn.batch_update(None)
+    assert fn.batch_count.item() == 0 and fn.batch_results is None
+    batch_result = [(_y - gt).pow(2).mean() for _y, _gt in zip(y, gt)]
+    batch_result[4] = None
+    fn.batch_update(batch_result)
+    assert fn.batch_count.item() == 4 and fn.batch_results is not None
+
 if __name__ == "__main__":
     test_core_metric_running_model_1()

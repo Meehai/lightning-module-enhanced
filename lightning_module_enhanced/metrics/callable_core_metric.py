@@ -34,11 +34,14 @@ class CallableCoreMetric(CoreMetric):
 
     @overrides
     def batch_update(self, batch_result: tr.Tensor) -> None:
-        assert isinstance(batch_result, (tr.Tensor, list)), "Only a single tensor or a list of batch tensors accepted"
+        if not isinstance(batch_result, (tr.Tensor, list, type(None))):
+            raise RuntimeError(f"Must be tensor, list[tensor] or None. Got: {type(batch_result)}")
         if isinstance(batch_result, list):
-            for item_batch_result in batch_result:
-                assert isinstance(item_batch_result, tr.Tensor), "No list nesting allowed"
-                self.batch_update(item_batch_result)
+            for item in batch_result:
+                assert isinstance(item, (tr.Tensor, type(None))), f"No list nesting allowed: {type(item)}"
+                self.batch_update(item)
+            return
+        if batch_result is None:
             return
         # If tensor, just do regular update
         batch_result = batch_result.detach().cpu()
@@ -63,7 +66,7 @@ class CallableCoreMetric(CoreMetric):
         self.batch_count *= 0
 
     def __str__(self):
-        return f"CallableCoreMetric ({self.metric_fn})"
+        return f"{super().__str__()}. Fn: {self.metric_fn}"
 
     def __repr__(self):
         return str(self)
