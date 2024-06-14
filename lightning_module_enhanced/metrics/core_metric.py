@@ -93,5 +93,5 @@ class CoreMetric(nn.Module, ABC):
 
     def __str__(self):
         str_type = str(type(self)).split(".")[-1][0:-2]
-        f_str = f"[{str_type}]. Higher is beter: {self.higher_is_better}. Grad: {self.requires_grad}"
+        f_str = f"[{str_type}]. Higher is better: {self.higher_is_better}. Grad: {self.requires_grad}"
         return f_str
