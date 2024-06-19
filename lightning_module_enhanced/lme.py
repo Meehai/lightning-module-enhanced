@@ -409,4 +409,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
             return
 
         metric = self._active_run_metrics[prefix][monitor] # pylint: disable=protected-access
-        self.scheduler["scheduler"].step(metric.epoch_result_reduced(metric.epoch_result()))
+        try:
+            self.scheduler["scheduler"].step()
+        except Exception:
+            self.scheduler["scheduler"].step(metrics=metric.epoch_result_reduced(metric.epoch_result())) # TODO?
