@@ -400,13 +400,13 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
 
         is_val = (monitor := self.scheduler["monitor"]).startswith("val_")
         monitor = monitor[4:] if is_val else monitor
-        prefix = "val" if is_val else ""
-        if is_val and "val" not in self._active_run_metrics:
-            raise MisconfigurationException(f"Monitor: {self.scheduler['monitor']} but no validation set provided")
+        prefix = "val_" if is_val else ""
+        if is_val and "val_" not in self._active_run_metrics:
+            raise MisconfigurationException(f"Monitor: {monitor} but no validation set provided")
         if monitor not in self.metrics:
-            raise MisconfigurationException(f"Monitor: {self.scheduler['monitor']} not in metrics: {self.metrics}")
+            raise MisconfigurationException(f"Monitor: {monitor} not in metrics: {self.metrics}")
         if self.trainer.current_epoch == 0:
             return
 
-        metric = self._active_run_metrics[prefix][self.scheduler["monitor"]] # pylint: disable=protected-access
+        metric = self._active_run_metrics[prefix][monitor] # pylint: disable=protected-access
         self.scheduler["scheduler"].step(metric.epoch_result_reduced(metric.epoch_result()))
