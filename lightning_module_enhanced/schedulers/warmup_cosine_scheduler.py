@@ -2,7 +2,7 @@
 import math
 from torch.optim.lr_scheduler import LambdaLR
 
-class WarmupCosineSchedule(LambdaLR):
+class WarmupCosineScheduler(LambdaLR):
     """ Linear warmup and then cosine decay.
         Linearly increases learning rate from 0 to 1 over `warmup_steps` training steps.
         Decreases learning rate from 1. to 0. over remaining `t_total - warmup_steps` steps following a cosine curve.
