@@ -15,6 +15,7 @@ class WarmupCosineSchedule(LambdaLR):
         super().__init__(optimizer, self.lr_lambda, last_epoch=last_epoch)
 
     def lr_lambda(self, step):
+        """lr_lambda impelementation"""
         if step < self.warmup_steps:
             return float(step) / float(max(1.0, self.warmup_steps))
         # progress after warmup
