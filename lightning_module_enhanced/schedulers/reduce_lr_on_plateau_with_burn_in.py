@@ -12,13 +12,12 @@ class ReduceLROnPlateauWithBurnIn(ReduceLROnPlateau):
         assert burn_in_epochs >= 1
 
     @overrides
-    def step(self, metrics, epoch=None):
-        assert epoch is None
+    def step(self, *args, **kwargs):
         if self.last_epoch < self.burn_in_epochs:
             logger.debug2(f"Epoch {self.last_epoch} is less than burn in epoch {self.burn_in_epochs}. Returning early")
             self.last_epoch += 1
             return
-        super().step(metrics, epoch)
+        super().step(*args, **kwargs)
 
     @overrides
     def get_lr(self):
