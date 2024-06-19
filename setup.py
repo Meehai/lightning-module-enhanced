@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 from os import path
 
 name = "lightning-module-enhanced"
-version = "0.27.3"
+version = "0.27.5"
 description = "Lightning Module Enhanced"
 url = "https://gitlab.com/mihaicristianpirvu/lightning-module-enhanced"
 
@@ -10,7 +10,7 @@ loc = path.abspath(path.dirname(__file__))
 with open(f"{loc}/README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-required = ["torch==2.3.1", "pytorch_lightning==2.2.5", "torchinfo==1.8.0", "torchmetrics==1.4.0.post0",
+required = ["torch>=2.2.1,<3.0.0", "pytorch_lightning==2.2.5", "torchinfo==1.8.0", "torchmetrics==1.4.0.post0",
             "overrides==7.7.0", "matplotlib==3.9.0", "pandas==2.2.2", "colorama>=0.4.6", "tensorboardX==2.6.2.2",
             "pool-resources==0.3.0"]
 
