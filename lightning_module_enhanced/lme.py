@@ -413,3 +413,11 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
             self.scheduler["scheduler"].step()
         except Exception:
             self.scheduler["scheduler"].step(metrics=metric.epoch_result_reduced(metric.epoch_result())) # TODO?
+
+    def __getattribute__(self, item: Any) -> Any:
+        try:
+            return super().__getattribute__(item)
+        except AttributeError:
+            if item == "base_model":
+                return self.__getattr__("base_model")
+            return self.base_model.__getattr__(item)
