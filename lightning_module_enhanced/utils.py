@@ -34,8 +34,8 @@ def to_tensor(data):
         return data
     if isinstance(data, str):
         return data
-    raise TypeError(f"Got unknown type: {type(data)}")
-
+    logger.debug2(f"Got unknown type {type(data)}. Returning as is.")
+    return data
 
 def to_device(data, device: tr.device):
     """Moves a generic parameter to the desired torch device."""
@@ -57,8 +57,8 @@ def to_device(data, device: tr.device):
         return tr.from_numpy(data).to(device)  # pylint: disable=no-member
     if isinstance(data, (int, float, bool, str)):
         return data
-    raise TypeError(f"Got unknown type: {type(data)}")
-
+    logger.debug2(f"Got unknown type {type(data)}. Returning as is.")
+    return data
 
 def tr_detach_data(data: T) -> T:
     """Calls detach on compounded torch data"""
