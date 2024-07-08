@@ -286,6 +286,14 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
             metrics["loss"] = self.criterion_fn(y, gt)
         return metrics
 
+    @overrides(check_signature=False)
+    def state_dict(self):
+        return self.base_model.state_dict()
+
+    @overrides(check_signature=False)
+    def load_state_dict(self, *args, **kwargs):
+        return self.base_model.load_state_dict(*args, **kwargs)
+
     # Private methods
 
     @staticmethod
