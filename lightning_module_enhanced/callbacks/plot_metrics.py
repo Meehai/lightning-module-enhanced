@@ -8,6 +8,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from ..logger import logger
 
+def _norm(x):
+    return np.clip(x, -2 * np.sign(np.median(x)) * np.median(x), 2 * np.sign(np.median(x)) * np.median(x))
+
 class PlotMetrics(Callback):
     """Plot metrics implementation"""
     def _plot_best_dot(self, ax: plt.Axes, pl_module: Any, metric_name: str):
@@ -25,8 +28,6 @@ class PlotMetrics(Callback):
         fig = plt.figure()
         ax = fig.gca()
         metric_history = pl_module.metrics_history.history[metric_name]
-        def _norm(x):
-            return np.clip(x, -2 * np.sign(np.median(x)) * np.median(x), 2 * np.sign(np.median(x)) * np.median(x))
         _range = range(1, len(metric_history["train"]) + 1)
         ax.plot(_range, _norm(metric_history["train"]), label="train")
         if None not in metric_history["val"]:

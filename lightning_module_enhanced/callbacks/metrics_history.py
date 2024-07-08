@@ -13,12 +13,9 @@ class MetricsHistory(pl.Callback):
         self.expected_metrics = []
 
     @overrides
-    def on_fit_start(self, trainer: pl.Trainer, pl_module: Any) -> None:
-        # we need to not reset for Trainer().fit(ckpt_path=...) [NGC] or if we reuse the same trainer.
-        # We need to check both conditions BECAUSE the trainer's state is updated AFTER this call, but brfore
-        # on_train_epoch_start. See here: https://github.com/Lightning-AI/lightning/issues/17712
+    def on_train_epoch_start(self, trainer: pl.Trainer, pl_module: Any) -> None:
         self.expected_metrics = [*list(pl_module.metrics.keys()), "loss"]
-        if trainer.current_epoch == 0 and trainer.ckpt_path is None:
+        if trainer.current_epoch == 0:
             self.history = {metric_name: {"train": [], "val": []} for metric_name in self.expected_metrics}
 
     @overrides
