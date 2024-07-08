@@ -173,10 +173,12 @@ class MetadataCallback(pl.Callback):
         res["layer_summary"] = layer_summary
         return res
 
-    def _get_monitored_model_checkpoint(self, pl_module: "LME") -> Checkpoint:
+    def _get_monitored_model_checkpoint(self, pl_module: "LME") -> Checkpoint | None:
         """returns the (first) model checkpoint, as provided by model.checkpoint_monitors. Usually the 'loss' monitor"""
         monitors: list[str] = pl_module.checkpoint_monitors # type: ignore
-        assert len(monitors) > 0, "At least one monitor must be present."
+        if len(monitors) == 0:
+            logger.warning("No monitors were found. Best checkpoint metadata will not be stored")
+            return None
         if len(monitors) > 1:
             logger.warning(f"More than one monitor provided: {monitors}. Keeping only first")
         monitor = monitors[0]
@@ -244,6 +246,8 @@ class MetadataCallback(pl.Callback):
 
     def _log_model_checkpoint_fit_start(self, pl_module: "LME") -> dict:
         cb = self._get_monitored_model_checkpoint(pl_module)
+        if cb is None:
+            return {}
         return {"monitors": cb.monitor, "mode": cb.mode}
 
     # [fit/test/predict]_end private methods
@@ -277,6 +281,8 @@ class MetadataCallback(pl.Callback):
     def _log_best_model_fit_end(self, pl_module: "LME") -> dict:
         # find best and last modelcheckpoint callbacks. best will be None if we don't use a validation set loader.
         cb = self._get_monitored_model_checkpoint(pl_module)
+        if cb is None:
+            return {}
         ckpt_path = Path(cb.best_model_path)
         assert ckpt_path.exists() and ckpt_path.is_file(), "Best checkpoint does not exist."
 
@@ -316,8 +322,6 @@ class MetadataCallback(pl.Callback):
         for o, o_meta in zip(make_list(pl_module.optimizer), make_list(self.metadata["optimizer"])):
             res.append([*o_meta["lr_history"], self._get_optimizer_current_lr(o)])
         return res
-
-        # return flat_if_one([self._get_optimizer_current_lr(o) for o in make_list(pl_module.optimizer)])
 
     def _debug_metadata_json_dump(self, metadata: dict[str, Any], fp: IO) -> None:
         logger.debug("=================== Debug metadata =====================")

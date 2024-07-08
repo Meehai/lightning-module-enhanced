@@ -20,7 +20,6 @@ def test_multi_class_f1_score_1():
     model.metrics = {"f1_score": MultiClassF1Score(num_classes=3)}
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
-
     Trainer(max_epochs=10).fit(model, DataLoader(TrainReader()))
 
 if __name__ == "__main__":

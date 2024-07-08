@@ -56,25 +56,25 @@ def test_is_parametric_model_1():
 def test_set_metrics_1():
     module = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     module.metrics = {"metric1": (lambda y, gt: (y - gt).mean(), "min")}
-    assert len(module.metrics) == 2 # criterion_fn is always set to some default
+    assert len(module.metrics) == 1
 
 def test_set_metrics_before_criterion():
     module = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     module.criterion_fn = lambda y, gt: (y - gt).mean()
     module.metrics = {"metric1": (lambda y, gt: (y - gt).mean(), "min")}
-    assert len(module.metrics) == 2
+    assert len(module.metrics) == 1
 
 def test_set_metrics_after_criterion():
     module = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     module.metrics = {"metric1": (lambda y, gt: (y - gt).mean(), "min")}
     module.criterion_fn = lambda y, gt: (y - gt).mean()
-    assert len(module.metrics) == 2
+    assert len(module.metrics) == 1
 
 def test_set_criterion_1():
     module = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     module.criterion_fn = lambda y, gt: (y - gt).mean()
     assert module.criterion_fn is not None
-    assert len(module.metrics) == 1
+    assert len(module.metrics) == 0
 
 def test_reset_parameters_1():
     module = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))

@@ -54,14 +54,14 @@ def test_fit_model_algorithm_implicit_metrics():
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     model.model_algorithm = my_model_algo
-    assert set(model.metrics) == {"loss"}
+    assert set(model.metrics) == set()
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
-    assert set(model.metrics) == {"loss", "lala"}
+    assert set(model.metrics) == {"lala"}
 
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     model.model_algorithm = my_model_algo
-    assert set(model.metrics) == {"loss"}
+    assert set(model.metrics) == set()
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()), DataLoader(Reader()))
-    assert set(model.metrics) == {"loss", "lala"}
+    assert set(model.metrics) == {"lala"}

@@ -10,14 +10,14 @@ import torch as tr
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from .metrics import CoreMetric, CallableCoreMetric
-from .callbacks import MetadataCallback
+from .callbacks import MetadataCallback, MetricsHistory
 from .logger import logger
 from .utils import parsed_str_type, make_list
 
 OptimizerType = Union[optim.Optimizer, List[optim.Optimizer]]
 _SchedulerType = Dict[str, Union[optim.lr_scheduler.LRScheduler, str]]
 SchedulerType = Union[_SchedulerType, List[_SchedulerType], None]
-CriterionFnType = Callable[[tr.Tensor, tr.Tensor], tr.Tensor]
+CriterionFnType = CallableCoreMetric
 
 
 class TrainableModule(nn.Module, ABC):
@@ -65,20 +65,21 @@ class TrainableModuleMixin(TrainableModule):
 
     def __init__(self):
         super().__init__()
+        self.metadata_callback = MetadataCallback()
+        self.metrics_history = MetricsHistory()
         self._optimizer: OptimizerType = None
         self._scheduler: SchedulerType = None
         self._criterion_fn: CriterionFnType = None
         self._metrics: dict[str, CoreMetric] = None
         # The default callbacks that are singletons. Cannot be overwritten and only one instance must exist.
         self._callbacks: list[pl.Callback] = []
-        self.metadata_callback = MetadataCallback()
-        self._checkpoint_monitors = ["loss"]
+        self._checkpoint_monitors = None
         self._lme_reserved_properties = ["criterion_fn", "optimizer", "scheduler", "metrics", "callbacks"]
 
     @property
     def default_callbacks(self):
         """Returns the list of default callbacks"""
-        return [self.metadata_callback]
+        return [self.metadata_callback, self.metrics_history]
 
     # Required for training
     @property
@@ -89,12 +90,10 @@ class TrainableModuleMixin(TrainableModule):
         return self._criterion_fn
 
     @criterion_fn.setter
-    def criterion_fn(self, criterion_fn: CriterionFnType):
+    def criterion_fn(self, criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor]):
         assert isinstance(criterion_fn, Callable), f"Got '{criterion_fn}'"
         logger.debug(f"Setting criterion to '{criterion_fn}'")
         self._criterion_fn = CallableCoreMetric(criterion_fn, higher_is_better=False, requires_grad=True)
-        # TODO: this seems wrong and should be done at metrics getter perhaps.
-        self.metrics = {**self.metrics, "loss": self.criterion_fn}
 
     @staticmethod
     def _default_criterion_fn(y: tr.Tensor, gt: tr.Tensor):
@@ -114,6 +113,23 @@ class TrainableModuleMixin(TrainableModule):
         logger.debug(f"Set the optimizer to {', '.join(parsed_str_type(o) for o in make_list(optimizer))}")
         self._optimizer = optimizer
 
+    def _model_ckpt_cbs(self) -> list[pl.Callback]:
+        prefix = "val_" if self.trainer.enable_validation else ""
+        res = []
+        for i, monitor in enumerate(self.checkpoint_monitors):
+            # Lightning requires ValueError here, though KeyError would be more appropriate
+            if monitor != "loss" and monitor not in self.metrics:
+                raise ValueError(f"Checkpoint monitor '{monitor}' not in metrics: {self.metrics.keys()}")
+
+            metric_fn = self.metrics[monitor] if monitor != "loss" else self.criterion_fn
+            mode = "max" if metric_fn.higher_is_better else "min"
+            ckpt_monitor = f"{prefix}{monitor}"
+            filename = "{epoch}-{" + prefix + monitor + ":.2f}"
+            # note: save_last=True for len(model_ckpt_cbs)==0 only (i.e. first monitor)
+            res.append(ModelCheckpoint(monitor=ckpt_monitor, mode=mode, filename=filename,
+                                       save_last=(i == 0), save_on_train_epoch_end=True))
+        return res
+
     @property
     def callbacks(self) -> list[pl.Callback]:
         """Gets the callbacks"""
@@ -129,22 +145,7 @@ class TrainableModuleMixin(TrainableModule):
         if len(trainer_cbs) > 0:
             logger.debug2("ModelCheckpoint callbacks were provided in the Trainer. Not using the checkpoint_monitors!")
             return [*self.default_callbacks, *self._callbacks, *trainer_cbs]
-
-        prefix = "val_" if self.trainer.enable_validation else ""
-        model_ckpt_cbs = []
-        for monitor in self.checkpoint_monitors:
-            # Lightning requires ValueError here, though KeyError would be more appropriate
-            if monitor not in self.metrics:
-                raise ValueError(f"Checkpoint monitor '{monitor}' not in metrics: {self.metrics.keys()}")
-
-            mode = "max" if self.metrics[monitor].higher_is_better else "min"
-            ckpt_monitor = f"{prefix}{monitor}"
-            filename = "{epoch}-{" + prefix + monitor + ":.2f}"
-            # note: save_last=True for len(model_ckpt_cbs)==0 only (i.e. first monitor)
-            model_ckpt_cbs.append(ModelCheckpoint(monitor=ckpt_monitor, mode=mode, filename=filename,
-                                                  save_last=(len(model_ckpt_cbs) == 0), save_on_train_epoch_end=True))
-
-        return [*self.default_callbacks, *self._callbacks, *model_ckpt_cbs]
+        return [*self.default_callbacks, *self._callbacks, *self._model_ckpt_cbs()]
 
     @callbacks.setter
     def callbacks(self, callbacks: list[pl.Callback]):
@@ -169,7 +170,8 @@ class TrainableModuleMixin(TrainableModule):
     def metrics(self) -> dict[str, CoreMetric]:
         """Gets the list of metric names"""
         if self._metrics is None:
-            return {"loss": self.criterion_fn}
+            logger.warning("No metrics were set. Returning empty dict")
+            return {}
         return self._metrics
 
     @metrics.setter
@@ -178,14 +180,12 @@ class TrainableModuleMixin(TrainableModule):
             logger.debug(f"Overwriting existing metrics {list(self.metrics.keys())} to {list(metrics.keys())}")
         self._metrics = {}
 
+        assert "loss" not in metrics.keys(), f"'loss' is not a valid metric name {list(metrics.keys())}"
         for metric_name, metric_fn in metrics.items():
             # Our metrics can be a CoreMetric already, a tuple (callable, min/max) or just a Callable
-            # TODO: it can be a non-Callable if model_algorithm is not feed_forward_network (which should be renamed)
             assert isinstance(metric_fn, (CoreMetric, tuple)), f"Unknown metric type: '{type(metric_fn)}'. Expected " \
                                                                'CoreMetric, or a tuple of form (Callable, "min"/"max").'
             assert not metric_name.startswith("val_"), "metrics cannot start with val_"
-            if metric_name == "loss":
-                assert isinstance(metric_fn, CallableCoreMetric) and metric_fn.requires_grad is True
 
             # If we get a tuple, we will assume it's a 2 piece: a callable function (or class) and a
             if isinstance(metric_fn, tuple):
@@ -197,8 +197,6 @@ class TrainableModuleMixin(TrainableModule):
                 metric_fn = CallableCoreMetric(metric_fn, higher_is_better=(min_or_max == "max"), requires_grad=False)
 
             self._metrics[metric_name] = metric_fn
-        if self.criterion_fn is not None:
-            self._metrics["loss"] = self.criterion_fn
         logger.debug(f"Set module metrics: {list(self.metrics.keys())} ({len(self.metrics)})")
 
     @property
@@ -218,8 +216,12 @@ class TrainableModuleMixin(TrainableModule):
 
     @property
     def checkpoint_monitors(self) -> list[str]:
+        if self._checkpoint_monitors is None:
+            logger.debug("checkpoint_monitors not set. Defaulting to 'loss'")
+            self.checkpoint_monitors = ["loss"]
+
         for monitor in self._checkpoint_monitors:
-            if monitor not in self.metrics:
+            if monitor != "loss" and monitor not in self.metrics:
                 raise ValueError(f"Monitor '{monitor}' not in metrics: '{self.metrics}'")
         return self._checkpoint_monitors
 
@@ -227,7 +229,7 @@ class TrainableModuleMixin(TrainableModule):
     def checkpoint_monitors(self, checkpoint_monitors: list[str]) -> list[str]:
         assert "loss" in checkpoint_monitors, f"'loss' must be in checkpoint monitors. Got: {checkpoint_monitors}"
         for monitor in checkpoint_monitors:
-            if monitor not in self.metrics:
+            if monitor != "loss" and monitor not in self.metrics:
                 raise ValueError(f"Provided monitor: '{monitor}' is not in the metrics: {self.metrics}")
         self._checkpoint_monitors = checkpoint_monitors
         logger.debug(f"Set the checkpoint monitors to: {self._checkpoint_monitors}")

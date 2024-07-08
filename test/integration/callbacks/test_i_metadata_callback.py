@@ -157,4 +157,4 @@ def test_metadata_callback_early_stopping():
     assert meta["early_stopping"]["min_delta"] == -0.1
 
 if __name__ == "__main__":
-    test_metadata_callback_scheduler_CustomScheduler()
+    test_metadata_callback_scheduler_ReduceLROnPlateau()

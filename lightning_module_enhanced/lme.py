@@ -1,7 +1,6 @@
 """Generic Pytorch Lightning module on top of a Pytorch nn.Module"""
 from __future__ import annotations
 from typing import Any, Sequence, Callable, NamedTuple, Dict, Union
-from copy import deepcopy
 from pathlib import Path
 import shutil
 from overrides import overrides
@@ -14,7 +13,7 @@ from torch import nn, optim
 from torchinfo import summary, ModelStatistics
 
 from .trainable_module import TrainableModuleMixin, TrainableModule
-from .metrics import CoreMetric
+from .active_run_mixin import ActiveRunMixin
 from .logger import logger
 from .utils import to_tensor, to_device, tr_detach_data, make_list
 
@@ -22,9 +21,8 @@ ModelAlgorithmOutput = NamedTuple("ModelAlgorithmOutput", y=tr.Tensor, metrics=D
                                   x=Union[None, tr.Tensor, Dict[str, tr.Tensor]], gt=Union[None, tr.Tensor])
 
 # pylint: disable=too-many-ancestors, arguments-differ, unused-argument, abstract-method
-class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
+class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.LightningModule):
     """
-
         Generic pytorch-lightning module for ml models.
 
         Callbacks and metrics are called based on the order described here:
@@ -34,16 +32,21 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         all the training/validation/testing logic in a unified way.
 
         Attributes:
-            base_model: The base :class:`torch.nn.Module`
-            optimizer: The optimizer used for training runs
-            scheduler: The oprimizer scheduler used for training runs, as well as the monitored metric
-            criterion_fn: The criterion function used for training runs
-            metrics: The dictionary (Name => CoreMetric) of all implemented metrics for this module
-            callbacks: The list of callbacks for this module
-            summary: A summary including parameters, layers and tensor shapes of this module
-            metadata_callback: The metadata logger for this run
-            device: The torch device this module is residing on
-            trainable_params: The number of trainable parameters of this module
+        - base_model: The base :class:`torch.nn.Module`
+        - model_algorithm: Handles the `y, metrics, x, gt = model.algorithm(batch)` part of the model
+        - cache_results: Keeps the previous results during training so they can be accessed from various callbacks
+        - device: The torch device this module is residing on
+        - summary: A summary including parameters, layers and tensor shapes of this module
+        - num_parames: The total number of parameters of this module
+        - num_trainable_params: The number of trainable parameters of this module
+        - has_trainer: Checks if the underlying LightningModule is attached to a pl.Trainer instance
+        Attributes (inherited from TrainableModuleMixin):
+        - optimizer: The optimizer used for training runs
+        - scheduler: The oprimizer scheduler used for training runs, as well as the monitored metric
+        - criterion_fn: The criterion function used for training runs
+        - metrics: The dictionary (Name => CoreMetric) of all implemented metrics for this module
+        - callbacks: The list of callbacks for this module
+        - metadata_callback: The metadata logger for this run
 
         Args:
             base_model: The base :class:`torch.nn.Module`
@@ -53,11 +56,11 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         if isinstance(base_model, (LightningModuleEnhanced, TrainableModule)):
             raise ValueError("Cannot have nested LME modules. LME must extend only a basic torch nn.Module")
         super().__init__()
+        super(nn.Module, self).__init__()
         for prop in self._lme_reserved_properties:
             assert not hasattr(base_model, prop), f"Cannot clash with {self._lme_reserved_properties=}: {prop}"
         self.base_model = base_model
         self.automatic_optimization = False
-        self._active_run_metrics: dict[str, dict[str, CoreMetric]] = {}
         self._summary: ModelStatistics | None = None
         self._model_algorithm = model_algorithm if model_algorithm is not None else type(self)._default_algorithm
         self.cache_result = None
@@ -123,8 +126,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
 
     @overrides
     def on_fit_start(self) -> None:
-        self._setup_active_metrics()
-        self._reset_all_active_metrics()
+        self._setup_active_metrics(self.metrics.keys())
         self._set_metrics_running_model()
         self._copy_loaded_checkpoints()
 
@@ -132,18 +134,16 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
     def on_fit_end(self):
         # note: order is important here
         self._unset_metrics_running_model()
-        self._active_run_metrics = {}
 
     @overrides
     def on_test_start(self) -> None:
-        self._active_run_metrics[""] = self.metrics
+        self._setup_active_metrics(self.metrics.keys())
         self._set_metrics_running_model()
 
     @overrides
     def on_test_end(self):
         # note: order is important here
         self._unset_metrics_running_model()
-        self._active_run_metrics = {}
 
     @overrides(check_signature=False)
     def training_step(self, batch: Any, batch_idx: int, *args, **kwargs):
@@ -157,9 +157,9 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         opts: list[LightningOptimizer] = _opt if isinstance(_opt, list) else [_opt]
         for opt in opts:
             opt.optimizer.zero_grad()
-        y, train_metrics, _, _ = self.model_algorithm(self, batch)
+        y, train_metrics, _, gt = self.model_algorithm(self, batch)
         self.cache_result = tr_detach_data(y)
-        assert "loss" in train_metrics.keys(), train_metrics.keys()
+        train_metrics["loss"] = train_metrics["loss"] if "loss" in train_metrics else self.criterion_fn(y, gt) # TODO
         self._update_metrics_at_batch_end(train_metrics)
         # Manual optimization like real men. We disable automatic_optimization in the constructor.
         self.manual_backward(train_metrics["loss"])
@@ -170,23 +170,24 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
     @overrides
     def validation_step(self, batch: Any, batch_idx: int, *args, **kwargs):
         """Validation step: returns batch validation loss and metrics."""
-        y, val_metrics, _, _ = self.model_algorithm(self, batch)
+        y, val_metrics, _, gt = self.model_algorithm(self, batch)
         self.cache_result = tr_detach_data(y)
-        assert "loss" in val_metrics.keys(), val_metrics.keys()
+        val_metrics["loss"] = val_metrics["loss"] if "loss" in val_metrics else self.criterion_fn(y, gt) # TODO
         self._update_metrics_at_batch_end(val_metrics)
         return val_metrics["loss"]
 
     @overrides
     def test_step(self, batch: Any, batch_idx: int, *args, **kwargs):
         """Testing step: returns batch test loss and metrics."""
-        y, test_metrics, _, _ = self.model_algorithm(self, batch)
+        y, test_metrics, _, gt = self.model_algorithm(self, batch)
+        test_metrics["loss"] = test_metrics["loss"] if "loss" in test_metrics else self.criterion_fn(y, gt) # TODO
         self.cache_result = tr_detach_data(y)
         self._update_metrics_at_batch_end(test_metrics)
         return test_metrics["loss"]
 
     @overrides
     def predict_step(self, batch: Any, batch_idx: int, *args, dataloader_idx: int = 0, **kwargs) -> Any:
-        return self.np_forward(batch)
+        return self.model_algorithm(self, batch)[0]
 
     @overrides
     def configure_callbacks(self) -> Sequence[pl.Callback] | pl.Callback:
@@ -200,12 +201,12 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
     def on_train_epoch_end(self) -> None:
         """Computes epoch average train loss and metrics for logging."""
         # If validation is enabled (for train loops), add "val_" metrics for all logged metrics.
-        self._run_and_log_metrics_at_epoch_end(list(self.metrics.keys()))
+        self._run_and_log_metrics_at_epoch_end()
         self._reset_all_active_metrics()
 
     @overrides
     def on_test_epoch_end(self):
-        self._run_and_log_metrics_at_epoch_end(list(self.metrics.keys()))
+        self._run_and_log_metrics_at_epoch_end()
         self._reset_all_active_metrics()
 
     @overrides(check_signature=False)
@@ -267,22 +268,6 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         ckpt_data = tr.load(path, map_location="cpu")
         return self.load_state_from_ckpt_data(ckpt_data)
 
-    @overrides(check_signature=False)
-    def state_dict(self):
-        return self.base_model.state_dict()
-
-    @overrides(check_signature=False)
-    def load_state_dict(self, *args, **kwargs):
-        return self.base_model.load_state_dict(*args, **kwargs)
-
-    @overrides(check_signature=False)
-    def register_buffer(self, *args, **kwargs):
-        self.base_model.register_buffer(*args, **kwargs)
-
-    @overrides(check_signature=False)
-    def get_buffer(self, *args, **kwargs) -> tr.Tensor:
-        return self.base_model.get_buffer(*args, **kwargs)
-
     def lme_metrics(self, y: tr.Tensor, gt: tr.Tensor, include_loss: bool = True) -> dict[str, tr.Tensor]:
         """
         Pass through all the metrics of this batch and call forward. This updates the metric state for this batch
@@ -292,22 +277,13 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         - include_loss Whether to include the loss in the returned metrics. This can be useful when using a different
         model_algorithm, where we want to compute the loss manually as well.
         """
-        try:
-            prefix = self._prefix_from_trainer()
-            active_run_metrics = self._active_run_metrics[prefix]
-            if prefix not in self._active_run_metrics:
-                raise KeyError(f"Prefix '{prefix}' not found in active run metrics. Set model.metrics={{...}} first.")
-        except RuntimeError:
-            logger.debug("No trainer attached. Probably calling model_algorithm w/o training. Using self.metrics.")
-            active_run_metrics = self.metrics
-
         metrics = {}
-        for metric_name, metric_fn in active_run_metrics.items():
-            if metric_name == "loss" and not include_loss:
-                continue
+        for metric_name, metric_fn in self.metrics.items():
             # Call the metric and update its state
             with (tr.enable_grad if metric_fn.requires_grad else tr.no_grad)():
                 metrics[metric_name] = metric_fn.forward(y, gt)
+        if self.criterion_fn is not None and include_loss is True:
+            metrics["loss"] = self.criterion_fn(y, gt)
         return metrics
 
     # Private methods
@@ -318,61 +294,17 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
 
     def _update_metrics_at_batch_end(self, batch_results: dict[str, tr.Tensor]):
         assert isinstance(batch_results, dict), f"Expected dict, got {type(batch_results)}"
-        prefix = self._prefix_from_trainer()
-        if set(batch_results.keys()) != set(self.metrics.keys()):
+        assert "loss" in batch_results.keys(), f"Loss must be in batch_metrics. Got: {list(batch_results.keys())}"
+        batch_metrics, expected_metrics = (set(batch_results.keys()) - {"loss"}), set(self.metrics.keys())
+        if batch_metrics != expected_metrics:
             if (self.trainer.training or self.trainer.sanity_checking) and self.current_epoch == 0:
-                assert list(self.metrics) == ["loss"], f"For implicit metrics, no others must be set: {self.metrics}"
-                new_metrics = [metric for metric in batch_results.keys() if metric != "loss"]
-                logger.info(f"Implicit metrics set from model_algorithm: {new_metrics}. All must be lower_is_better!")
-                self.metrics = {m: (lambda y, _: (y - y).mean(), "min") for m in new_metrics} # stub to create instance
-                self._setup_active_metrics()
+                assert set(self.metrics) == set(), f"For implicit metrics, no others must be set: {self.metrics}"
+                logger.info(f"Implicit metrics set from model_algorithm: {batch_metrics}. All must be lower_is_better!")
+                self._setup_active_metrics(list(batch_metrics))
             else:
                 raise ValueError(f"Expected metrics: {self.metrics.keys()} vs. this batch: {batch_results.keys()}")
-        for metric_name, metric in self._active_run_metrics[prefix].items():
-            metric.batch_update(tr_detach_data(batch_results[metric_name]))
 
-    def _run_and_log_metrics_at_epoch_end(self, metrics_to_log: list[str]):
-        """Runs and logs a given list of logged metrics. Assume they all exist in self.metrics"""
-        all_prefixes = self._active_run_metrics.keys()
-        for metric_name in metrics_to_log:
-            for prefix in all_prefixes:
-                metric_fn: CoreMetric = self._active_run_metrics[prefix][metric_name]
-                # Get the metric's epoch result
-                metric_epoch_result = metric_fn.epoch_result()
-                # Log the metric at the end of the epoch. Only log on pbar the val_loss, loss is tracked by default
-                prog_bar = (metric_name == "loss" and prefix == "val_")
-
-                value_reduced = metric_fn.epoch_result_reduced(metric_epoch_result)
-                if value_reduced is not None:
-                    self.log(f"{prefix}{metric_name}", value_reduced, prog_bar=prog_bar, on_epoch=True)
-                # Call the metadata callback for the full result, since it can handle any sort of metrics
-                self.metadata_callback.log_epoch_metric(metric_name, metric_epoch_result,
-                                                        self.trainer.current_epoch, prefix)
-
-    def _setup_active_metrics(self):
-        """sets up self.active_run_metrics based on metrics for this train run. Called at on_fit_start"""
-        self._active_run_metrics[""] = self.metrics
-        if self.trainer.enable_validation:
-            cloned_metrics = deepcopy(self.metrics)
-            self._active_run_metrics["val_"] = cloned_metrics
-
-    def _reset_all_active_metrics(self):
-        """ran at epoch end to reset the metrics"""
-        for prefix in self._active_run_metrics.keys():
-            for metric in self._active_run_metrics[prefix].values():
-                metric.reset()
-
-    def _set_metrics_running_model(self):
-        """ran at fit/test start to set the running model"""
-        for prefix in self._active_run_metrics.keys():
-            for metric in self._active_run_metrics[prefix].values():
-                metric.running_model = lambda: self
-
-    def _unset_metrics_running_model(self):
-        """ran at fit/test end to unset the running model"""
-        for prefix in self._active_run_metrics.keys():
-            for metric in self._active_run_metrics[prefix].values():
-                metric.running_model = None
+        self._active_run_batch_updates(tr_detach_data(batch_results))
 
     def _copy_loaded_checkpoints(self):
         """copies the loaded checkpoint to the log dir"""
@@ -400,17 +332,19 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
             self.scheduler["scheduler"].step() # TODO: tests for non monitor schedulers (wtf are these even?)
             return
 
-        is_val = (monitor := self.scheduler["monitor"]).startswith("val_")
+        monitor = self.scheduler["monitor"]
+        is_val = monitor.startswith("val_")
+        prefix = "val" if is_val else ""
         monitor = monitor[4:] if is_val else monitor
-        prefix = "val_" if is_val else ""
+
         if is_val and "val_" not in self._active_run_metrics:
             raise MisconfigurationException(f"Monitor: {monitor} but no validation set provided")
-        if monitor not in self.metrics:
-            raise MisconfigurationException(f"Monitor: {monitor} not in metrics: {self.metrics}")
+        if monitor not in (metrics := self._active_run_metrics[prefix]):
+            raise MisconfigurationException(f"Monitor: {monitor} not in metrics: {metrics}")
         if self.trainer.current_epoch == 0:
             return
 
-        metric = self._active_run_metrics[prefix][monitor] # pylint: disable=protected-access
+        metric = self._active_run_metrics[prefix][monitor]
         try:
             self.scheduler["scheduler"].step()
         except Exception:

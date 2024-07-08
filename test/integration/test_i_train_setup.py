@@ -31,7 +31,7 @@ class Reader:
 def test_all_are_none():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
-    assert len(model.metrics) == 1
+    assert len(model.metrics) == 0
     assert model.criterion_fn.metric_fn == TrainableModuleMixin._default_criterion_fn
     assert model.optimizer is None
     assert model.scheduler is None

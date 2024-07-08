@@ -9,3 +9,5 @@ lightning_logs/
 exception.txt
 *.egg-info
 dist/
+exceptions*
+
