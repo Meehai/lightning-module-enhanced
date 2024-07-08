@@ -1,5 +1,6 @@
 from lightning_module_enhanced import LME
 from lightning_module_enhanced.callbacks import MetadataCallback, PlotMetrics
+from pytorch_lightning import Trainer
 from torch import nn
 
 
@@ -30,6 +31,14 @@ def test_callbacks_bad_1():
         pass
     except AssertionError:
         pass
+
+def test_callbacks_model_ckpts():
+    module = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    module.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min"),
+                      "l2": (lambda y, gt: (y - gt).pow(2).mean(), "min")}
+    module.trainer = Trainer()
+    assert len(module.callacks) == 2
+    assert module.callbacks[-1].monitor == "loss"
 
 if __name__ == "__main__":
     test_callbacks_good_1()
