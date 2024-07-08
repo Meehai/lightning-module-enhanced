@@ -37,7 +37,7 @@ def test_callbacks_model_ckpts():
     module.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min"),
                       "l2": (lambda y, gt: (y - gt).pow(2).mean(), "min")}
     module.trainer = Trainer()
-    assert len(module.callacks) == 2
+    assert len(module.callbacks) == 2
     assert module.callbacks[-1].monitor == "loss"
 
 if __name__ == "__main__":
