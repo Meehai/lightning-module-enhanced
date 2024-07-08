@@ -169,7 +169,7 @@ class TrainableModuleMixin(TrainableModule):
     def metrics(self) -> dict[str, CoreMetric]:
         """Gets the list of metric names"""
         if self._metrics is None:
-            return {"loss": CallableCoreMetric(self.criterion_fn, higher_is_better=False, requires_grad=True)}
+            return {"loss": self.criterion_fn}
         return self._metrics
 
     @metrics.setter

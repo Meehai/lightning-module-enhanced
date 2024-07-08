@@ -11,7 +11,8 @@ class CallableCoreMetric(CoreMetric):
     """CallableCoreMetric implementation"""
     def __init__(self, metric_fn: MetricFnType, *args, epoch_fn: EpochFnType = "mean", **kwargs):
         super().__init__(*args, **kwargs)
-        assert isinstance(metric_fn, Callable), f"Got {type(metric_fn)}"
+        assert isinstance(metric_fn, Callable), f"Must be callable. Got: {type(metric_fn)}"
+        assert not isinstance(metric_fn, CallableCoreMetric), f"Cannot have nested CoreMetrics. Got: {type(metric_fn)}"
         self.epoch_fn = CallableCoreMetric._build_epoch_fn(epoch_fn)
         self.metric_fn = metric_fn
 
