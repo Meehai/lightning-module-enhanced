@@ -73,6 +73,7 @@ class TrainableModuleMixin(TrainableModule):
         self._callbacks: list[pl.Callback] = []
         self.metadata_callback = MetadataCallback()
         self._checkpoint_monitors = ["loss"]
+        self._lme_reserved_properties = ["criterion_fn", "optimizer", "scheduler", "metrics", "callbacks"]
 
     @property
     def default_callbacks(self):
@@ -83,7 +84,6 @@ class TrainableModuleMixin(TrainableModule):
     @property
     def criterion_fn(self) -> CriterionFnType:
         """Get the criterion function loss(y, gt) -> backpropagable tensor"""
-        assert not hasattr(self.base_model, "criterion_fn"), "Base model cannot clash with TrainableModule properties"
         if self._criterion_fn is None:
             return CallableCoreMetric(TrainableModuleMixin._default_criterion_fn, higher_is_better=False)
         return self._criterion_fn
@@ -104,12 +104,10 @@ class TrainableModuleMixin(TrainableModule):
     @property
     def optimizer(self) -> OptimizerType:
         """Returns the optimizer"""
-        assert not hasattr(self.base_model, "optimizer"), "Base model cannot clash with TrainableModule properties"
         return self._optimizer
 
     @optimizer.setter
     def optimizer(self, optimizer: OptimizerType | optim.Optimizer):
-        assert not isinstance(self.base_model, TrainableModule), "Cannot have nested Trainable Modules"
         assert isinstance(optimizer, (optim.Optimizer, list)), type(optimizer)
         optimizer_types = (type(x) for x in make_list(optimizer))
         assert all(lambda x: isinstance(x, optim.optimizer) for x in optimizer_types), optimizer_types
@@ -119,7 +117,6 @@ class TrainableModuleMixin(TrainableModule):
     @property
     def callbacks(self) -> list[pl.Callback]:
         """Gets the callbacks"""
-        assert not hasattr(self.base_model, "callbacks"), "Base model cannot clash with TrainableModule properties"
 
         # trainer not attached yet, so no model checkpoints are needed.
         try:
@@ -152,7 +149,6 @@ class TrainableModuleMixin(TrainableModule):
     @callbacks.setter
     def callbacks(self, callbacks: list[pl.Callback]):
         """Sets the callbacks + the default metadata callback"""
-        assert not isinstance(self.base_model, TrainableModule), "Nested trainable modules"
         res = []
         for callback in callbacks:
             if callback in self.default_callbacks:
@@ -172,14 +168,12 @@ class TrainableModuleMixin(TrainableModule):
     @property
     def metrics(self) -> dict[str, CoreMetric]:
         """Gets the list of metric names"""
-        assert not hasattr(self.base_model, "metrics"), "Base model cannot clash with TrainableModule properties"
         if self._metrics is None:
             return {"loss": CallableCoreMetric(self.criterion_fn, higher_is_better=False, requires_grad=True)}
         return self._metrics
 
     @metrics.setter
     def metrics(self, metrics: dict[str, tuple[Callable, str]]):
-        assert not isinstance(self.base_model, TrainableModule), "Nested trainable modules"
         if self._metrics is not None:
             logger.debug(f"Overwriting existing metrics {list(self.metrics.keys())} to {list(metrics.keys())}")
         self._metrics = {}
@@ -210,7 +204,6 @@ class TrainableModuleMixin(TrainableModule):
     @property
     def scheduler(self) -> SchedulerType:
         """Returns the scheduler dict"""
-        assert not hasattr(self.base_model, "scheduler"), "Base model cannot clash with TrainableModule properties"
         return self._scheduler
 
     @scheduler.setter

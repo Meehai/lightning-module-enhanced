@@ -53,6 +53,8 @@ class LightningModuleEnhanced(TrainableModuleMixin, pl.LightningModule):
         if isinstance(base_model, (LightningModuleEnhanced, TrainableModule)):
             raise ValueError("Cannot have nested LME modules. LME must extend only a basic torch nn.Module")
         super().__init__()
+        for prop in self._lme_reserved_properties:
+            assert not hasattr(base_model, prop), f"Cannot clash with {self._lme_reserved_properties=}: {prop}"
         self.base_model = base_model
         self.automatic_optimization = False
         self._active_run_metrics: dict[str, dict[str, CoreMetric]] = {}
