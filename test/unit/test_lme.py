@@ -112,7 +112,6 @@ def test_reset_parameters_3():
     for p1, p2 in zip(params, new_params):
         assert not tr.allclose(p1, p2)
 
-
 def test_model_algorithm_no_trainer_1():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
@@ -124,6 +123,12 @@ def test_model_algorithm_no_trainer_1():
     assert metrics.keys() == {"l1", "loss"}
     assert metrics["l1"].grad_fn is None and isinstance(metrics["l1"].item(), float)
     assert metrics["loss"].grad_fn is not None and isinstance(metrics["loss"].item(), float)
+
+def test_state_dict_no_prefix():
+    """state_dict should not have 'base_model' prefix, so it's compatible with regular torch"""
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    sd = model.state_dict()
+    assert not any(x.startswith("base_model") for x in sd.keys()), sd.keys()
 
 if __name__ == "__main__":
     test_trainable_params_1()

@@ -29,7 +29,7 @@ def test_metrics_history_1():
     assert len(pm.history["loss"]["train"]) == len(pm.history["loss"]["val"]) == 3
 
 def test_metrics_history_2():
-    """fine-tuning also should yield 3 epochs, even thouh we start from a pre-trained one"""
+    """fine-tuning also should yield 3 epochs, even though we start from a pre-trained one"""
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)

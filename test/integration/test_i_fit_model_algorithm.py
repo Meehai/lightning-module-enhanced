@@ -57,6 +57,9 @@ def test_fit_model_algorithm_implicit_metrics():
     assert set(model.metrics) == set()
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
     assert set(model.metrics) == {"lala"}
+    assert model.metrics_history.history.keys() == {"loss", "lala"}
+    assert len(model.metrics_history["loss"]["train"]) == 1 and len(model.metrics_history["loss"]["val"]) == 0
+    assert len(model.metrics_history["lala"]["train"]) == 1 and len(model.metrics_history["lala"]["val"]) == 0
 
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
@@ -65,3 +68,5 @@ def test_fit_model_algorithm_implicit_metrics():
     assert set(model.metrics) == set()
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()), DataLoader(Reader()))
     assert set(model.metrics) == {"lala"}
+    assert len(model.metrics_history["loss"]["train"]) == 1 and len(model.metrics_history["loss"]["val"]) == 1
+    assert len(model.metrics_history["lala"]["train"]) == 1 and len(model.metrics_history["lala"]["val"]) == 1

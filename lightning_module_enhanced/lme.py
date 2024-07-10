@@ -254,20 +254,6 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
             else:
                 layer.reset_parameters()
 
-    def load_state_from_ckpt_data(self, ckpt_data: dict) -> LightningModuleEnhanced:
-        """Loads the state from a checkpoint data via tr.load(...)"""
-        self.load_state_dict(ckpt_data["state_dict"])
-        if "hyper_parameters" in ckpt_data:
-            self.save_hyperparameters(ckpt_data["hyper_parameters"])
-        return self
-
-    def load_state_from_path(self, path: str) -> LightningModuleEnhanced:
-        """Loads the state dict from a path"""
-        # if path is remote (gcs) download checkpoint to a temp dir
-        logger.info(f"Loading weights and hyperparameters from '{Path(path).absolute()}'")
-        ckpt_data = tr.load(path, map_location="cpu")
-        return self.load_state_from_ckpt_data(ckpt_data)
-
     def lme_metrics(self, y: tr.Tensor, gt: tr.Tensor, include_loss: bool = True) -> dict[str, tr.Tensor]:
         """
         Pass through all the metrics of this batch and call forward. This updates the metric state for this batch
@@ -359,6 +345,8 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
             self.scheduler["scheduler"].step(metrics=metric.epoch_result_reduced(metric.epoch_result())) # TODO?
 
     def __getattribute__(self, item: Any) -> Any:
+        if item in ("state_dict", "load_state_dict"): # no 'base_model' prefix: for regular model loading compatibility
+            return self.base_model.__getattribute__(item)
         try:
             return super().__getattribute__(item)
         except AttributeError:
