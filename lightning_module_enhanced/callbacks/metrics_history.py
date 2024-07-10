@@ -12,14 +12,20 @@ class MetricsHistory(pl.Callback):
         self.history: dict[str, list[float]] = None
         self.expected_metrics = []
 
-    @overrides
-    def on_train_epoch_start(self, trainer: pl.Trainer, pl_module: Any) -> None:
+    def _setup_metrics(self, pl_module: Any):
         self.expected_metrics = [*list(pl_module.metrics.keys()), "loss"]
-        if trainer.current_epoch == 0:
-            self.history = {metric_name: {"train": [], "val": []} for metric_name in self.expected_metrics}
+        if self.history is not None:
+            assert len(self.history) > 0
+            for k in self.history.keys():
+                assert len(self.history[k]["train"]) > 0
+            assert (a := set(self.expected_metrics)) == (b := set(self.history.keys())), (a, b)
+        # see test_metrics_history_2 as to why we reset here
+        self.history = {metric_name: {"train": [], "val": []} for metric_name in self.expected_metrics}
 
     @overrides
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: Any):
+        if trainer.current_epoch == 0:
+            self._setup_metrics(pl_module)
         assert self.history is not None, "self.history is None: on_train_epoch_end somehow called before on_fit_start."
 
         for metric_name in self.expected_metrics:
@@ -46,3 +52,6 @@ class MetricsHistory(pl.Callback):
     def load_state_dict(self, state_dict: dict[str, Any]):
         self.history = state_dict["history"]
         self.expected_metrics = state_dict["expected_metrics"]
+
+    def __getitem__(self, key: str):
+        return self.history[key]
