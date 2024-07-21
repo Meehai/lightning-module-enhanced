@@ -11,7 +11,7 @@ with open(f"{loc}/README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 required = ["torch>=2.2.1,<3.0.0", "pytorch_lightning==2.2.5", "torchinfo==1.8.0", "torchmetrics==1.4.0.post0",
-            "overrides==7.7.0", "matplotlib==3.9.0", "pandas==2.2.2", "loggez==0.1", "tensorboardX==2.6.2.2",
+            "overrides==7.7.0", "matplotlib==3.9.0", "pandas==2.2.2", "loggez==0.2", "tensorboardX==2.6.2.2",
             "pool-resources==0.3.0"]
 
 setup(
