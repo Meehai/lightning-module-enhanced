@@ -5,6 +5,6 @@ torchmetrics==1.4.0.post0
 overrides==7.7.0
 matplotlib==3.9.0
 pandas==2.2.2
-loggez==0.1
+loggez==0.2
 tensorboardX==2.6.2.2
 pool-resources==0.3.0
