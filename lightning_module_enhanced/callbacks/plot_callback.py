@@ -6,7 +6,7 @@ from overrides import overrides
 from pytorch_lightning import Trainer, LightningModule
 from pytorch_lightning.callbacks import Callback
 
-from ..logger import logger
+from ..logger import lme_logger as logger
 
 class PlotCallbackGeneric(Callback):
     """Plot callback impementation. For each train/validation epoch, create a dir under logger_dir/pngs/epoch_X"""
@@ -33,12 +33,12 @@ class PlotCallbackGeneric(Callback):
         if batch_idx != 0:
             return
         if len(trainer.loggers) == 0:
-            logger.warning("No lightning logger found. Not calling PlotCallbacks()")
+            logger.debug("No lightning logger found. Not calling PlotCallbacks()")
             return
         try:
             prediction = self._get_prediction(pl_module)
         except Exception:
-            logger.warning("No prediction yet, somehow called before model_algorithm. Returning")
+            logger.debug("No prediction yet, somehow called before model_algorithm. Returning")
             return
 
         out_dir = PlotCallbackGeneric._get_out_dir(trainer, key, self.mkdir)
@@ -68,12 +68,12 @@ class PlotCallback(PlotCallbackGeneric):
         if batch_idx != 0:
             return
         if len(trainer.loggers) == 0:
-            logger.warning("No lightning logger found. Not calling PlotCallbacks()")
+            logger.debug("No lightning logger found. Not calling PlotCallbacks()")
             return
         try:
             prediction = self._get_prediction(pl_module)
         except Exception:
-            logger.warning("No prediction yet, somehow called before model_algorithm. Returning")
+            logger.debug("No prediction yet, somehow called before model_algorithm. Returning")
             return
 
         out_dir = PlotCallbackGeneric._get_out_dir(trainer, key, self.mkdir)

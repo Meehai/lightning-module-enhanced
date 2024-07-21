@@ -16,7 +16,7 @@ from pytorch_lightning.accelerators import CPUAccelerator, CUDAAccelerator
 from torch.utils.data import DataLoader
 from pool_resources import PoolResources, TorchResource
 
-from .logger import logger as lme_logger
+from .logger import lme_logger as logger
 
 PLTrainerArgs = NamedTuple("PLTrainerArgs", model=LightningModule, train_dataloaders=Optional[DataLoader],
                            val_dataloaders=Optional[DataLoader], datamodule=Optional[LightningDataModule],
@@ -27,8 +27,8 @@ class MultiTrainer:
     def __init__(self, trainer: Trainer, num_trains: int, relevant_metric: str = "loss", n_devices: int = -1):
         assert isinstance(trainer, Trainer), f"Expected pl.Trainer, got {type(trainer)}"
         if len(trainer.device_ids) > 1:
-            lme_logger.warning(f"Trainer found to have more than one device ID: {trainer.device_ids}. This is not going"
-                               " to be used. We use one device per each train in a MultiTrainer")
+            logger.debug(f"Trainer found to have more than one device ID: {trainer.device_ids}. This is not going"
+                         " to be used. We use one device per each train in a MultiTrainer")
 
         self.trainer: Trainer = trainer
         self.num_trains = num_trains
@@ -95,7 +95,7 @@ class MultiTrainer:
         train_fit_params = []
         for i in range(self.num_trains):
             if i in self.fit_metrics.index:
-                lme_logger.debug(f"MultiTrain id '{i}' already exists. Returning early.")
+                logger.debug(f"MultiTrain id '{i}' already exists. Returning early.")
                 continue
             train_fit_params.append((i, {"model": deepcopy(model), "train_dataloaders": train_dataloaders,
                                          "val_dataloaders": val_dataloaders, "datamodule": datamodule,
@@ -115,9 +115,9 @@ class MultiTrainer:
         if self.n_devices == -1:
             n_devices = cpu_count() if isinstance(self.trainer.accelerator, CPUAccelerator) else tr.cuda.device_count()
             self.n_devices = min(n_devices, self.num_trains)
-            lme_logger.debug(f"n devices set to -1. Using all resources: {self.n_devices}")
+            logger.debug(f"n devices set to -1. Using all resources: {self.n_devices}")
 
-        lme_logger.debug(f"Accelerator: '{'cpu' if isinstance(self.trainer.accelerator, CPUAccelerator) else 'gpu'}'")
+        logger.debug(f"Accelerator: '{'cpu' if isinstance(self.trainer.accelerator, CPUAccelerator) else 'gpu'}'")
         if isinstance(self.trainer.accelerator, CPUAccelerator):
             assert cpu_count() >= self.n_devices, f"Expected {self.n_devices}, got {cpu_count()}"
             return [TorchResource(f"cpu:{ix + 1}") for ix in range(self.n_devices)] # Cpu cannot start with 0 ffs.
@@ -135,7 +135,7 @@ class MultiTrainer:
                 continue
             out_path = Path(self.logger.log_dir) / file.name
             if out_path.exists() or out_path.is_symlink():
-                lme_logger.warning(f"'{out_path}' exists. Removing it first.")
+                logger.debug(f"'{out_path}' exists. Removing it first.")
                 if out_path.is_dir() and not out_path.is_symlink():
                     shutil.rmtree(out_path)
                 else:
@@ -173,7 +173,7 @@ class MultiTrainer:
         assert model_ckpt is not None
         test_loader = trainer_args["val_dataloaders"]
         if test_loader is None:
-            lme_logger.warning("No validation set was provided. Testing on train set, this can lead to bad results!")
+            logger.warning("No validation set was provided. Testing on train set, this can lead to bad results!")
             test_loader = trainer_args["train_dataloaders"]
         res = iter_trainer.test(trainer_args["model"], test_loader, ckpt_path=model_ckpt.best_model_path)[0]
         # Save this experiment's results as 'iteration_results.npy'

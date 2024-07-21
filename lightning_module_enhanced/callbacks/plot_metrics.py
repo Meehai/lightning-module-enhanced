@@ -6,7 +6,7 @@ from pytorch_lightning.callbacks import Callback
 from pytorch_lightning import Trainer
 import matplotlib.pyplot as plt
 import numpy as np
-from ..logger import logger
+from ..logger import lme_logger as logger
 
 def _norm(x):
     return np.clip(x, -2 * np.sign(np.median(x)) * np.median(x), 2 * np.sign(np.median(x)) * np.median(x))
@@ -42,7 +42,7 @@ class PlotMetrics(Callback):
     @overrides
     def on_train_epoch_end(self, trainer: Trainer, pl_module: Any):
         if len(trainer.loggers) == 0:
-            logger.warning("No lightning logger found. Not calling PlotMetrics()")
+            logger.debug("No lightning logger found. Not calling PlotMetrics()")
             return
 
         expected_metrics: list[str] = [*list(pl_module.metrics.keys()), "loss"]

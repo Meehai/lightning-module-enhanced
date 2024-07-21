@@ -10,7 +10,7 @@ from overrides import overrides
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, Checkpoint
 from pytorch_lightning.loggers import WandbLogger
 
-from ..logger import logger
+from ..logger import lme_logger as logger
 from ..utils import parsed_str_type, make_list, flat_if_one
 
 
@@ -148,7 +148,7 @@ class MetadataCallback(pl.Callback):
             self.log_file_path = self.log_dir / f"{prefix}_metadata.json"
             logger.debug(f"Metadata logger set up to '{self.log_file_path}'")
         else:
-            logger.warning("No logger provided to Trainer. Metadata will not be stored on disk!")
+            logger.debug("No logger provided to Trainer. Metadata will not be stored on disk!")
 
         self.save()
 
@@ -177,17 +177,17 @@ class MetadataCallback(pl.Callback):
         """returns the (first) model checkpoint, as provided by model.checkpoint_monitors. Usually the 'loss' monitor"""
         monitors: list[str] = pl_module.checkpoint_monitors # type: ignore
         if len(monitors) == 0:
-            logger.warning("No monitors were found. Best checkpoint metadata will not be stored")
+            logger.debug("No monitors were found. Best checkpoint metadata will not be stored")
             return None
         if len(monitors) > 1:
-            logger.warning(f"More than one monitor provided: {monitors}. Keeping only first")
+            logger.debug(f"More than one monitor provided: {monitors}. Keeping only first")
         monitor = monitors[0]
         prefix = "val_" if pl_module.trainer.enable_validation else ""
         callbacks: list[Checkpoint] = pl_module.trainer.checkpoint_callbacks
         cbs: list[ModelCheckpoint] = [_cb for _cb in callbacks if isinstance(_cb, ModelCheckpoint)]
         cbs = [_cb for _cb in cbs if _cb.monitor == f"{prefix}{monitor}"]
         if len(cbs) > 1:
-            logger.warning(f"More than one callback for monitor '{monitor}' found: {cbs}")
+            logger.debug(f"More than one callback for monitor '{monitor}' found: {cbs}")
         assert len(cbs) > 0, f"Monitor '{monitor}' not found in model checkpoints: {monitors} (prefix: {prefix})"
         cb: Checkpoint = cbs[0]
         return cb
