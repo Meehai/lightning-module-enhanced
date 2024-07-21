@@ -11,7 +11,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from .metrics import CoreMetric, CallableCoreMetric
 from .callbacks import MetadataCallback, MetricsHistory
-from .logger import logger
+from .logger import lme_logger as logger
 from .utils import parsed_str_type, make_list
 
 OptimizerType = Union[optim.Optimizer, List[optim.Optimizer]]
@@ -92,7 +92,7 @@ class TrainableModuleMixin(TrainableModule):
     @criterion_fn.setter
     def criterion_fn(self, criterion_fn: Callable[[tr.Tensor, tr.Tensor], tr.Tensor]):
         assert isinstance(criterion_fn, Callable), f"Got '{criterion_fn}'"
-        logger.debug(f"Setting criterion to '{criterion_fn}'")
+        logger.info(f"Setting criterion to '{criterion_fn}'")
         self._criterion_fn = CallableCoreMetric(criterion_fn, higher_is_better=False, requires_grad=True)
 
     @staticmethod
@@ -110,7 +110,7 @@ class TrainableModuleMixin(TrainableModule):
         assert isinstance(optimizer, (optim.Optimizer, list)), type(optimizer)
         optimizer_types = (type(x) for x in make_list(optimizer))
         assert all(lambda x: isinstance(x, optim.optimizer) for x in optimizer_types), optimizer_types
-        logger.debug(f"Set the optimizer to {', '.join(parsed_str_type(o) for o in make_list(optimizer))}")
+        logger.info(f"Set the optimizer to: {', '.join(parsed_str_type(o) for o in make_list(optimizer))}")
         self._optimizer = optimizer
 
     def _model_ckpt_cbs(self) -> list[pl.Callback]:
@@ -143,7 +143,7 @@ class TrainableModuleMixin(TrainableModule):
         trainer_cbs = [callback for callback in self.trainer.callbacks
                        if isinstance(callback, ModelCheckpoint) and callback.monitor is not None]
         if len(trainer_cbs) > 0:
-            logger.debug2("ModelCheckpoint callbacks were provided in the Trainer. Not using the checkpoint_monitors!")
+            logger.debug("ModelCheckpoint callbacks were provided in the Trainer. Not using the checkpoint_monitors!")
             return [*self.default_callbacks, *self._callbacks, *trainer_cbs]
         return [*self.default_callbacks, *self._callbacks, *self._model_ckpt_cbs()]
 
@@ -158,19 +158,20 @@ class TrainableModuleMixin(TrainableModule):
         new_res = list(set(res))
 
         if len(res) != len(new_res):
-            logger.warning("Duplicates were found in callbacks and removed")
+            logger.debug("Duplicates were found in callbacks and removed")
 
         for callback in new_res:
             for default_callback in self.default_callbacks:
                 assert not isinstance(callback, type(default_callback)), f"{callbacks} vs {default_callback}"
 
         self._callbacks = new_res
+        logger.info(f"Set {len(self.callbacks)} callbacks to the module")
 
     @property
     def metrics(self) -> dict[str, CoreMetric]:
         """Gets the list of metric names"""
         if self._metrics is None:
-            logger.warning("No metrics were set. Returning empty dict")
+            logger.debug("No metrics were set. Returning empty dict")
             return {}
         return self._metrics
 
@@ -197,7 +198,8 @@ class TrainableModuleMixin(TrainableModule):
                 metric_fn = CallableCoreMetric(metric_fn, higher_is_better=(min_or_max == "max"), requires_grad=False)
 
             self._metrics[metric_name] = metric_fn
-        logger.debug(f"Set module metrics: {list(self.metrics.keys())} ({len(self.metrics)})")
+        if len(self.metrics) > 0:
+            logger.info(f"Set module metrics: {list(self.metrics.keys())} ({len(self.metrics)})")
 
     @property
     def scheduler(self) -> SchedulerType:
@@ -210,7 +212,7 @@ class TrainableModuleMixin(TrainableModule):
             assert isinstance(sch, dict) and "scheduler" in sch.keys(), \
                 'Use model.scheduler={"scheduler": sch, ["monitor": ...]} (or a list of dicts if >1 optimizers)'
             assert hasattr(sch["scheduler"], "step"), f"Scheduler {sch} does not have a step method"
-        logger.debug(f"Set the scheduler to {scheduler}")
+        logger.info(f"Set the scheduler to {scheduler}")
         assert len(make_list(self.optimizer)) == 1, f"Can have scheduler only with 1 optimizer: {self.optimizer}" # TODO
         self._scheduler = scheduler
 

@@ -6,7 +6,7 @@ import torch as tr
 import numpy as np
 from torch import nn
 
-from .logger import logger
+from .logger import lme_logger as logger
 
 
 # pylint: disable=too-many-return-statements

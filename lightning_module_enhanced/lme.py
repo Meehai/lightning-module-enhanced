@@ -14,7 +14,7 @@ from torchinfo import summary, ModelStatistics
 
 from .trainable_module import TrainableModuleMixin, TrainableModule
 from .active_run_mixin import ActiveRunMixin
-from .logger import logger
+from .logger import lme_logger as logger
 from .utils import to_tensor, to_device, tr_detach_data, make_list
 
 ModelAlgorithmOutput = NamedTuple("ModelAlgorithmOutput", y=tr.Tensor, metrics=Dict[str, tr.Tensor],

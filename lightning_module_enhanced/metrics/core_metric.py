@@ -25,7 +25,7 @@ from overrides import overrides
 from torch import nn
 import torch as tr
 
-from ..logger import logger
+from ..logger import lme_logger as logger
 
 MetricFnType = Callable[[tr.Tensor, tr.Tensor], tr.Tensor]
 

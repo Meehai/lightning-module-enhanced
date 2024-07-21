@@ -4,7 +4,7 @@ from typing import Any
 from overrides import overrides
 import pytorch_lightning as pl
 
-from ..logger import logger
+from ..logger import lme_logger as logger
 
 class MetricsHistory(pl.Callback):
     """MetricsHistory callback implementation"""
@@ -30,7 +30,7 @@ class MetricsHistory(pl.Callback):
 
         for metric_name in self.expected_metrics:
             if metric_name not in self.history:
-                logger.warning(f"Metric '{metric_name}' not in original metrics, probably added afterwards. Skipping")
+                logger.debug(f"Metric '{metric_name}' not in original metrics, probably added afterwards. Skipping")
                 continue
             metric = pl_module._active_run_metrics[""][metric_name] # pylint: disable=protected-access
             metric_score = metric.epoch_result_reduced(metric.epoch_result())

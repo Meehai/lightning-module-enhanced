@@ -3,7 +3,7 @@ from pathlib import Path
 import shutil
 from pytorch_lightning import Trainer, Callback, LightningModule
 from pytorch_lightning.callbacks import ModelCheckpoint
-from ..logger import logger
+from ..logger import lme_logger as logger
 
 class CopyBestCheckpoint(Callback):
     """Callback to store the best epoch with a special name used throughout the library"""
@@ -26,7 +26,7 @@ class CopyBestCheckpoint(Callback):
         out_file = in_dir / "model_best.ckpt"
         in_file = self.model_checkpoint_loss_callback.best_model_path
         if in_file == "":
-            logger.warning("No best model was stored, just last model path (probably no validation set used).")
+            logger.debug("No best model was stored, just last model path (probably no validation set used).")
             in_file = self.model_checkpoint_loss_callback.last_model_path
         # assert not out_file.exists(), f"Out file '{out_file}' already exists..."
         in_file = Path(in_file).absolute()

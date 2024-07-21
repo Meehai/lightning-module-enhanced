@@ -2,7 +2,7 @@
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from overrides import overrides
 
-from ..logger import logger
+from ..logger import lme_logger as logger
 
 class ReduceLROnPlateauWithBurnIn(ReduceLROnPlateau):
     """Reduce LR on Plateau with Burn-in epochs. Same as ReduceLROnPateau, but skips N epochs for burn-in."""
