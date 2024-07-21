@@ -157,7 +157,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
         opts: list[LightningOptimizer] = _opt if isinstance(_opt, list) else [_opt]
         for opt in opts:
             opt.optimizer.zero_grad()
-        y, train_metrics, _, gt = self.model_algorithm(self, batch)
+        y, train_metrics, _, gt = self.model_algorithm(self, batch) # pylint: disable=not-callable
         self.cache_result = tr_detach_data(y)
         train_metrics["loss"] = train_metrics["loss"] if "loss" in train_metrics else self.criterion_fn(y, gt) # TODO
         self._update_metrics_at_batch_end(train_metrics)
@@ -170,7 +170,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
     @overrides
     def validation_step(self, batch: Any, batch_idx: int, *args, **kwargs):
         """Validation step: returns batch validation loss and metrics."""
-        y, val_metrics, _, gt = self.model_algorithm(self, batch)
+        y, val_metrics, _, gt = self.model_algorithm(self, batch) # pylint: disable=not-callable
         self.cache_result = tr_detach_data(y)
         val_metrics["loss"] = val_metrics["loss"] if "loss" in val_metrics else self.criterion_fn(y, gt) # TODO
         self._update_metrics_at_batch_end(val_metrics)
@@ -179,7 +179,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
     @overrides
     def test_step(self, batch: Any, batch_idx: int, *args, **kwargs):
         """Testing step: returns batch test loss and metrics."""
-        y, test_metrics, _, gt = self.model_algorithm(self, batch)
+        y, test_metrics, _, gt = self.model_algorithm(self, batch) # pylint: disable=not-callable
         test_metrics["loss"] = test_metrics["loss"] if "loss" in test_metrics else self.criterion_fn(y, gt) # TODO
         self.cache_result = tr_detach_data(y)
         self._update_metrics_at_batch_end(test_metrics)
@@ -187,7 +187,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
 
     @overrides
     def predict_step(self, batch: Any, batch_idx: int, *args, dataloader_idx: int = 0, **kwargs) -> Any:
-        return self.model_algorithm(self, batch)[0]
+        return self.model_algorithm(self, batch)[0] # pylint: disable=not-callable
 
     @overrides
     def configure_callbacks(self) -> Sequence[pl.Callback] | pl.Callback:
