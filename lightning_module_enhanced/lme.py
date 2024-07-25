@@ -289,14 +289,19 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
     def _update_metrics_at_batch_end(self, batch_results: dict[str, tr.Tensor]):
         assert isinstance(batch_results, dict), f"Expected dict, got {type(batch_results)}"
         assert "loss" in batch_results.keys(), f"Loss must be in batch_metrics. Got: {list(batch_results.keys())}"
-        batch_metrics, expected_metrics = (set(batch_results.keys()) - {"loss"}), set(self.metrics.keys())
-        if batch_metrics != expected_metrics:
-            if (self.trainer.training or self.trainer.sanity_checking) and self.current_epoch == 0:
-                assert set(self.metrics) == set(), f"For implicit metrics, no others must be set: {self.metrics}"
+        batch_metrics = set(batch_results.keys()) - {"loss"}
+        prev_metrics = [m[4:] if m.startswith("val_") else m for m in self.metadata_callback.metadata["epoch_metrics"]]
+        prev_metrics = set(prev_metrics) - {"loss"}
+        if len(self.metrics) == 0 and len(prev_metrics) > 0 and (self.trainer.training or self.trainer.sanity_checking):
+            logger.debug(f"Previous metrics (from a previous training) expected: {prev_metrics}")
+            self._setup_active_metrics(list(prev_metrics))
+
+        if batch_metrics != (expected_metrics := set(self.metrics.keys())):
+            if len(self.metrics) == 0 and (self.trainer.training or self.trainer.sanity_checking):
                 logger.info(f"Implicit metrics set from model_algorithm: {batch_metrics}. All must be lower_is_better!")
                 self._setup_active_metrics(list(batch_metrics))
             else:
-                raise ValueError(f"Expected metrics: {self.metrics.keys()} vs. this batch: {batch_results.keys()}")
+                raise ValueError(f"Expected metrics: {expected_metrics} vs. this batch: {batch_results.keys()}")
 
         self._active_run_batch_updates(tr_detach_data(batch_results))
 
