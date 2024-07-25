@@ -1,4 +1,3 @@
-# Fixes this: https://gitlab.com/meehai/lightning-module-enhanced/-/issues/11
 from pathlib import Path
 import shutil
 from torch import nn, optim
@@ -7,7 +6,7 @@ import torch as tr
 from torch.utils.data import Dataset, DataLoader
 from pytorch_lightning.loggers import CSVLogger
 from pytorch_lightning import Trainer
-from lightning_module_enhanced import LME
+from lightning_module_enhanced import LME, ModelAlgorithmOutput
 
 class Reader(Dataset):
     def __init__(self):
@@ -21,10 +20,10 @@ class Reader(Dataset):
         return len(self.x)
 
 def test_load_metrics_metadata():
+    """Fixes this: https://gitlab.com/meehai/lightning-module-enhanced/-/issues/11"""
     train_loader = DataLoader(Reader(), batch_size=10)
     val_loader = DataLoader(Reader(), batch_size=10)
-    log_dir_name = "load_metrics_metadata"
-    shutil.rmtree(Path(__file__).parent / log_dir_name, ignore_errors=True)
+    shutil.rmtree(Path(__file__).parent / (log_dir_name := "load_metrics_metadata"), ignore_errors=True)
 
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = optim.SGD(model.parameters(), lr=0.1)
@@ -45,5 +44,31 @@ def test_load_metrics_metadata():
     assert (Path(__file__).parent / log_dir_name / "version_1" / "checkpoints" / ckpt_path.name).exists()
     shutil.rmtree(Path(__file__).parent / log_dir_name, ignore_errors=True)
 
+def test_load_implicit_metrics():
+    def _model_algorithm(model, batch) -> ModelAlgorithmOutput:
+        x, gt = batch
+        y = model(x)
+        metrics = {"loss": F.mse_loss(y, gt), "my_metric": (y - gt).abs().mean()}
+        return y, metrics, x, gt
+
+    train_loader = DataLoader(Reader(), batch_size=10)
+    shutil.rmtree(Path(__file__).parent / (log_dir_name := "test_load_implicit_metrics"), ignore_errors=True)
+
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.optimizer = optim.SGD(model.parameters(), lr=0.1)
+    model.model_algorithm = _model_algorithm
+
+    pl_logger = CSVLogger(Path(__file__).parent, name=log_dir_name, version=0)
+    t1 = Trainer(max_epochs=3, logger=pl_logger)
+    t1.fit(model, train_loader)
+
+    model2 = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model2.optimizer = optim.SGD(model.parameters(), lr=0.1)
+    model2.model_algorithm = _model_algorithm
+    pl_logger2 = CSVLogger(Path(__file__).parent, name=log_dir_name, version=1)
+    ckpt_path = Path(__file__).parent / log_dir_name / "version_0" / "checkpoints" / "last.ckpt"
+    t2 = Trainer(max_epochs=6, logger=pl_logger2)
+    t2.fit(model2, train_loader, ckpt_path=ckpt_path)
+
 if __name__ == "__main__":
-    test_load_metrics_metadata()
+    test_load_implicit_metrics()
