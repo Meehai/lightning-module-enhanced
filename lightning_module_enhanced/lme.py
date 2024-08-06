@@ -159,13 +159,16 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
             opt.optimizer.zero_grad()
         y, train_metrics, _, gt = self.model_algorithm(self, batch) # pylint: disable=not-callable
         self.cache_result = tr_detach_data(y)
-        train_metrics["loss"] = train_metrics["loss"] if "loss" in train_metrics else self.criterion_fn(y, gt) # TODO
+        loss = train_metrics["loss"] if "loss" in train_metrics else self.criterion_fn(y, gt) # TODO
         self._update_metrics_at_batch_end(train_metrics)
         # Manual optimization like real men. We disable automatic_optimization in the constructor.
-        self.manual_backward(train_metrics["loss"])
-        for opt in opts:
-            opt.step()
-        return train_metrics["loss"]
+        if loss is not None and loss.requires_grad:
+            self.manual_backward(loss)
+            for opt in opts:
+                opt.step()
+        else:
+            logger.debug(f"Loss is None or doesn't require grad ({loss}). Skipping this batch.")
+        return loss
 
     @overrides
     def validation_step(self, batch: Any, batch_idx: int, *args, **kwargs):
