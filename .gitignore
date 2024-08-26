@@ -10,4 +10,5 @@ exception.txt
 *.egg-info
 dist/
 exceptions*
+build/
 
