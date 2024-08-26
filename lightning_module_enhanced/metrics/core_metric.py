@@ -96,5 +96,5 @@ class CoreMetric(nn.Module, ABC):
         f_str = f"[{str_type}]. Higher is better: {self.higher_is_better}. Grad: {self.requires_grad}"
         return f_str
 
-    def __call__(self, y: tr.Tensor, gt: tr.Tensor) -> tr.Tensor:
-        return self.forward(y, gt)
+    def __call__(self, *args, **kwargs) -> tr.Tensor:
+        return self.forward(*args, **kwargs)
