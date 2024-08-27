@@ -80,6 +80,8 @@ class ActiveRunMixin(nn.Module):
             if len(self.metrics) == 0 and (self.trainer.training or self.trainer.sanity_checking):
                 logger.info(f"Implicit metrics set from model_algorithm: {batch_metrics}. All must be lower_is_better!")
                 self._setup_active_metrics({k: v for k, v in batch_results.items() if k != "loss"})
+                if any(cm not in (B := list(self._active_run_metrics[""])) for cm in self.checkpoint_monitors):
+                    raise ValueError(f"Some checkpoint monitor: {self.checkpoint_monitors} not in active metrics: {B}")
             else:
                 raise ValueError(f"Expected metrics: {expected_metrics} vs. this batch: {batch_results.keys()}")
 
