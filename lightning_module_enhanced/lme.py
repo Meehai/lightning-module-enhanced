@@ -126,7 +126,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
 
     @overrides
     def on_fit_start(self) -> None:
-        self._setup_active_metrics(self.metrics.keys())
+        self._setup_active_metrics(self.metrics)
         self._set_metrics_running_model()
         self._copy_loaded_checkpoints()
 
@@ -137,7 +137,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
 
     @overrides
     def on_test_start(self) -> None:
-        self._setup_active_metrics(self.metrics.keys())
+        self._setup_active_metrics(self.metrics)
         self._set_metrics_running_model()
 
     @overrides
@@ -297,12 +297,12 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
         prev_metrics = set(prev_metrics) - {"loss"}
         if len(self.metrics) == 0 and len(prev_metrics) > 0 and (self.trainer.training or self.trainer.sanity_checking):
             logger.debug(f"Previous metrics (from a previous training) expected: {prev_metrics}")
-            self._setup_active_metrics(list(prev_metrics))
+            self._setup_active_metrics({k: None for k in prev_metrics})
 
         if batch_metrics != (expected_metrics := set(self.metrics.keys())):
             if len(self.metrics) == 0 and (self.trainer.training or self.trainer.sanity_checking):
                 logger.info(f"Implicit metrics set from model_algorithm: {batch_metrics}. All must be lower_is_better!")
-                self._setup_active_metrics(list(batch_metrics))
+                self._setup_active_metrics({k: v for k, v in batch_results.items() if k != "loss"})
             else:
                 raise ValueError(f"Expected metrics: {expected_metrics} vs. this batch: {batch_results.keys()}")
 

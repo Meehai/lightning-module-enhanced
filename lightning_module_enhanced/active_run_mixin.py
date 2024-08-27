@@ -1,9 +1,11 @@
 """ActiveRunMixin. Helper class to track stuff during runs (training, testing, predicting)"""
 from __future__ import annotations
 from copy import deepcopy
+import torch as tr
 from torch import nn
 from .metrics import CoreMetric, CallableCoreMetric
 from .utils import tr_detach_data
+from .logger import lme_logger as logger
 
 def _make_stub_metric() -> CoreMetric:
     return CallableCoreMetric(metric_fn=lambda y, _: (y - y).mean(), higher_is_better=False)
@@ -20,10 +22,21 @@ class ActiveRunMixin(nn.Module):
         # Updated during the epochs of an actieve run (i.e. Trainer.fit, Trainer.test or Trainer.predict).
         self._active_run_metrics: dict[str, dict[str, CoreMetric]] = {}
 
-    def _setup_active_metrics(self, metrics: list[str]):
+    def _setup_active_metrics(self, metrics: dict[str, CoreMetric | tr.Tensor | None]):
         """sets up self.active_run_metrics based on metrics for this train run. Called at on_fit_start"""
-        if len(self.metrics) == 0:
-            self.metrics = {metric_name: _make_stub_metric() for metric_name in metrics}
+        assert isinstance(metrics, dict), type(metrics)
+        assert all(isinstance(v, (type(None), tr.Tensor, CoreMetric)) for v in metrics.values()), metrics
+        if len(self.metrics) > 0:
+            assert (a := metrics.keys()) == (b := self.metrics.keys()), f"Call this w/o metrics or same keys: {a}, {b}"
+        else:
+            res_metrics = {}
+            for metric_name, val in metrics.items():
+                if val is None or isinstance(val, tr.Tensor):
+                    res_metrics[metric_name] = _make_stub_metric()
+                else:
+                    logger.debug2(f"Got a CoreMetric passed in active_metrics: {metric_name}: {val}")
+                    res_metrics[metric_name] = val
+            self.metrics = res_metrics
 
         self._active_run_metrics = {"": {"loss": self.criterion_fn, **self.metrics}}
         if hasattr(self, "trainer") and self.trainer.enable_validation:

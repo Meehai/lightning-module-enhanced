@@ -1,4 +1,5 @@
 from pathlib import Path
+from functools import partial
 import shutil
 from torch import nn, optim
 from torch.nn import functional as F
@@ -7,6 +8,7 @@ from torch.utils.data import Dataset, DataLoader
 from pytorch_lightning.loggers import CSVLogger
 from pytorch_lightning import Trainer
 from lightning_module_enhanced import LME, ModelAlgorithmOutput
+from lightning_module_enhanced.metrics import CallableCoreMetric
 
 class Reader(Dataset):
     def __init__(self):
@@ -69,6 +71,32 @@ def test_load_implicit_metrics():
     ckpt_path = Path(__file__).parent / log_dir_name / "version_0" / "checkpoints" / "last.ckpt"
     t2 = Trainer(max_epochs=6, logger=pl_logger2)
     t2.fit(model2, train_loader, ckpt_path=ckpt_path)
+
+def test_implicit_core_metrics():
+    def _model_algorithm(model, batch, epik_metric) -> ModelAlgorithmOutput:
+        x, gt = batch
+        y = model(x)
+        metrics = {"loss": F.mse_loss(y, gt), "epik_metric": epik_metric(y, gt)}
+        return y, metrics, x, gt
+
+    class EpikMetric(CallableCoreMetric):
+        def forward(self, y, gt):
+            return self
+        def batch_update(self, batch_result) -> None:
+            pass
+
+    train_loader = DataLoader(Reader(), batch_size=10)
+    shutil.rmtree(Path(__file__).parent / (log_dir_name := "test_load_implicit_metrics"), ignore_errors=True)
+
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.optimizer = optim.SGD(model.parameters(), lr=0.1)
+    epik_metric = EpikMetric(lambda y, gt: (y - gt) ** 2, higher_is_better=False)
+    model.model_algorithm = partial(_model_algorithm, epik_metric=epik_metric)
+
+    pl_logger = CSVLogger(Path(__file__).parent, name=log_dir_name, version=0)
+    t1 = Trainer(max_epochs=3, logger=pl_logger)
+    t1.fit(model, train_loader)
+    assert id(epik_metric) == id(model.metrics["epik_metric"])
 
 if __name__ == "__main__":
     test_load_implicit_metrics()
