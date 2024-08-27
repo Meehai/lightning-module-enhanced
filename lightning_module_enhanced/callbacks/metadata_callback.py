@@ -1,5 +1,6 @@
 """Metadata Callback module"""
 from __future__ import annotations
+import sys
 from typing import Any, IO
 from pathlib import Path
 from datetime import datetime
@@ -32,7 +33,7 @@ class MetadataCallback(pl.Callback):
         self.metadata["epoch_metrics"][prefixed_key][epoch] = value.tolist()
 
     @overrides(check_signature=False)
-    def on_fit_start(self, trainer: pl.Trainer, pl_module: "LME") -> None:
+    def on_fit_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         """At the start of the .fit() loop, add the sizes of all train/validation dataloaders"""
         if pl_module.trainer.state.stage == "sanity_check":
             return
@@ -44,11 +45,11 @@ class MetadataCallback(pl.Callback):
             self.metadata["early_stopping"] = es
         self.metadata["model_checkpoint"] = self._log_model_checkpoint_fit_start(pl_module)
         self.metadata["model_parameters"] = self._log_model_summary(pl_module)
-        self.metadata["fit_params"] = pl_module.hparams
+        self.metadata["fit_hparams"] = pl_module.hparams.get("metadata_hparams")
         self.metadata = {**self.metadata, **self._log_timestamp_start(prefix="fit")}
 
     @overrides(check_signature=False)
-    def on_fit_end(self, trainer: pl.Trainer, pl_module: "LME") -> None:
+    def on_fit_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         self.metadata["best_model"] = self._log_best_model_fit_end(pl_module)
         self.metadata = {**self.metadata, **self._log_timestamp_end("fit")}
         self.save()
@@ -57,7 +58,7 @@ class MetadataCallback(pl.Callback):
             wandb_logger.experiment.log_artifact(self.log_file_path)
 
     @overrides(check_signature=False)
-    def on_train_epoch_start(self, trainer: pl.Trainer, pl_module: "LME") -> None:
+    def on_train_epoch_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         if pl_module.trainer.state.stage == "sanity_check":
             return
         if "train_dataset_size" not in self.metadata:
@@ -66,10 +67,9 @@ class MetadataCallback(pl.Callback):
             self.metadata["validation_dataset_size"] = len(pl_module.trainer.val_dataloaders.dataset)
 
     @overrides(check_signature=False)
-    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: "LME") -> None:
+    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         """Saves the metadata as a json on the train dir"""
         # Always update the current hparams such that, for test modes, we get the loaded stats
-        self.metadata["hparams_current"] = pl_module.hparams
         hist = self._log_optimizer_lr_history_epoch_end(pl_module)
         assert len(hist) == len(optims := make_list(self.metadata["optimizer"])), f"{len(hist)} vs {len(optims)}"
         # TODO: make a test with >1 optimizer and test that this works
@@ -79,17 +79,16 @@ class MetadataCallback(pl.Callback):
         self.save()
 
     @overrides(check_signature=False)
-    def on_test_start(self, trainer: pl.Trainer, pl_module: "LME") -> None:
+    def on_test_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         """At the start of the .test() loop, add the sizes of all test dataloaders"""
         self._setup(trainer, prefix="test")
-        self.metadata["test_start_hparams"] = pl_module.hparams
         self.metadata["test_dataset_size"] = len(pl_module.trainer.test_dataloaders.dataset) # type: ignore
         self.metadata["model_parameters"] = self._log_model_summary(pl_module)
-        self.metadata["test_hparams"] = pl_module.hparams
+        self.metadata["test_hparams"] = pl_module.hparams.get("metadata_hparams")
         self.metadata = {**self.metadata, **self._log_timestamp_start(prefix="test")}
 
     @overrides(check_signature=False)
-    def on_test_end(self, trainer: pl.Trainer, pl_module: "LME") -> None:
+    def on_test_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         self._log_timestamp_end("test")
         self.save()
 
@@ -119,8 +118,8 @@ class MetadataCallback(pl.Callback):
 
     def _flush_metadata(self):
         self.metadata = {
+            "run_command": " ".join(sys.argv),
             "epoch_metrics": {},
-            "hparams_current": None,
         }
 
     def _setup(self, trainer: pl.Trainer, prefix: str):
@@ -162,10 +161,11 @@ class MetadataCallback(pl.Callback):
     def _log_model_summary(self, pl_module: "LME") -> dict:
         """model's layers and number of parameters"""
         assert hasattr(pl_module, "base_model")
-        res = {"name": pl_module.base_model.__class__.__name__}
+        base_model: pl.LightningModule = pl_module.base_model
+        res = {"name": base_model.__class__.__name__}
         layer_summary = {}
         num_params, num_trainable_params = 0, 0
-        for name, param in pl_module.base_model.named_parameters():
+        for name, param in base_model.named_parameters():
             num_params += param.numel()
             num_trainable_params += param.numel() * param.requires_grad
             layer_summary[name] = f"count: {param.numel()}. requires_grad: {param.requires_grad}"
@@ -173,24 +173,24 @@ class MetadataCallback(pl.Callback):
         res["layer_summary"] = layer_summary
         return res
 
-    def _get_monitored_model_checkpoint(self, pl_module: "LME") -> Checkpoint | None:
+    def _get_monitored_model_checkpoint(self, pl_module: "LME") -> ModelCheckpoint | None:
         """returns the (first) model checkpoint, as provided by model.checkpoint_monitors. Usually the 'loss' monitor"""
         monitors: list[str] = pl_module.checkpoint_monitors # type: ignore
+        trainer: pl.Trainer = pl_module.trainer
         if len(monitors) == 0:
             logger.debug("No monitors were found. Best checkpoint metadata will not be stored")
             return None
         if len(monitors) > 1:
             logger.debug(f"More than one monitor provided: {monitors}. Keeping only first")
         monitor = monitors[0]
-        prefix = "val_" if pl_module.trainer.enable_validation else ""
-        callbacks: list[Checkpoint] = pl_module.trainer.checkpoint_callbacks
+        prefix = "val_" if trainer.enable_validation else ""
+        callbacks: list[Checkpoint] = trainer.checkpoint_callbacks
         cbs: list[ModelCheckpoint] = [_cb for _cb in callbacks if isinstance(_cb, ModelCheckpoint)]
         cbs = [_cb for _cb in cbs if _cb.monitor == f"{prefix}{monitor}"]
+        assert len(cbs) > 0, f"Monitor '{monitor}' not found in model checkpoints: {monitors} (prefix: {prefix})"
         if len(cbs) > 1:
             logger.debug(f"More than one callback for monitor '{monitor}' found: {cbs}")
-        assert len(cbs) > 0, f"Monitor '{monitor}' not found in model checkpoints: {monitors} (prefix: {prefix})"
-        cb: Checkpoint = cbs[0]
-        return cb
+        return cbs[0]
 
     # [fit/test/predict]_start private methods
 
@@ -333,4 +333,7 @@ class MetadataCallback(pl.Callback):
         logger.debug("=================== Debug metadata =====================")
 
     def __str__(self):
-        return f"Metadata Callback. Log dir: '{self.log_dir}'"
+        return repr(self)
+
+    def __repr__(self):
+        return f"Metadata Callback. Path: '{self.log_file_path}'"

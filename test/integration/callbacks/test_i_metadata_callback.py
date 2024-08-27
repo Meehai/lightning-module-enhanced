@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch import nn
 import torch as tr
+import json
 
 class Reader:
     def __len__(self):
@@ -19,7 +20,7 @@ class CustomScheduler(ReduceLROnPlateau):
         print("!!!Applied!!!")
         self._reduce_lr(epoch)
 
-def test_metadata_callback_train_1():
+def test_MetadataCallback_train_1():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
@@ -39,7 +40,7 @@ def test_metadata_callback_train_1():
     assert "optimizer" in meta and isinstance(meta["optimizer"]["starting_lr"], float)
     assert "best_model" in meta
 
-def test_metadata_callback_test_1():
+def test_MetadataCallback_test_1():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
@@ -59,14 +60,14 @@ def test_metadata_callback_test_1():
     assert "epoch_timestamps" not in meta
     assert "epoch_average_duration" not in meta
 
-def test_metadata_callback_no_checkpoint():
+def test_MetadataCallback_no_checkpoint():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
 
-def test_metadata_callback_two_ModelCheckpoints():
+def test_MetadataCallback_two_ModelCheckpoints():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
@@ -87,7 +88,7 @@ def test_metadata_callback_two_ModelCheckpoints():
     assert "optimizer" in meta
     assert "best_model" in meta
 
-def test_metadata_callback_two_monitors():
+def test_MetadataCallback_two_monitors():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
@@ -110,7 +111,7 @@ def test_metadata_callback_two_monitors():
     assert "scheduler" not in meta
     assert "early_stopping" not in meta
 
-def test_metadata_callback_scheduler_ReduceLROnPlateau():
+def test_MetadataCallback_scheduler_ReduceLROnPlateau():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.scheduler = {"scheduler": tr.optim.lr_scheduler.ReduceLROnPlateau(model.optimizer, "min"), "monitor": "loss"}
@@ -127,7 +128,7 @@ def test_metadata_callback_scheduler_ReduceLROnPlateau():
     assert meta["scheduler"]["monitor"] == "loss"
     assert "early_stopping" not in meta
 
-def test_metadata_callback_scheduler_CustomScheduler():
+def test_MetadataCallback_scheduler_CustomScheduler():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
@@ -138,7 +139,7 @@ def test_metadata_callback_scheduler_CustomScheduler():
     assert model.metadata_callback.metadata["best_model"]["scheduler_num_lr_reduced"] == best_epoch
     assert model.metadata_callback.metadata["best_model"]["optimizer_lr"] == 0.01 * (0.5 ** best_epoch)
 
-def test_metadata_callback_early_stopping():
+def test_MetadataCallback_early_stopping():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
     model.scheduler = {"scheduler": tr.optim.lr_scheduler.ReduceLROnPlateau(model.optimizer, "min"), "monitor": "loss"}
@@ -156,5 +157,26 @@ def test_metadata_callback_early_stopping():
     assert meta["early_stopping"]["mode"] == "min"
     assert meta["early_stopping"]["min_delta"] == -0.1
 
+def test_MetadataCallback_metadata_hparams():
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
+    model.scheduler = {"scheduler": tr.optim.lr_scheduler.ReduceLROnPlateau(model.optimizer, "min"), "monitor": "loss"}
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+    Trainer(max_epochs=2).fit(model, DataLoader(Reader()))
+    assert model.metadata_callback.metadata is not None
+    meta = json.load(open(model.metadata_callback.log_file_path, "r"))
+    assert meta["fit_hparams"] is None
+
+    model.hparams.metadata_hparams = {"my_hparam": 1, "other": [2, 3, 4, None, 5]}
+    Trainer(max_epochs=5).fit(model, DataLoader(Reader()))
+    meta2 = json.load(open((pth2 := model.metadata_callback.log_file_path), "r"))
+    assert meta2["fit_hparams"] == {'my_hparam': 1, 'other': [2, 3, 4, None, 5]}
+
+    Trainer().test(model, DataLoader(Reader()))
+    assert model.metadata_callback.log_file_path != pth2
+    meta3 = json.load(open(model.metadata_callback.log_file_path, "r"))
+    assert meta3["test_hparams"] == {'my_hparam': 1, 'other': [2, 3, 4, None, 5]}
+
 if __name__ == "__main__":
-    test_metadata_callback_scheduler_ReduceLROnPlateau()
+    test_MetadataCallback_scheduler_ReduceLROnPlateau()
