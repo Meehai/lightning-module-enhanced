@@ -99,4 +99,4 @@ def test_train_setup_metrics_mse():
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
 
 if __name__ == "__main__":
-    test_train_setup_scheduler_bad_2()
+    test_train_setup_metrics_good_accuracy()
