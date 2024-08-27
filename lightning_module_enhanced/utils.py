@@ -1,6 +1,7 @@
 """Utils module"""
 from __future__ import annotations
 from typing import T, Any
+from pathlib import Path
 
 import torch as tr
 import numpy as np
@@ -8,6 +9,9 @@ from torch import nn
 
 from .logger import lme_logger as logger
 
+def get_project_root() -> Path:
+    """useful for tests"""
+    return Path(__file__).parents[1].absolute()
 
 # pylint: disable=too-many-return-statements
 def to_tensor(data):

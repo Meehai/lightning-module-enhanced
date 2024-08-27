@@ -118,15 +118,13 @@ class TrainableModuleMixin(TrainableModule):
         res = []
         for i, monitor in enumerate(self.checkpoint_monitors):
             # Lightning requires ValueError here, though KeyError would be more appropriate
-            if monitor != "loss" and monitor not in self.metrics:
+            if monitor != "loss" and monitor not in self.metrics and self.trainer.current_epoch > 0:
                 raise ValueError(f"Checkpoint monitor '{monitor}' not in metrics: {self.metrics.keys()}")
 
-            metric_fn = self.metrics[monitor] if monitor != "loss" else self.criterion_fn
-            mode = "max" if metric_fn.higher_is_better else "min"
             ckpt_monitor = f"{prefix}{monitor}"
             filename = "{epoch}-{" + prefix + monitor + ":.2f}"
             # note: save_last=True for len(model_ckpt_cbs)==0 only (i.e. first monitor)
-            res.append(ModelCheckpoint(monitor=ckpt_monitor, mode=mode, filename=filename,
+            res.append(ModelCheckpoint(monitor=ckpt_monitor, filename=filename,
                                        save_last=(i == 0), save_on_train_epoch_end=True))
         return res
 
@@ -221,17 +219,10 @@ class TrainableModuleMixin(TrainableModule):
         if self._checkpoint_monitors is None:
             logger.debug("checkpoint_monitors not set. Defaulting to 'loss'")
             self.checkpoint_monitors = ["loss"]
-
-        for monitor in self._checkpoint_monitors:
-            if monitor != "loss" and monitor not in self.metrics:
-                raise ValueError(f"Monitor '{monitor}' not in metrics: '{self.metrics}'")
         return self._checkpoint_monitors
 
     @checkpoint_monitors.setter
     def checkpoint_monitors(self, checkpoint_monitors: list[str]) -> list[str]:
         assert "loss" in checkpoint_monitors, f"'loss' must be in checkpoint monitors. Got: {checkpoint_monitors}"
-        for monitor in checkpoint_monitors:
-            if monitor != "loss" and monitor not in self.metrics:
-                raise ValueError(f"Provided monitor: '{monitor}' is not in the metrics: {self.metrics}")
         self._checkpoint_monitors = checkpoint_monitors
         logger.debug(f"Set the checkpoint monitors to: {self._checkpoint_monitors}")
