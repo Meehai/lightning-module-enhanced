@@ -17,6 +17,10 @@ class PlotMetrics(Callback):
         """Plot the dot. We require to know if the metric is max or min typed."""
         metric = pl_module.metrics[metric_name] if metric_name != "loss" else pl_module.criterion_fn
         metric_history = pl_module.metrics_history.history[metric_name]
+        if len(metric_history["train"]) == 0:
+            breakpoint()
+            logger.debug2(f"No metrics yet for '{metric_name}'")
+            return
         scores = metric_history["val"] if metric_history["val"][0] is not None else metric_history["train"]
         metric_x = np.argmax(scores) if metric.higher_is_better else np.argmin(scores)
         metric_y = scores[metric_x]
