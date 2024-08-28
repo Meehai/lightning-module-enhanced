@@ -70,11 +70,6 @@ class ActiveRunMixin(nn.Module):
         assert isinstance(batch_results, dict), f"Expected dict, got {type(batch_results)}"
         assert "loss" in batch_results.keys(), f"Loss must be in batch_metrics. Got: {list(batch_results.keys())}"
         batch_metrics = set(batch_results.keys()) - {"loss"}
-        prev_metrics = [m[4:] if m.startswith("val_") else m for m in self.metadata_callback.metadata["epoch_metrics"]]
-        prev_metrics = set(prev_metrics) - {"loss"}
-        if len(self.metrics) == 0 and len(prev_metrics) > 0 and (self.trainer.training or self.trainer.sanity_checking):
-            logger.debug(f"Previous metrics (from a previous training) expected: {prev_metrics}")
-            self._setup_active_metrics({k: None for k in prev_metrics})
 
         if batch_metrics != (expected_metrics := set(self.metrics.keys())):
             if len(self.metrics) == 0 and (self.trainer.training or self.trainer.sanity_checking):
