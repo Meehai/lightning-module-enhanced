@@ -107,7 +107,7 @@ def test_implicit_metrics_and_checkpoint_monitors():
     def _model_algorithm(model, batch, epik_metric) -> ModelAlgorithmOutput:
         x, gt = batch
         y = model(x)
-        metrics = {"loss": F.mse_loss(y, gt), "my_metric": (y - gt).abs().mean()}
+        metrics = {"loss": F.mse_loss(y, gt), "my_metric": (y - gt).abs().mean(), "epik_metric": epik_metric}
         return y, metrics, x, gt
 
     class EpikMetric(CallableCoreMetric):
@@ -128,19 +128,19 @@ def test_implicit_metrics_and_checkpoint_monitors():
     pl_logger = CSVLogger(get_project_root() / "test/logs", name=logdir, version=0)
     with pytest.raises(ValueError):
         Trainer(max_epochs=3, logger=pl_logger).fit(model, train_loader)
-    model.checkpoint_monitors = ["my_metric", "loss"]
+    model.checkpoint_monitors = ["my_metric", "loss", "epik_metric"]
     (t1 := Trainer(max_epochs=3, logger=pl_logger)).fit(model, train_loader)
-    assert t1.callbacks[-2].monitor == "my_metric" and Path(t1.callbacks[-2].best_model_path).exists()
+    assert t1.callbacks[-3].monitor == "my_metric" and Path(t1.callbacks[-3].best_model_path).exists()
 
     model2 = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model2.optimizer = optim.SGD(model.parameters(), lr=0.1)
     model2.model_algorithm = partial(_model_algorithm, epik_metric=epik_metric)
-    model2.checkpoint_monitors = ["my_metric", "loss"]
+    model2.checkpoint_monitors = ["my_metric", "loss", "epik_metric"]
     pl_logger2 = CSVLogger(get_project_root() / "test/logs", name=logdir, version=1)
     # model2.load_from_checkpoint(t1.checkpoint_callback.last_model_path)
     (t2 := Trainer(max_epochs=5, logger=pl_logger2)) \
         .fit(model2, train_loader, ckpt_path=t1.checkpoint_callback.last_model_path)
-    assert t2.callbacks[-2].monitor == "my_metric" and Path(t2.callbacks[-2].best_model_path).exists()
+    assert t2.callbacks[-3].monitor == "my_metric" and Path(t2.callbacks[-3].best_model_path).exists()
 
 if __name__ == "__main__":
     test_implicit_metrics_and_checkpoint_monitors()
