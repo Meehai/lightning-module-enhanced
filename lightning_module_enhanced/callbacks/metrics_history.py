@@ -27,11 +27,12 @@ class MetricsHistory(pl.Callback):
 
     @overrides
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: "LME"):
-        if self.history is None:
+        if trainer.current_epoch == 0:
             self._setup_metrics(pl_module)
-        if self.history is not None and self.higher_is_better is None: # for old models TODO: remove at some point
-            self.higher_is_better = {name: metric.higher_is_better for name, metric in pl_module.metrics.items()}
-            self.higher_is_better["loss"] = False
+        else:
+            if self.history is not None and self.higher_is_better is None: # for old models TODO: remove at some point
+                self.higher_is_better = {name: metric.higher_is_better for name, metric in pl_module.metrics.items()}
+                self.higher_is_better["loss"] = False
         assert self.history is not None, "self.history is None: on_train_epoch_end somehow called before on_fit_start."
 
         for metric_name in self.expected_metrics:
