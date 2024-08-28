@@ -290,5 +290,26 @@ def test_fit_different_forward_params_6():
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     Trainer(max_epochs=1).fit(model, DataLoader(MyReader()))
 
+def test_i_load_from_checkpoint():
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.optimizer = optim.SGD(model.parameters(), lr=0.1)
+    model.scheduler = {"scheduler": ReduceLROnPlateau(model.optimizer, factor=0.9, patience=5), "monitor": "loss"}
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+    model.checkpoint_monitors = ["loss"]
+    model.hparams.hello = "world"
+    (t1 := Trainer(max_epochs=3)).fit(model, DataLoader(Reader()))
+
+    model2 = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model2.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model2.optimizer = optim.SGD(model.parameters(), lr=0.1)
+    model2.scheduler = {"scheduler": ReduceLROnPlateau(model.optimizer, factor=0.9, patience=5), "monitor": "loss"}
+    model2.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+
+    model2.load_from_checkpoint(t1.checkpoint_callback.last_model_path)
+    assert model2.hparams.hello == "world"
+    assert model2.optimizer.state_dict() == model.optimizer.state_dict()
+    assert model2.scheduler["scheduler"].state_dict() == model.scheduler["scheduler"].state_dict()
+
 if __name__ == "__main__":
-    test_fit_and_test_good()
+    test_i_load_from_checkpoint()

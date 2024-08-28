@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 from os import path
 
 name = "lightning-module-enhanced"
-version = "0.30.1"
+version = "0.30.3"
 description = "Lightning Module Enhanced"
 url = "https://gitlab.com/mihaicristianpirvu/lightning-module-enhanced"
 

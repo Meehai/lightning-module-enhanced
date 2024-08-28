@@ -48,7 +48,7 @@ def test_load_metrics_metadata():
     assert (get_project_root() / "test/logs" / log_dir_name / "version_1" / "checkpoints" / ckpt_path.name).exists()
     shutil.rmtree(get_project_root() / "test/logs" / log_dir_name, ignore_errors=True)
 
-def test_load_implicit_metrics():
+def test_load_implicit_metrics(): # TODO(!20): remove implicit metrics
     def _model_algorithm(model, batch) -> ModelAlgorithmOutput:
         x, gt = batch
         y = model(x)
@@ -74,7 +74,7 @@ def test_load_implicit_metrics():
     t2 = Trainer(max_epochs=6, logger=pl_logger2)
     t2.fit(model2, train_loader, ckpt_path=ckpt_path)
 
-def test_implicit_core_metrics():
+def test_implicit_core_metrics(): # TODO(!20): remove implicit metrics
     def _model_algorithm(model, batch, epik_metric) -> ModelAlgorithmOutput:
         x, gt = batch
         y = model(x)
@@ -104,11 +104,17 @@ def test_implicit_core_metrics():
     assert t1.callbacks[-2].monitor == "epik_metric" and t1.callbacks[-2].mode == "max"
 
 def test_implicit_metrics_and_checkpoint_monitors():
-    def _model_algorithm(model, batch) -> ModelAlgorithmOutput:
+    def _model_algorithm(model, batch, epik_metric) -> ModelAlgorithmOutput:
         x, gt = batch
         y = model(x)
         metrics = {"loss": F.mse_loss(y, gt), "my_metric": (y - gt).abs().mean()}
         return y, metrics, x, gt
+
+    class EpikMetric(CallableCoreMetric):
+        def forward(self, y, gt):
+            return self
+        def batch_update(self, batch_result) -> None:
+            pass
 
     train_loader = DataLoader(Reader(), batch_size=10)
     shutil.rmtree(get_project_root() / "test/logs/" / (logdir := "test_implicit_metrics_and_checkpoint_monitors"),
@@ -116,7 +122,8 @@ def test_implicit_metrics_and_checkpoint_monitors():
 
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = optim.SGD(model.parameters(), lr=0.1)
-    model.model_algorithm = _model_algorithm
+    epik_metric = EpikMetric(lambda y, gt: (y - gt) ** 2, higher_is_better=True) # TODO(!20): remove implicit metrics
+    model.model_algorithm = partial(_model_algorithm, epik_metric=epik_metric)
     model.checkpoint_monitors = ["my_metric_wrong", "loss"]
     pl_logger = CSVLogger(get_project_root() / "test/logs", name=logdir, version=0)
     with pytest.raises(ValueError):
@@ -124,6 +131,16 @@ def test_implicit_metrics_and_checkpoint_monitors():
     model.checkpoint_monitors = ["my_metric", "loss"]
     (t1 := Trainer(max_epochs=3, logger=pl_logger)).fit(model, train_loader)
     assert t1.callbacks[-2].monitor == "my_metric" and Path(t1.callbacks[-2].best_model_path).exists()
+
+    model2 = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model2.optimizer = optim.SGD(model.parameters(), lr=0.1)
+    model2.model_algorithm = partial(_model_algorithm, epik_metric=epik_metric)
+    model2.checkpoint_monitors = ["my_metric", "loss"]
+    pl_logger2 = CSVLogger(get_project_root() / "test/logs", name=logdir, version=1)
+    # model2.load_from_checkpoint(t1.checkpoint_callback.last_model_path)
+    (t2 := Trainer(max_epochs=5, logger=pl_logger2)) \
+        .fit(model2, train_loader, ckpt_path=t1.checkpoint_callback.last_model_path)
+    assert t2.callbacks[-2].monitor == "my_metric" and Path(t2.callbacks[-2].best_model_path).exists()
 
 if __name__ == "__main__":
     test_implicit_metrics_and_checkpoint_monitors()
