@@ -211,7 +211,8 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
         self._reset_all_active_metrics()
 
     @overrides(check_signature=False)
-    def configure_optimizers(self) -> list[optim.Optimizer]:
+    def configure_optimizers(self) -> list[optim.Optimizer] | \
+            tuple[list[optim.Optimizer], list[optim.lr_scheduler.LRScheduler]]:
         """
         Configure the optimizer(s). We always return a list of optimizers (even if just 1)
         """
@@ -219,6 +220,8 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
             raise ValueError("No optimizer. Use model.optimizer=optim.XXX or add an optimizer property in base model")
         res = make_list(self.optimizer)
         assert all(isinstance(x, optim.Optimizer) for x in res), (type(x) for x in res)
+        if(scheduler := self.scheduler) is not None:
+            return res, make_list(scheduler)
         return res
 
     # Public methods
@@ -280,6 +283,31 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
     @overrides(check_signature=False)
     def load_state_dict(self, *args, **kwargs):
         return self.base_model.load_state_dict(*args, **kwargs)
+
+    @overrides
+    def load_from_checkpoint(self, checkpoint_path: Path) -> LightningModuleEnhanced:
+        data = tr.load(checkpoint_path)
+        self.load_state_dict(data["state_dict"], strict=True)
+        loaded_count = ["weights"]
+        if "hyper_parameters" in data:
+            for k, v in data["hyper_parameters"].items():
+                self.hparams[k] = v
+            cnt = len(data["hyper_parameters"])
+            loaded_count.extend([f"{cnt} hyper_parameter{'s' if cnt > 1 else ''}"] if cnt > 0 else [])
+        if "optimizer_states" in data:
+            optimizers = make_list(self.optimizer) if self.optimizer is not None else []
+            assert (A := len(optimizers)) == (B := len(data["optimizer_states"])), (A, B)
+            for optimizer, optimizer_state in zip(optimizers, data["optimizer_states"]):
+                optimizer.load_state_dict(optimizer_state)
+            loaded_count.extend([f"{A} optimizer{'s' if A > 1 else ''}"] if A > 0 else [])
+        if "lr_schedulers" in data:
+            schedulers = make_list(self.scheduler) if self.scheduler is not None else []
+            assert (A := len(schedulers)) == (B := len(data["lr_schedulers"])), (A, B)
+            for scheduler, scheduler_state in zip(schedulers, data["lr_schedulers"]):
+                scheduler["scheduler"].load_state_dict(scheduler_state)
+            loaded_count.extend([f"{A} scheduler{'s' if A > 1 else ''}"] if A > 0 else [])
+        logger.info(f"Loaded state from checkpoint '{checkpoint_path}'. Loaded state for: {', '.join(loaded_count)}")
+        return self
 
     # Private methods
 

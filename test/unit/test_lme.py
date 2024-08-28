@@ -1,8 +1,10 @@
 # pylint: disable=all
 import torch as tr
 from lightning_module_enhanced import LME
-from torch import nn
+from torch import nn, optim
 from copy import deepcopy
+from pytorch_lightning.callbacks import ModelCheckpoint
+from tempfile import TemporaryDirectory
 
 def test_constructor_1():
     module = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
