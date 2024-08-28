@@ -92,13 +92,16 @@ def test_implicit_core_metrics():
 
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = optim.SGD(model.parameters(), lr=0.1)
-    epik_metric = EpikMetric(lambda y, gt: (y - gt) ** 2, higher_is_better=False)
+    epik_metric = EpikMetric(lambda y, gt: (y - gt) ** 2, higher_is_better=True)
     model.model_algorithm = partial(_model_algorithm, epik_metric=epik_metric)
+    model.checkpoint_monitors = ["epik_metric", "loss"]
 
     pl_logger = CSVLogger(get_project_root() / "test/logs", name=logdir, version=0)
     t1 = Trainer(max_epochs=3, logger=pl_logger)
     t1.fit(model, train_loader)
     assert id(epik_metric) == id(model.metrics["epik_metric"])
+    assert t1.callbacks[-1].monitor == "loss" and t1.callbacks[-1].mode == "min"
+    assert t1.callbacks[-2].monitor == "epik_metric" and t1.callbacks[-2].mode == "max"
 
 def test_implicit_metrics_and_checkpoint_monitors():
     def _model_algorithm(model, batch) -> ModelAlgorithmOutput:

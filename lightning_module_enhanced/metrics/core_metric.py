@@ -65,6 +65,11 @@ class CoreMetric(nn.Module, ABC):
         """This is called at each epoch end after compute(). It resets the state for the next epoch."""
 
     @property
+    def mode(self) -> str:
+        """compatibility with ModelCheckpoint"""
+        return "max" if self.higher_is_better else "min"
+
+    @property
     def running_model(self) -> Optional[Callable[[], "LME"]]:
         """returns the active running model, if available (during training/testing)"""
         return self._running_model

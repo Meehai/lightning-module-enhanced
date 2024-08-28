@@ -198,6 +198,16 @@ class TrainableModuleMixin(TrainableModule):
             self._metrics[metric_name] = metric_fn
         if len(self.metrics) > 0:
             logger.info(f"Set module metrics: {list(self.metrics.keys())} ({len(self.metrics)})")
+            if self._trainer is not None and self.trainer.training: # TODO(!20): remove implicit metrics
+                for monitor in self.checkpoint_monitors:
+                    if monitor == "loss":
+                        continue
+                    for callback in self.trainer.callbacks:
+                        if isinstance(callback, ModelCheckpoint) and callback.monitor == monitor:
+                            if monitor not in self.metrics:
+                                logger.warning(f"'{monitor}' not in self.metrics. Possibly implicit metric stuff...")
+                                continue
+                            callback.mode = self.metrics[monitor].mode
 
     @property
     def scheduler(self) -> SchedulerType:
