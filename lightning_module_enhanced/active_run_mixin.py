@@ -37,19 +37,19 @@ class ActiveRunMixin(nn.Module):
                 else:
                     logger.debug2(f"Got a CoreMetric passed in active_metrics: {metric_name}: {val}")
                     res_metrics[metric_name] = val
-            self.metrics = res_metrics
+            self.metrics: dict[str, CoreMetric] = res_metrics
 
         self._active_run_metrics = {"": {"loss": self.criterion_fn, **self.metrics}}
         if hasattr(self, "trainer"):
             prefix = "val_" if self.trainer.enable_validation else ""
             if self.trainer.enable_validation:
                 self._active_run_metrics["val_"] = deepcopy(self._active_run_metrics[""])
-            for metric in res_metrics.keys():
+            for metric in self.metrics.keys():
                 for callback in self.trainer.callbacks:
                     if isinstance(callback, ModelCheckpoint) and callback.monitor == f"{prefix}{metric}":
-                        if callback.mode != res_metrics[metric].mode:  # TODO(!20): remove implicit metrics
+                        if callback.mode != self.metrics[metric].mode:  # TODO(!20): remove implicit metrics
                             logger.warning(f"Upating direction of implicit metric: '{metric}'!")
-                            callback.mode = res_metrics[metric].mode
+                            callback.mode = self.metrics[metric].mode
 
     def _reset_all_active_metrics(self):
         """ran at epoch end to reset the metrics"""
