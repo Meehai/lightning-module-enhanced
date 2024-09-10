@@ -62,5 +62,8 @@ class MetricsHistory(pl.Callback):
         self.expected_metrics = state_dict["expected_metrics"]
         self.higher_is_better = state_dict.get("higher_is_better", None) # TODO: remove this
 
+    def __repr__(self):
+        return f"""[MetricsHistory]. { {k: f"{len(v['train'])} entries" for k, v in self.history.items()} }"""
+
     def __getitem__(self, key: str):
         return self.history[key]

@@ -126,7 +126,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
 
     @overrides
     def on_fit_start(self) -> None:
-        self._setup_active_metrics(self.metrics)
+        self._setup_active_metrics()
         self._set_metrics_running_model()
         self._copy_loaded_checkpoints()
 
@@ -136,7 +136,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
 
     @overrides
     def on_test_start(self) -> None:
-        self._setup_active_metrics(self.metrics)
+        self._setup_active_metrics()
         self._set_metrics_running_model()
 
     @overrides

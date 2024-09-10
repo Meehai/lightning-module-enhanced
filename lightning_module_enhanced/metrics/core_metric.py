@@ -29,12 +29,8 @@ from ..logger import lme_logger as logger
 
 MetricFnType = Callable[[tr.Tensor, tr.Tensor], tr.Tensor]
 
-
 class CoreMetric(nn.Module, ABC):
-    """
-    Generic CoreMetric for a LME.
-    """
-
+    """Generic CoreMetric for a LME."""
     def __init__(self, higher_is_better: bool, requires_grad: bool = False):
         assert isinstance(higher_is_better, bool) and isinstance(requires_grad, bool)
         super().__init__()

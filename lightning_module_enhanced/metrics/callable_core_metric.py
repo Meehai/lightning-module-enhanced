@@ -6,7 +6,6 @@ from .core_metric import CoreMetric, MetricFnType
 
 EpochFnType = Union[str, MetricFnType]
 
-
 class CallableCoreMetric(CoreMetric):
     """CallableCoreMetric implementation"""
     def __init__(self, metric_fn: MetricFnType, *args, epoch_fn: EpochFnType = "mean", **kwargs):
