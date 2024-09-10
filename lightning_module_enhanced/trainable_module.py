@@ -225,5 +225,7 @@ class TrainableModuleMixin(TrainableModule):
     @checkpoint_monitors.setter
     def checkpoint_monitors(self, checkpoint_monitors: list[str]) -> list[str]:
         assert "loss" in checkpoint_monitors, f"'loss' must be in checkpoint monitors. Got: {checkpoint_monitors}"
+        cm_wo_loss = set(x for x in checkpoint_monitors if x != "loss")
+        assert all(x in self.metrics for x in cm_wo_loss), f"Not in metrics: {(cm_wo_loss - self.metrics.keys())}"
         self._checkpoint_monitors = checkpoint_monitors
         logger.debug(f"Set the checkpoint monitors to: {self._checkpoint_monitors}")
