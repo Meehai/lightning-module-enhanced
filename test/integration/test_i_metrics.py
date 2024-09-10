@@ -12,9 +12,9 @@ from lightning_module_enhanced.metrics import CallableCoreMetric, CoreMetric
 from lightning_module_enhanced.utils import get_project_root
 
 class Reader(Dataset):
-    def __init__(self, d_out: int = 1):
-        self.x = tr.randn(100, 2)
-        self.gt = tr.randn(100, d_out)
+    def __init__(self, d_out: int = 1, length: int = 100):
+        self.x = tr.randn(length, 2)
+        self.gt = tr.randn(length, d_out)
 
     def __getitem__(self, ix):
         return self.x[ix], self.gt[ix]
@@ -171,3 +171,32 @@ def test_epoch_metric_reduced():
     Trainer(max_epochs=3, logger=pl_logger).fit(model, train_loader)
     assert len(model.metrics_history.history["my_epoch_metric"]["train"]) == 3
     assert len(model.metrics_history.history["loss"]["train"]) == 3
+
+def test_epoch_metric_reduced_val():
+    class MyEpochMetric(CoreMetric):
+        def __init__(self):
+            super().__init__(higher_is_better=False)
+            self.batch_count = []
+            self.reset()
+        def forward(self, y: tr.Tensor, gt: tr.Tensor):
+            self.batch_count[-1] += len(y)
+        def batch_update(self, batch_result: F.Tensor) -> None:
+            pass
+        def epoch_result(self) -> tr.Tensor:
+            return tr.Tensor([0])
+        def reset(self):
+            self.batch_count.append(0)
+
+    train_loader = DataLoader(Reader(d_out=5), batch_size=10)
+    val_loader = DataLoader(Reader(d_out=5, length=30), batch_size=10)
+    shutil.rmtree(get_project_root() / "test/logs" / (logdir := "test_epoch_metric_reduced"), ignore_errors=True)
+
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 5)))
+    model.optimizer = optim.SGD(model.parameters(), lr=0.1)
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+    model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min"), "my_epoch_metric": MyEpochMetric()}
+    model.criterion_fn = lambda y, gt: (y - gt).abs().mean()
+    pl_logger = CSVLogger(get_project_root() / "test/logs", name=logdir, version=0)
+
+    Trainer(max_epochs=3, logger=pl_logger).fit(model, train_loader, val_loader)
+    assert model.metrics["my_epoch_metric"].batch_count == [100, 100, 100, 0] # used to use same object for val too!!!

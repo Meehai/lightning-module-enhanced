@@ -171,7 +171,11 @@ class TrainableModuleMixin(TrainableModule):
         if self._metrics is None:
             logger.debug("No metrics were set. Returning empty dict")
             return {}
-        return self._metrics
+        try: # for active runs
+            res = self._active_run_metrics.get(self._prefix_from_trainer(), self._metrics)
+            return {k: v for k, v in res.items() if k != "loss"}
+        except Exception:
+            return self._metrics
 
     @metrics.setter
     def metrics(self, metrics: dict[str, CoreMetric | tuple[Callable | None, str]]):
