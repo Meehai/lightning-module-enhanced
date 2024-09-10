@@ -54,8 +54,7 @@ class ActiveRunMixin(nn.Module):
             raise ValueError(f"Expected metrics: {expected_metrics} vs. this batch: {batch_results.keys()}")
 
         batch_results_detach = tr_detach_data(batch_results)
-        prefix = self._prefix_from_trainer()
-        for metric_name, metric in self._active_run_metrics[prefix].items():
+        for metric_name, metric in self.metrics.items(): # self.metrics keeps track of prefix_from_trainer if needed.
             metric.batch_update(batch_results_detach[metric_name])
 
     def _run_and_log_metrics_at_epoch_end(self):

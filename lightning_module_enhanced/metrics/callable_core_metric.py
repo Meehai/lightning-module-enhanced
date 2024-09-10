@@ -28,9 +28,8 @@ class CallableCoreMetric(CoreMetric):
         return epoch_fn
 
     @overrides
-    def forward(self, y: tr.Tensor, gt: tr.Tensor) -> tr.Tensor:
-        batch_res = self.metric_fn(y, gt)
-        return batch_res
+    def forward(self, *args, **kwargs) -> tr.Tensor:
+        return self.metric_fn(*args, **kwargs)
 
     @overrides
     def batch_update(self, batch_result: tr.Tensor) -> None:

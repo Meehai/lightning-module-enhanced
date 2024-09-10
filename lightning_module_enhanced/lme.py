@@ -201,7 +201,6 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
     @overrides
     def on_train_epoch_end(self) -> None:
         """Computes epoch average train loss and metrics for logging."""
-        # If validation is enabled (for train loops), add "val_" metrics for all logged metrics.
         self._run_and_log_metrics_at_epoch_end()
         self._reset_all_active_metrics()
 
