@@ -86,7 +86,6 @@ def test_implicit_core_metrics(): # (!30) implicit metrics are no longer support
     model.optimizer = optim.SGD(model.parameters(), lr=0.1)
     epik_metric = EpikMetric(lambda y, gt: (y - gt) ** 2, higher_is_better=True)
     model.model_algorithm = partial(_model_algorithm, epik_metric=epik_metric)
-    model.checkpoint_monitors = ["epik_metric", "loss"]
 
     pl_logger = CSVLogger(get_project_root() / "test/logs", name=logdir, version=0)
     with pytest.raises(ValueError) as exc:

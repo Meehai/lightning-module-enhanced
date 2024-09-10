@@ -1,4 +1,5 @@
 from __future__ import annotations
+import pytest
 from lightning_module_enhanced import LME, ModelAlgorithmOutput
 from lightning_module_enhanced.utils import to_device, to_tensor
 from pytorch_lightning import Trainer
@@ -296,6 +297,9 @@ def test_i_load_from_checkpoint():
     model.optimizer = optim.SGD(model.parameters(), lr=0.1)
     model.scheduler = {"scheduler": ReduceLROnPlateau(model.optimizer, factor=0.9, patience=5), "monitor": "loss"}
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+    with pytest.raises(AssertionError) as exc:
+        model.checkpoint_monitors = ["loss", "some_metric"]
+    assert f"{exc.value}" == "Not in metrics: {'some_metric'}"
     model.checkpoint_monitors = ["loss"]
     model.hparams.hello = "world"
     (t1 := Trainer(max_epochs=3)).fit(model, DataLoader(Reader()))
