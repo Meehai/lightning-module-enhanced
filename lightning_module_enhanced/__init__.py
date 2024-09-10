@@ -1,6 +1,7 @@
 """Init module"""
 import logging
 import warnings
+from lightning_fabric.utilities.warnings import PossibleUserWarning
 
 # pylint: disable=reimported
 from .lme import LightningModuleEnhanced as LME, ModelAlgorithmOutput

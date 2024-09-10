@@ -3,13 +3,8 @@ from __future__ import annotations
 from copy import deepcopy
 import torch as tr
 from torch import nn
-from pytorch_lightning.callbacks import ModelCheckpoint
-from .metrics import CoreMetric, CallableCoreMetric
+from .metrics import CoreMetric
 from .utils import tr_detach_data
-from .logger import lme_logger as logger
-
-def _make_stub_metric() -> CoreMetric:
-    return CallableCoreMetric(metric_fn=lambda y, _: (y - y).mean(), higher_is_better=False)
 
 # pylint: disable=abstract-method
 class ActiveRunMixin(nn.Module):
@@ -23,33 +18,13 @@ class ActiveRunMixin(nn.Module):
         # Updated during the epochs of an actieve run (i.e. Trainer.fit, Trainer.test or Trainer.predict).
         self._active_run_metrics: dict[str, dict[str, CoreMetric]] = {}
 
-    def _setup_active_metrics(self, metrics: dict[str, CoreMetric | tr.Tensor | None]):
-        """sets up self.active_run_metrics based on metrics for this train run. Called at on_fit_start"""
-        assert isinstance(metrics, dict), type(metrics)
-        assert all(isinstance(v, (type(None), tr.Tensor, CoreMetric)) for v in metrics.values()), metrics
-        if len(self.metrics) > 0:
-            assert (a := metrics.keys()) == (b := self.metrics.keys()), f"Call this w/o metrics or same keys: {a}, {b}"
-        else:
-            res_metrics = {}
-            for metric_name, val in metrics.items():
-                if val is None or isinstance(val, tr.Tensor):
-                    res_metrics[metric_name] = _make_stub_metric()
-                else:
-                    logger.debug2(f"Got a CoreMetric passed in active_metrics: {metric_name}: {val}")
-                    res_metrics[metric_name] = val
-            self.metrics: dict[str, CoreMetric] = res_metrics
-
+    def _setup_active_metrics(self):
+        """sets up self.active_run_metrics based on metrics for this train run. Called at on_fit_start."""
+        if len(self._active_run_metrics) > 0:
+            raise ValueError("TODO: add breakpoint here to understand if/where it's hit")
         self._active_run_metrics = {"": {"loss": self.criterion_fn, **self.metrics}}
-        if hasattr(self, "trainer"):
-            prefix = "val_" if self.trainer.enable_validation else ""
-            if self.trainer.enable_validation:
-                self._active_run_metrics["val_"] = deepcopy(self._active_run_metrics[""])
-            for metric in self.metrics.keys():
-                for callback in self.trainer.callbacks:
-                    if isinstance(callback, ModelCheckpoint) and callback.monitor == f"{prefix}{metric}":
-                        if callback.mode != self.metrics[metric].mode:  # TODO(!20): remove implicit metrics
-                            logger.warning(f"Upating direction of implicit metric: '{metric}'!")
-                            callback.mode = self.metrics[metric].mode
+        if hasattr(self, "trainer") and self.trainer.enable_validation:
+            self._active_run_metrics["val_"] = deepcopy(self._active_run_metrics[""])
 
     def _reset_all_active_metrics(self):
         """ran at epoch end to reset the metrics"""
@@ -70,26 +45,18 @@ class ActiveRunMixin(nn.Module):
                 metric.running_model = None
         self._active_run_metrics = {}
 
-    def _active_run_batch_updates(self, batch_results: dict):
-        prefix = self._prefix_from_trainer()
-        for metric_name, metric in self._active_run_metrics[prefix].items():
-            metric.batch_update(tr_detach_data(batch_results[metric_name]))
-
     def _update_metrics_at_batch_end(self, batch_results: dict[str, tr.Tensor]):
         assert isinstance(batch_results, dict), f"Expected dict, got {type(batch_results)}"
         assert "loss" in batch_results.keys(), f"Loss must be in batch_metrics. Got: {list(batch_results.keys())}"
         batch_metrics = set(batch_results.keys()) - {"loss"}
 
         if batch_metrics != (expected_metrics := set(self.metrics.keys())):
-            if len(self.metrics) == 0 and (self.trainer.training or self.trainer.sanity_checking):
-                logger.info(f"Implicit metrics set from model_algorithm: {batch_metrics}. All must be lower_is_better!")
-                self._setup_active_metrics({k: v for k, v in batch_results.items() if k != "loss"})
-                if any(cm not in (B := list(self._active_run_metrics[""])) for cm in self.checkpoint_monitors):
-                    raise ValueError(f"Some checkpoint monitor: {self.checkpoint_monitors} not in active metrics: {B}")
-            else:
-                raise ValueError(f"Expected metrics: {expected_metrics} vs. this batch: {batch_results.keys()}")
+            raise ValueError(f"Expected metrics: {expected_metrics} vs. this batch: {batch_results.keys()}")
 
-        self._active_run_batch_updates(tr_detach_data(batch_results))
+        batch_results_detach = tr_detach_data(batch_results)
+        prefix = self._prefix_from_trainer()
+        for metric_name, metric in self._active_run_metrics[prefix].items():
+            metric.batch_update(batch_results_detach[metric_name])
 
     def _run_and_log_metrics_at_epoch_end(self):
         """Runs and logs a given list of logged metrics. Assume they all exist in self.metrics"""

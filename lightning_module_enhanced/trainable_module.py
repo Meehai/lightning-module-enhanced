@@ -9,7 +9,7 @@ from torch import optim, nn
 import torch as tr
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
-from .metrics import CoreMetric, CallableCoreMetric
+from .metrics import CoreMetric, CallableCoreMetric, StubMetric
 from .callbacks import MetadataCallback, MetricsHistory
 from .logger import lme_logger as logger
 from .utils import parsed_str_type, make_list
@@ -174,40 +174,31 @@ class TrainableModuleMixin(TrainableModule):
         return self._metrics
 
     @metrics.setter
-    def metrics(self, metrics: dict[str, tuple[Callable, str]]):
+    def metrics(self, metrics: dict[str, CoreMetric | tuple[Callable | None, str]]):
+        assert all(isinstance(k, str) for k in metrics.keys()), metrics
+        assert all(isinstance(v, (tuple, CoreMetric)) for v in metrics.values()), metrics
+        assert "loss" not in metrics.keys(), f"'loss' is not a valid metric name {list(metrics.keys())}"
+        assert not any(k.startswith("val_") for k in metrics.keys()), "metrics cannot start with val_"
         if self._metrics is not None:
             logger.debug(f"Overwriting existing metrics {list(self.metrics.keys())} to {list(metrics.keys())}")
-        self._metrics = {}
 
-        assert "loss" not in metrics.keys(), f"'loss' is not a valid metric name {list(metrics.keys())}"
+        res = {}
         for metric_name, metric_fn in metrics.items():
             # Our metrics can be a CoreMetric already, a tuple (callable, min/max) or just a Callable
-            assert isinstance(metric_fn, (CoreMetric, tuple)), f"Unknown metric type: '{type(metric_fn)}'. Expected " \
-                                                               'CoreMetric, or a tuple of form (Callable, "min"/"max").'
-            assert not metric_name.startswith("val_"), "metrics cannot start with val_"
-
-            # If we get a tuple, we will assume it's a 2 piece: a callable function (or class) and a
             if isinstance(metric_fn, tuple):
-                logger.debug(f"Metric '{metric_name}' is a callable. Converting to CallableCoreMetric.")
-                metric_fn, min_or_max = metric_fn
-                assert not isinstance(metric_fn, CoreMetric), "Cannot use tuple syntax with metric instances"
-                assert isinstance(metric_fn, Callable), "Cannot use the tuple syntax with non-callables for metrics"
-                assert min_or_max in ("min", "max"), f"Got '{min_or_max}', expected 'min' or 'max'"
-                metric_fn = CallableCoreMetric(metric_fn, higher_is_better=(min_or_max == "max"), requires_grad=False)
+                assert len(metric_fn) == 2, f"Expected (None|Callable, 'min'/'max', got: {metric_fn}"
+                assert metric_fn[1] in ("min", "max"), f"Expected 'min'/'max', got: {metric_fn[1]}"
+                if metric_fn[0] is None:
+                    metric_fn = StubMetric(metric_fn[1] == "max")
+                    logger.debug(f"Metric: '{metric_name}'. Making a StubMetric. Direction: {metric_fn.mode=}")
+                else:
+                    metric_fn = CallableCoreMetric(metric_fn[0], higher_is_better=metric_fn[1] == "max")
+                    logger.debug(f"Metric: '{metric_name}'. Making a CallableCoreMetric. Direction: {metric_fn.mode=}")
+            assert isinstance(metric_fn, CoreMetric), f"At this point we should have only CoreMetrics. Got: {metric_fn}"
+            res[metric_name] = metric_fn
 
-            self._metrics[metric_name] = metric_fn
-        if len(self.metrics) > 0:
-            logger.info(f"Set module metrics: {list(self.metrics.keys())} ({len(self.metrics)})")
-            if self._trainer is not None and self.trainer.training: # TODO(!20): remove implicit metrics
-                for monitor in self.checkpoint_monitors:
-                    if monitor == "loss":
-                        continue
-                    for callback in self.trainer.callbacks:
-                        if isinstance(callback, ModelCheckpoint) and callback.monitor == monitor:
-                            if monitor not in self.metrics:
-                                logger.warning(f"'{monitor}' not in self.metrics. Possibly implicit metric stuff...")
-                                continue
-                            callback.mode = self.metrics[monitor].mode
+        logger.info(f"Set module metrics: {list(res.keys())} ({len(res)})" if len(res) > 0 else "Unset the metrics")
+        self._metrics = res
 
     @property
     def scheduler(self) -> SchedulerType:
