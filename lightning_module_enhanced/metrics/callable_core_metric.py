@@ -64,12 +64,6 @@ class CallableCoreMetric(CoreMetric):
             self.batch_results *= 0
         self.batch_count *= 0
 
-    def __str__(self):
-        return f"{super().__str__()}. Fn: {self.metric_fn}"
-
-    def __repr__(self):
-        return str(self)
-
     def __deepcopy__(self, memo):
         return type(self)(self.metric_fn, epoch_fn=self.epoch_fn, higher_is_better=self.higher_is_better,
                           requires_grad=self.requires_grad)

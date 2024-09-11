@@ -60,6 +60,7 @@ def test_metrics_history_3():
     prev = copy(pm.history["l1"]["train"][0])
     assert len(pm.history["l1"]["train"]) == len(pm.history["l1"]["val"]) == 2
     assert len(pm.history["loss"]["train"]) == len(pm.history["loss"]["val"]) == 2
+    assert not any(x == 0 for x in pm.history["loss"]["train"]) and not any(x == 0 for x in pm.history["loss"]["val"])
 
     Trainer(max_epochs=5).fit(model, DataLoader(Reader()), DataLoader(Reader()),
                               ckpt_path=model.trainer.checkpoint_callback.best_model_path)

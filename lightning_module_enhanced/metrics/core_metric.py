@@ -26,6 +26,7 @@ from torch import nn
 import torch as tr
 
 from ..logger import lme_logger as logger
+from ..utils import parsed_str_type
 
 MetricFnType = Callable[[tr.Tensor, tr.Tensor], tr.Tensor]
 
@@ -93,9 +94,12 @@ class CoreMetric(nn.Module, ABC):
         return epoch_result_reduced
 
     def __str__(self):
-        str_type = str(type(self)).split(".")[-1][0:-2]
-        f_str = f"[{str_type}]. Higher is better: {self.higher_is_better}. Grad: {self.requires_grad}"
+        f_str = f"[{parsed_str_type(self)}]. Mode: {self.mode}. Grad: {self.requires_grad}. " \
+                f"Count: {self.batch_count.sum()}"
         return f_str
+
+    def __repr__(self):
+        return str(self)
 
     def __call__(self, *args, **kwargs) -> tr.Tensor:
         return self.forward(*args, **kwargs)
