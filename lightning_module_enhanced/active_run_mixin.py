@@ -50,7 +50,7 @@ class ActiveRunMixin(nn.Module):
         run_metrics: dict[str, CoreMetric] = self._active_run_metrics[self._prefix_from_trainer()] # .metrics no loss
 
         if (bres := set(batch_results.keys())) != (expected_metrics := set(run_metrics.keys())):
-            raise ValueError(f"Expected metrics: {list(expected_metrics)} vs. this batch: {list(bres)}")
+            raise ValueError(f"Expected metrics: {sorted(expected_metrics)} vs. this batch: {sorted(bres)}")
 
         for metric_name, metric in run_metrics.items():
             metric.batch_update(batch_results_detach[metric_name])
