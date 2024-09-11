@@ -64,7 +64,7 @@ def test_load_implicit_metrics(): # (!30) implicit metrics are no longer support
 
     with pytest.raises(ValueError) as exc:
         Trainer(max_epochs=3, logger=pl_logger).fit(model, train_loader)
-    assert f"{exc.value}" == "Expected metrics: set() vs. this batch: dict_keys(['loss', 'my_metric'])"
+    assert f"{exc.value}" == "Expected metrics: ['loss'] vs. this batch: ['loss', 'my_metric']"
 
 def test_implicit_core_metrics(): # (!30) implicit metrics are no longer supported because very buggy
     def _model_algorithm(model, batch, epik_metric) -> ModelAlgorithmOutput:
@@ -90,7 +90,7 @@ def test_implicit_core_metrics(): # (!30) implicit metrics are no longer support
     pl_logger = CSVLogger(get_project_root() / "test/logs", name=logdir, version=0)
     with pytest.raises(ValueError) as exc:
         Trainer(max_epochs=3, logger=pl_logger).fit(model, train_loader)
-    assert f"{exc.value}" == "Expected metrics: set() vs. this batch: dict_keys(['loss', 'epik_metric'])"
+    assert f"{exc.value}" == "Expected metrics: ['loss'] vs. this batch: ['loss', 'epik_metric']"
 
 def test_metrics_from_algorithm(): # Pasing metrics from model_algorithm is fine as long as they were defined before
     def _model_algorithm(model, batch: tuple[tr.Tensor, tr.Tensor]) -> ModelAlgorithmOutput:
