@@ -57,4 +57,4 @@ def test_fit_model_algorithm_implicit_metrics(): # (!30) implicit metrics are no
     model.model_algorithm = my_model_algo
     with pytest.raises(ValueError) as exc:
         Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
-    assert f"{exc.value}" == "Expected metrics: set() vs. this batch: dict_keys(['loss', 'lala'])"
+    assert f"{exc.value}" == "Expected metrics: ['loss'] vs. this batch: ['lala', 'loss']"
