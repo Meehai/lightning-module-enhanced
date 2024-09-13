@@ -117,15 +117,11 @@ class TrainableModuleMixin(TrainableModule):
         prefix = "val_" if self.trainer.enable_validation else ""
         res = []
         for i, monitor in enumerate(self.checkpoint_monitors):
-            # Lightning requires ValueError here, though KeyError would be more appropriate
-            if monitor != "loss" and monitor not in self.metrics and self.trainer.current_epoch > 0:
-                raise ValueError(f"Checkpoint monitor '{monitor}' not in metrics: {self.metrics.keys()}")
-
-            ckpt_monitor = f"{prefix}{monitor}"
-            filename = "{epoch}-{" + prefix + monitor + ":.2f}"
             # note: save_last=True for len(model_ckpt_cbs)==0 only (i.e. first monitor)
-            res.append(ModelCheckpoint(monitor=ckpt_monitor, filename=filename,
-                                       save_last=(i == 0), save_on_train_epoch_end=True))
+            mode = self.metrics[monitor].mode if monitor != "loss" else "min"
+            filename = "{epoch}-{" + prefix + monitor + ":.2f}"
+            res.append(ModelCheckpoint(monitor=f"{prefix}{monitor}", filename=filename, save_last=(i == 0),
+                                       save_on_train_epoch_end=True, mode=mode))
         return res
 
     @property
@@ -169,7 +165,7 @@ class TrainableModuleMixin(TrainableModule):
     def metrics(self) -> dict[str, CoreMetric]:
         """Gets the list of metric names"""
         if self._metrics is None:
-            logger.debug("No metrics were set. Returning empty dict")
+            logger.debug2("No metrics were set. Returning empty dict")
             return {}
         try: # for active runs
             res = self._active_run_metrics.get(self._prefix_from_trainer(), self._metrics)

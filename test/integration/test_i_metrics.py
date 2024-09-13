@@ -7,6 +7,7 @@ import torch as tr
 from torch.utils.data import Dataset, DataLoader
 from pytorch_lightning.loggers import CSVLogger
 from pytorch_lightning import Trainer
+from pytorch_lightning.callbacks import ModelCheckpoint
 from lightning_module_enhanced import LME, ModelAlgorithmOutput
 from lightning_module_enhanced.metrics import CallableCoreMetric, CoreMetric
 from lightning_module_enhanced.utils import get_project_root
@@ -200,3 +201,39 @@ def test_epoch_metric_reduced_val():
 
     Trainer(max_epochs=3, logger=pl_logger).fit(model, train_loader, val_loader)
     assert model.metrics["my_epoch_metric"].batch_count == [100, 100, 100, 0] # used to use same object for val too!!!
+
+def test_CoreMetric_higher_is_better():
+    def _model_algorithm(model, batch) -> ModelAlgorithmOutput:
+        x, gt = batch
+        y = model(x)
+        metrics = {**model.lme_metrics(y, gt, include_loss=False), "loss": F.mse_loss(y, gt)}
+        return y, metrics, x, gt
+
+    class EpikMetric(CallableCoreMetric):
+        def forward(self, y, gt):
+            return None
+        def batch_update(self, batch_result) -> None:
+            pass
+        def epoch_result(self) -> F.Tensor:
+            return tr.FloatTensor([self.running_model().trainer.current_epoch])
+
+    train_loader = DataLoader(Reader(), batch_size=10)
+    shutil.rmtree(get_project_root() / "test/logs" / (logdir := "test_implicit_core_metrics"), ignore_errors=True)
+
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.optimizer = optim.SGD(model.parameters(), lr=0.1)
+    model.metrics = {"epik_metric": EpikMetric(lambda y, gt: (y - gt) ** 2, higher_is_better=True)}
+    model.model_algorithm = _model_algorithm
+    from lightning_module_enhanced.callbacks import PlotMetrics
+    model.callbacks = [PlotMetrics()]
+    model.checkpoint_monitors = ["epik_metric", "loss"]
+
+    pl_logger = CSVLogger(get_project_root() / "test/logs", name=logdir, version=0)
+    Trainer(max_epochs=3, logger=pl_logger).fit(model, train_loader)
+    cb = [cb for cb in model.trainer.callbacks if isinstance(cb, ModelCheckpoint) and cb.monitor == "epik_metric"]
+    assert len(cb) == 1
+    cb = cb[0]
+    assert cb.mode == "max", cb.mode
+
+if __name__ == "__main__":
+    test_CoreMetric_higher_is_better()

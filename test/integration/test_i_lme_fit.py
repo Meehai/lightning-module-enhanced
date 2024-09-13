@@ -316,4 +316,4 @@ def test_i_load_from_checkpoint():
     assert model2.scheduler["scheduler"].state_dict() == model.scheduler["scheduler"].state_dict()
 
 if __name__ == "__main__":
-    test_i_load_from_checkpoint()
+    test_fit_twice_from_ckpt()
