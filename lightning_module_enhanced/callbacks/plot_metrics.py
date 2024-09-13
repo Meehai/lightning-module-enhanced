@@ -23,7 +23,7 @@ class PlotMetrics(Callback):
         if len(metric_history["train"]) == 0:
             logger.debug2(f"No metrics yet for '{metric_name}'")
             return
-        scores = metric_history["val"] if metric_history["val"][0] is not None else metric_history["train"]
+        scores = metric_history["val"] if "val" in metric_history else metric_history["train"]
         metric_x = np.argmax(scores) if higher_is_better else np.argmin(scores)
         metric_y = scores[metric_x]
         ax.annotate(f"Epoch {metric_x + 1}\nMax {metric_y:.2f}", xy=(metric_x + 1, metric_y))
@@ -37,7 +37,7 @@ class PlotMetrics(Callback):
         metric_history = metrics_history.history[metric_name]
         x_plot = np.arange(len(metric_history["train"])) + 1
         ax.plot(x_plot, _norm(metric_history["train"], metric_name), label="train")
-        if None not in metric_history["val"]:
+        if "val" in metric_history:
             ax.plot(x_plot, _norm(metric_history["val"], metric_name), label="validation")
         self._plot_best_dot(ax, pl_module, metric_name, metrics_history.higher_is_better[metric_name])
         ax.set_xlabel("Epoch")
