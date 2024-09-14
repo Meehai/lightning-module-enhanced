@@ -70,5 +70,6 @@ class ActiveRunMixin(nn.Module):
                 if value_reduced is not None:
                     self.log(f"{prefix}{metric_name}", value_reduced, prog_bar=prog_bar, on_epoch=True, sync_dist=True)
                 # Call the metadata callback for the full result, since it can handle any sort of metrics
-                self.metadata_callback.log_epoch_metric(metric_name, metric_epoch_result,
-                                                        self.trainer.current_epoch, prefix) # TODO: use MetricsHistory
+                if self.trainer.global_rank == 0:
+                    self.metadata_callback.log_epoch_metric(metric_name, metric_epoch_result,
+                                                            self.trainer.current_epoch, prefix)
