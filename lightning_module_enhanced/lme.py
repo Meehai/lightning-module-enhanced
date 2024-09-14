@@ -316,9 +316,9 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
 
     def _copy_loaded_checkpoints(self):
         """copies the loaded checkpoint to the log dir"""
-        ckpt_dir = Path(self.logger.log_dir) / "checkpoints"
-        ckpt_dir.mkdir(exist_ok=True, parents=False)
-        if self.trainer.ckpt_path is not None:
+        if self.trainer.ckpt_path is not None and self.trainer.global_rank == 0:
+            ckpt_dir = Path(self.logger.log_dir) / "checkpoints"
+            ckpt_dir.mkdir(exist_ok=True, parents=False)
             shutil.copyfile(self.trainer.ckpt_path, ckpt_dir / "loaded.ckpt")
             best_model_path = Path(self.trainer.checkpoint_callback.best_model_path)
             if best_model_path.exists() and best_model_path.is_file():
