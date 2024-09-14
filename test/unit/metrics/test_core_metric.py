@@ -58,7 +58,7 @@ def test_core_metric_with_nones():
     y = tr.randn(5, 3)
     gt = tr.randn(5, 3)
     fn.batch_update(None)
-    assert fn.batch_count.item() == 0 and fn.batch_results is None
+    assert fn.batch_count is None and fn.batch_results is None
     batch_result = [(_y - gt).pow(2).mean() for _y, _gt in zip(y, gt)]
     batch_result[4] = None
     fn.batch_update(batch_result)

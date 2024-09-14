@@ -1,8 +1,10 @@
 """Wrapper than converts a Callable to a CoreMetric with self.forward() that returns a number"""
+from __future__ import annotations
 from typing import Callable, Union
 from overrides import overrides
 import torch as tr
 from .core_metric import CoreMetric, MetricFnType
+from ..logger import lme_logger as logger
 
 EpochFnType = Union[str, MetricFnType]
 
@@ -35,17 +37,16 @@ class CallableCoreMetric(CoreMetric):
     def batch_update(self, batch_result: tr.Tensor) -> None:
         if not isinstance(batch_result, (tr.Tensor, list, type(None))):
             raise RuntimeError(f"Must be tensor, list[tensor] or None. Got: {type(batch_result)}")
-        if isinstance(batch_result, list):
-            for item in batch_result:
-                assert isinstance(item, (tr.Tensor, type(None))), f"No list nesting allowed: {type(item)}"
-                self.batch_update(item)
-            return
         if batch_result is None:
             return
+        if isinstance(batch_result, list):
+            for item in batch_result:
+                assert not isinstance(item, list), f"No list nesting allowed: {type(item)}"
+                self.batch_update(item)
+            return
         # If tensor, just do regular update
-        batch_result = batch_result.detach().cpu()
         if self.batch_results is None:
-            self.batch_results = batch_result * 0
+            self._init_like(batch_result)
         self.batch_results += batch_result
         self.batch_count += 1
 
@@ -59,10 +60,17 @@ class CallableCoreMetric(CoreMetric):
     @overrides
     def reset(self):
         """This is called at each epoch end after compute(). It resets the state for the next epoch."""
-        super().reset()
-        if self.batch_results is not None:
-            self.batch_results *= 0
+        if self.batch_results is None:
+            logger.debug(f".reset() called on a non initialized metric. Returning early")
+            return
+        self.batch_results *= 0
         self.batch_count *= 0
+
+    def _init_like(self, batch_result: tr.Tensor):
+        assert self.batch_results is None, self.batch_results
+        assert self.batch_count is None, self.batch_count
+        self.batch_results = batch_result * 0
+        self.batch_count = tr.LongTensor([0]).to(batch_result.device)
 
     def __deepcopy__(self, memo):
         return type(self)(self.metric_fn, epoch_fn=self.epoch_fn, higher_is_better=self.higher_is_better,
