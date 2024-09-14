@@ -5,6 +5,7 @@ from pathlib import Path
 from overrides import overrides
 from pytorch_lightning import Trainer, LightningModule
 from pytorch_lightning.callbacks import Callback
+from pytorch_lightning.utilities.rank_zero import rank_zero_only
 
 from ..logger import lme_logger as logger
 
@@ -44,18 +45,21 @@ class PlotCallbackGeneric(Callback):
         out_dir = PlotCallbackGeneric._get_out_dir(trainer, key, self.mkdir)
         self.plot_callback(model=pl_module, batch=batch, y=prediction, out_dir=out_dir)
 
+    @rank_zero_only
     @overrides
     # pylint: disable=unused-argument
     def on_validation_batch_end(self, trainer: Trainer, pl_module: LightningModule,
                                 outputs, batch, batch_idx: int, dataloader_idx: int = 0) -> None:
         self._do_call(trainer, pl_module, batch, batch_idx, "validation")
 
+    @rank_zero_only
     @overrides
     # pylint: disable=unused-argument
     def on_train_batch_end(self, trainer: Trainer, pl_module: LightningModule,
                            outputs, batch, batch_idx: int, unused: int = 0):
         self._do_call(trainer, pl_module, batch, batch_idx, "train")
 
+    @rank_zero_only
     @overrides
     def on_test_batch_end(self, trainer: Trainer, pl_module: LightningModule,
                           outputs, batch, batch_idx: int, dataloader_idx: int = 0) -> None:

@@ -2,13 +2,16 @@
 from pathlib import Path
 import os
 from pytorch_lightning import Callback, LightningModule
+from pytorch_lightning.utilities.rank_zero import rank_zero_only
 
 class RemovePreviousTrainArtifacts(Callback):
     """Callback to remove the previous trains artifacts (*.tfevents files), if any available"""
+    @rank_zero_only
     def on_train_start(self, trainer: LightningModule, pl_module: LightningModule) -> None:
         """Clean up the .tfevents files, besides the last one."""
         RemovePreviousTrainArtifacts._on_start(Path(pl_module.logger.log_dir))
 
+    @rank_zero_only
     def on_test_start(self, trainer: LightningModule, pl_module: LightningModule) -> None:
         RemovePreviousTrainArtifacts._on_start(Path(pl_module.logger.log_dir))
 
