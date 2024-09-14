@@ -52,8 +52,8 @@ class CallableCoreMetric(CoreMetric):
 
     @overrides
     def epoch_result(self) -> tr.Tensor:
-        if self.batch_count.item() == 0:
-            return self.batch_count
+        if self.batch_count is None:
+            return None
         result = self.epoch_fn(self.batch_results, self.batch_count)
         return result
 
@@ -61,7 +61,7 @@ class CallableCoreMetric(CoreMetric):
     def reset(self):
         """This is called at each epoch end after compute(). It resets the state for the next epoch."""
         if self.batch_results is None:
-            logger.debug(f".reset() called on a non initialized metric. Returning early")
+            logger.debug(".reset() called on a non initialized metric. Returning early")
             return
         self.batch_results *= 0
         self.batch_count *= 0

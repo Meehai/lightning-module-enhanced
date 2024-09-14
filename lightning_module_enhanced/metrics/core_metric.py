@@ -19,7 +19,7 @@ Methods logic:
 - reset: Resets the internal state for the next epoch
 """
 from __future__ import annotations
-from typing import Callable, Optional
+from typing import Callable
 from abc import ABC, abstractmethod
 from overrides import overrides
 from torch import nn
@@ -42,7 +42,7 @@ class CoreMetric(nn.Module, ABC):
         # By default, all metrics do not require gradients. This is updated for loss in LME.
         self.requires_grad_(requires_grad)
         # The running model. Will be None when not training and a reference to the running LME when training
-        self._running_model: Optional[Callable] = None
+        self._running_model: Callable | None = None
 
     @abstractmethod
     @overrides(check_signature=False)
@@ -67,24 +67,25 @@ class CoreMetric(nn.Module, ABC):
         return "max" if self.higher_is_better else "min"
 
     @property
-    def running_model(self) -> Optional[Callable[[], "LME"]]:
+    def running_model(self) -> Callable[[], "LME"] | None:
         """returns the active running model, if available (during training/testing)"""
         return self._running_model
 
     @running_model.setter
-    def running_model(self, running_model: Optional[Callable[[], "LME"]]):
+    def running_model(self, running_model: Callable[[], "LME"] | None):
         assert running_model is None or (
             isinstance(running_model(), nn.Module) and hasattr(running_model(), "metadata_callback")), running_model
         self._running_model = running_model
 
-    def epoch_result_reduced(self, epoch_result: Optional[tr.Tensor]) -> Optional[tr.Tensor]:
+    def epoch_result_reduced(self, epoch_result: tr.Tensor | None) -> tr.Tensor | None:
         """
         Reduces a potentially complex metric (confusion matrix or multi label accuracy) into a single number.
         This is used so that other loggers, such as mlflow logger or tensorboard logger can store these without making
         any transformation (i.e. mlflow logger will sum a confusion matrix into a single number).
         By default, does nothing. Override this if needed.
         """
-        epoch_result = self.epoch_result() if epoch_result is None else epoch_result
+        if epoch_result is None:
+            return None
         assert isinstance(epoch_result, tr.Tensor), f"Got {type(epoch_result)}"
         epoch_result_reduced = epoch_result.squeeze()
         shape = epoch_result_reduced.shape
