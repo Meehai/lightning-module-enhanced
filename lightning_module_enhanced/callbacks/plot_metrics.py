@@ -4,6 +4,7 @@ from typing import Any
 from overrides import overrides
 from pytorch_lightning.callbacks import Callback
 from pytorch_lightning import Trainer
+from pytorch_lightning.utilities.rank_zero import rank_zero_only
 import matplotlib.pyplot as plt
 import numpy as np
 from ..logger import lme_logger as logger
@@ -47,6 +48,7 @@ class PlotMetrics(Callback):
         fig.savefig(out_file)
         plt.close(fig)
 
+    @rank_zero_only
     @overrides
     def on_train_epoch_end(self, trainer: Trainer, pl_module: Any):
         if len(trainer.loggers) == 0:

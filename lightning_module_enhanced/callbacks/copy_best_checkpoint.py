@@ -1,8 +1,10 @@
 """CopyBestCheckpoint module"""
 from pathlib import Path
 import shutil
+from overrides import overrides
 from pytorch_lightning import Trainer, Callback, LightningModule
 from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.utilities.rank_zero import rank_zero_only
 from ..logger import lme_logger as logger
 
 class CopyBestCheckpoint(Callback):
@@ -11,6 +13,8 @@ class CopyBestCheckpoint(Callback):
         super().__init__(*args, **kwargs)
         self.model_checkpoint_loss_callback = None
 
+    @rank_zero_only
+    @overrides
     def on_train_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         for callback in trainer.callbacks:
             if not isinstance(callback, ModelCheckpoint):
@@ -20,6 +24,8 @@ class CopyBestCheckpoint(Callback):
             self.model_checkpoint_loss_callback = callback
         assert self.model_checkpoint_loss_callback is not None, "Not found ModelCheckpoint with 'val_loss' monitor"
 
+    @rank_zero_only
+    @overrides
     def on_train_end(self, trainer: Trainer, pl_module: LightningModule):
         assert self.model_checkpoint_loss_callback is not None
         in_dir = Path(pl_module.logger.log_dir).absolute() / "checkpoints"

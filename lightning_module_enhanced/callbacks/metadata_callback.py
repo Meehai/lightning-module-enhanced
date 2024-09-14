@@ -10,6 +10,7 @@ import torch as tr
 from overrides import overrides
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, Checkpoint
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.utilities.rank_zero import rank_zero_only
 
 from ..logger import lme_logger as logger
 from ..utils import parsed_str_type, make_list, flat_if_one
@@ -32,6 +33,7 @@ class MetadataCallback(pl.Callback):
             raise ValueError(f"Metric '{prefixed_key}' at epoch {epoch} already exists in metadata")
         self.metadata["epoch_metrics"][prefixed_key][epoch] = value.tolist()
 
+    @rank_zero_only
     @overrides(check_signature=False)
     def on_fit_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         """At the start of the .fit() loop, add the sizes of all train/validation dataloaders"""
@@ -48,6 +50,7 @@ class MetadataCallback(pl.Callback):
         self.metadata["fit_hparams"] = pl_module.hparams.get("metadata_hparams")
         self.metadata = {**self.metadata, **self._log_timestamp_start(prefix="fit")}
 
+    @rank_zero_only
     @overrides(check_signature=False)
     def on_fit_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         self.metadata["best_model"] = self._log_best_model_fit_end(pl_module)
@@ -57,6 +60,7 @@ class MetadataCallback(pl.Callback):
             wandb_logger: WandbLogger = [x for x in trainer.loggers if isinstance(x, WandbLogger)][0]
             wandb_logger.experiment.log_artifact(self.log_file_path)
 
+    @rank_zero_only
     @overrides(check_signature=False)
     def on_train_epoch_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         if pl_module.trainer.state.stage == "sanity_check":
@@ -66,6 +70,7 @@ class MetadataCallback(pl.Callback):
         if "validation_dataset_size" not in self.metadata and trainer.val_dataloaders is not None:
             self.metadata["validation_dataset_size"] = len(pl_module.trainer.val_dataloaders.dataset)
 
+    @rank_zero_only
     @overrides(check_signature=False)
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         """Saves the metadata as a json on the train dir"""
@@ -78,6 +83,7 @@ class MetadataCallback(pl.Callback):
         self.metadata = {**self.metadata, **self._log_timestamp_train_epoch_end()}
         self.save()
 
+    @rank_zero_only
     @overrides(check_signature=False)
     def on_test_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         """At the start of the .test() loop, add the sizes of all test dataloaders"""
@@ -87,6 +93,7 @@ class MetadataCallback(pl.Callback):
         self.metadata["test_hparams"] = pl_module.hparams.get("metadata_hparams")
         self.metadata = {**self.metadata, **self._log_timestamp_start(prefix="test")}
 
+    @rank_zero_only
     @overrides(check_signature=False)
     def on_test_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         self._log_timestamp_end("test")
