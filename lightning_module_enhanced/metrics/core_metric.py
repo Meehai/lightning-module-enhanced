@@ -18,7 +18,7 @@ Methods logic:
   self.log() in the LME at epoch end
 - reset: Resets the internal state for the next epoch
 """
-
+from __future__ import annotations
 from typing import Callable, Optional
 from abc import ABC, abstractmethod
 from overrides import overrides
@@ -35,8 +35,8 @@ class CoreMetric(nn.Module, ABC):
     def __init__(self, higher_is_better: bool, requires_grad: bool = False):
         assert isinstance(higher_is_better, bool) and isinstance(requires_grad, bool)
         super().__init__()
-        self.batch_results = None
-        self.batch_count = tr.IntTensor([0])
+        self.batch_results: tr.Tensor | None = None
+        self.batch_count: tr.Tensor | None = None
         self.higher_is_better: bool = higher_is_better
         self.requires_grad = requires_grad
         # By default, all metrics do not require gradients. This is updated for loss in LME.
@@ -95,7 +95,7 @@ class CoreMetric(nn.Module, ABC):
 
     def __str__(self):
         f_str = f"[{parsed_str_type(self)}]. Mode: {self.mode}. Grad: {self.requires_grad}. " \
-                f"Count: {self.batch_count.sum()}"
+                f"Count: {self.batch_count.sum() if self.batch_count is not None else '0 (None)'}"
         return f_str
 
     def __repr__(self):
