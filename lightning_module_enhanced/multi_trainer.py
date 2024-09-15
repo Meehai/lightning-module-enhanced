@@ -6,7 +6,7 @@ from multiprocessing import cpu_count
 from typing import NamedTuple, Optional
 import os
 import shutil
-import pandas as pd
+import csv
 import numpy as np
 import torch as tr
 from lightning_fabric.utilities.seed import seed_everything
@@ -59,14 +59,15 @@ class MultiTrainer:
         return self.trainer.log_dir
 
     @property
-    def fit_metrics(self) -> pd.DataFrame:
+    def fit_metrics(self) -> list[dict[str, float]]:
         """Converts the fit metrics to a dataframe"""
-        res = {}
+        loaded = []
         for i in range(self.num_trains):
             results_file = Path(f"{self.logger.log_dir}/MultiTrainer/{i}/results.npy")
             if results_file.exists():
-                res[i] = np.load(results_file, allow_pickle=True).item()
-        return pd.DataFrame(res).transpose()
+                loaded.append(np.load(results_file, allow_pickle=True).item())
+        assert all(loaded[0].keys() == r.keys() for r in loaded), f"Not all keys are identical: {loaded}"
+        return loaded
 
     @property
     def done_so_far(self) -> int:
@@ -74,10 +75,16 @@ class MultiTrainer:
         return len(self.fit_metrics)
 
     @property
+    def metrics(self) -> list[str]:
+        """The list of metrics that were logged"""
+        return self.fit_metrics[0].keys()
+
+    @property
     def best_id(self) -> int:
         """The best experiment id. Only valid after the experiment is done"""
         assert self.done is True, "Cannot get best_id before the experiment is done"
-        return self.fit_metrics[self.relevant_metric].argmin()
+        relevant_metric_scores = [x[self.relevant_metric] for x in self.fit_metrics]
+        return np.argmin(relevant_metric_scores)
 
     # Public methods
 
@@ -94,7 +101,7 @@ class MultiTrainer:
 
         train_fit_params = []
         for i in range(self.num_trains):
-            if i in self.fit_metrics.index:
+            if Path(f"{self.logger.log_dir}/MultiTrainer/{i}/results.npy").exists():
                 logger.debug(f"MultiTrain id '{i}' already exists. Returning early.")
                 continue
             train_fit_params.append((i, {"model": deepcopy(model), "train_dataloaders": train_dataloaders,
@@ -126,7 +133,8 @@ class MultiTrainer:
 
     def _post_fit(self):
         """called after all experiments have finished. symlink the best experiment's files to the root of the logger"""
-        best_id = self.fit_metrics[self.relevant_metric].argmin()
+        relevant_metric_scores = [x[self.relevant_metric] for x in self.fit_metrics]
+        best_id = np.argmin(relevant_metric_scores)
         best_experiment_path = Path(f"{self.logger.log_dir}/MultiTrainer/{best_id}")
         assert best_experiment_path.exists() and len(list(best_experiment_path.iterdir())) > 0, best_experiment_path
         # symlink the best experiment to the root of the logger
@@ -141,7 +149,9 @@ class MultiTrainer:
                 else:
                     out_path.unlink()
             os.symlink(file.relative_to(out_path.parent), out_path)
-        self.fit_metrics.to_csv(Path(f"{self.logger.log_dir}/MultiTrainer/fit_metrics.csv"))
+        writer = csv.DictWriter(open(f"{self.logger.log_dir}/MultiTrainer/fit_metrics.csv", "w"), self.metrics)
+        writer.writeheader()
+        writer.writerows(self.fit_metrics)
 
     def _do_one_iteration(self, params: tuple[int, PLTrainerArgs]):
         """The main function of this experiment. Does all the rewriting logger logic and starts the experiment."""

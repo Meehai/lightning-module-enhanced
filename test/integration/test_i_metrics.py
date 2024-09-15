@@ -4,7 +4,7 @@ from torch import nn, optim
 from torch.nn import functional as F
 import pytest
 import torch as tr
-import pandas as pd
+import csv
 from torch.utils.data import Dataset, DataLoader
 from pytorch_lightning.loggers import CSVLogger
 from pytorch_lightning import Trainer
@@ -113,8 +113,8 @@ def test_metrics_from_algorithm(): # Pasing metrics from model_algorithm is fine
     pl_logger = CSVLogger(get_project_root() / "test/logs", name=logdir, version=0)
 
     Trainer(max_epochs=3, logger=pl_logger).fit(model, train_loader)
-    metrics_df = pd.read_csv(f"{pl_logger.log_dir}/metrics.csv")
-    assert len(metrics_df) == 3 and "my_metric" in metrics_df.columns and "loss" in metrics_df.columns
+    metrics_csv = list(csv.DictReader(open(f"{pl_logger.log_dir}/metrics.csv", "r")))
+    assert len(metrics_csv) == 3 and "my_metric" in metrics_csv[0] and "loss" in metrics_csv[0]
 
 def test_epoch_metric():
     class MyEpochMetric(CoreMetric):
@@ -141,8 +141,8 @@ def test_epoch_metric():
     pl_logger = CSVLogger(get_project_root() / "test/logs", name=logdir, version=0)
 
     Trainer(max_epochs=3, logger=pl_logger).fit(model, train_loader)
-    metrics_df = pd.read_csv(f"{pl_logger.log_dir}/metrics.csv")
-    assert len(metrics_df) == 3 and "my_epoch_metric" in metrics_df.columns and "loss" in metrics_df.columns
+    metrics_csv = list(csv.DictReader(open(f"{pl_logger.log_dir}/metrics.csv", "r")))
+    assert len(metrics_csv) == 3 and "my_epoch_metric" in metrics_csv[0] and "loss" in metrics_csv[0]
 
 def test_epoch_metric_reduced():
     class MyEpochMetric(CoreMetric):
@@ -171,8 +171,8 @@ def test_epoch_metric_reduced():
     pl_logger = CSVLogger(get_project_root() / "test/logs", name=logdir, version=0)
 
     Trainer(max_epochs=3, logger=pl_logger).fit(model, train_loader)
-    metrics_df = pd.read_csv(f"{pl_logger.log_dir}/metrics.csv")
-    assert len(metrics_df) == 3 and "my_epoch_metric" in metrics_df.columns and "loss" in metrics_df.columns
+    metrics_csv = list(csv.DictReader(open(f"{pl_logger.log_dir}/metrics.csv", "r")))
+    assert len(metrics_csv) == 3 and "my_epoch_metric" in metrics_csv[0] and "loss" in metrics_csv[0]
 
 def test_epoch_metric_reduced_val():
     class MyEpochMetric(CoreMetric):
@@ -245,13 +245,10 @@ def test_metrics_history_1():
     model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
     pl_logger = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_1", version=0)
     Trainer(max_epochs=3, logger=pl_logger).fit(model, DataLoader(Reader()), DataLoader(Reader()))
-    metrics_df = pd.read_csv(f"{pl_logger.log_dir}/metrics.csv")
-
-    assert len(metrics_df) == 3, len(metrics_df)
-    assert "l1" in metrics_df.columns and "loss" in metrics_df.columns
-    assert "val_l1" in metrics_df.columns and "val_loss" in metrics_df.columns
-
-
+    metrics_csv = list(csv.DictReader(open(f"{pl_logger.log_dir}/metrics.csv", "r")))
+    assert len(metrics_csv) == 3
+    assert "l1" in metrics_csv[0] and "loss" in metrics_csv[0]
+    assert "val_l1" in metrics_csv[0] and "val_loss" in metrics_csv[0]
 
 def test_metrics_history_2():
     """fine-tuning also should yield 3 epochs, even though we start from a pre-trained one"""
@@ -261,13 +258,13 @@ def test_metrics_history_2():
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
 
-    pl_logger = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_1", version=0)
+    pl_logger = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_2", version=0)
     Trainer(max_epochs=1, logger=pl_logger).fit(model, DataLoader(Reader()), DataLoader(Reader()))
-    assert len(pd.read_csv(f"{pl_logger.log_dir}/metrics.csv")) == 1
+    assert len(list(csv.DictReader(open(f"{pl_logger.log_dir}/metrics.csv", "r")))) == 1
 
-    pl_logger2 = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_1", version=1)
+    pl_logger2 = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_2", version=1)
     Trainer(max_epochs=3, logger=pl_logger2).fit(model, DataLoader(Reader()), DataLoader(Reader()))
-    assert len(pd.read_csv(f"{pl_logger2.log_dir}/metrics.csv")) == 3
+    assert len(list(csv.DictReader(open(f"{pl_logger2.log_dir}/metrics.csv", "r")))) == 3
 
 def test_metrics_history_3():
     """reload a training from first/2nd epoch. The metrics/training should continue"""
@@ -277,16 +274,16 @@ def test_metrics_history_3():
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
 
-    pl_logger = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_1", version=0)
+    pl_logger = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_3", version=0)
     Trainer(max_epochs=2, logger=pl_logger).fit(model, DataLoader(Reader()), DataLoader(Reader()))
-    assert len(df_metrics := pd.read_csv(f"{pl_logger.log_dir}/metrics.csv")) == 2
-    assert (df_metrics["loss"] != 0).all() and (df_metrics["val_loss"] != 0).all()
+    assert len(data := list(csv.DictReader(open(f"{pl_logger.log_dir}/metrics.csv", "r")))) == 2
+    assert all(x["loss"] != 0 for x in data) and all(x["val_loss"] != 0 for x in data), data
 
-    pl_logger2 = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_1", version=1)
+    pl_logger2 = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_3", version=1)
     Trainer(max_epochs=5, logger=pl_logger2).fit(model, DataLoader(Reader()), DataLoader(Reader()),
                                                  ckpt_path=model.trainer.checkpoint_callback.best_model_path)
-    assert len(df_metrics2 := pd.read_csv(f"{pl_logger2.log_dir}/metrics.csv")) == 5
-    assert df_metrics.iloc[0:1].equals(df_metrics2.iloc[0:1])
+    assert len(data2 := list(csv.DictReader(open(f"{pl_logger2.log_dir}/metrics.csv", "r")))) == 5
+    assert data[0:2] == data2[0:2]
 
 if __name__ == "__main__":
-    test_CoreMetric_higher_is_better()
+    test_metrics_history_3()
