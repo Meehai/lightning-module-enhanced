@@ -51,7 +51,8 @@ class PlotMetrics(pl.Callback):
     @overrides
     def on_fit_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         assert any(isinstance(logger, CSVLogger) for logger in trainer.loggers), trainer.loggers
-        self.log_dir = trainer.log_dir # IF I ACCESS TRAINER IN THE METHOD BELOW ON DDP IT HANGS FOR NO REASON ?!
+        if self.log_dir is None: # cache it at epoch 1 before it hangs. TODO: check why it hangs and make minimal repro
+            self.log_dir = trainer.log_dir # IF I ACCESS TRAINER IN THE METHOD BELOW ON DDP IT HANGS FOR NO REASON ?!
 
     @rank_zero_only
     @overrides
