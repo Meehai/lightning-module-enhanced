@@ -10,7 +10,7 @@ import torch as tr
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from .metrics import CoreMetric, CallableCoreMetric, StubMetric
-from .callbacks import MetadataCallback, MetricsHistory
+from .callbacks import MetadataCallback
 from .logger import lme_logger as logger
 from .utils import parsed_str_type, make_list
 
@@ -66,7 +66,6 @@ class TrainableModuleMixin(TrainableModule):
     def __init__(self):
         super().__init__()
         self.metadata_callback = MetadataCallback()
-        self.metrics_history = MetricsHistory()
         self._optimizer: OptimizerType = None
         self._scheduler: SchedulerType = None
         self._criterion_fn: CriterionFnType = None
@@ -79,7 +78,7 @@ class TrainableModuleMixin(TrainableModule):
     @property
     def default_callbacks(self):
         """Returns the list of default callbacks"""
-        return [self.metadata_callback, self.metrics_history]
+        return [self.metadata_callback]
 
     # Required for training
     @property

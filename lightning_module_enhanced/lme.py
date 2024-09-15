@@ -128,7 +128,10 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
     def on_fit_start(self) -> None:
         self._setup_active_metrics()
         self._set_metrics_running_model()
-        self._copy_loaded_checkpoints()
+
+    @overrides
+    def on_train_start(self) -> None:
+        self._copy_loaded_checkpoint_and_metrics() # must be done here so trainer.current_epoch is set
 
     @overrides
     def on_fit_end(self):
@@ -314,17 +317,22 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
     def _default_algorithm(model: LightningModuleEnhanced, batch: Any) -> ModelAlgorithmOutput:
         raise NotImplementedError("Use model.model_algorithm=xxx to define your forward & metrics function")
 
-    def _copy_loaded_checkpoints(self):
-        """copies the loaded checkpoint to the log dir"""
-        if self.trainer.ckpt_path is not None and self.trainer.global_rank == 0:
-            ckpt_dir = Path(self.logger.log_dir) / "checkpoints"
-            ckpt_dir.mkdir(exist_ok=True, parents=False)
-            shutil.copyfile(self.trainer.ckpt_path, ckpt_dir / "loaded.ckpt")
-            best_model_path = Path(self.trainer.checkpoint_callback.best_model_path)
-            if best_model_path.exists() and best_model_path.is_file():
-                new_best_path = ckpt_dir / best_model_path.name
-                shutil.copyfile(best_model_path, new_best_path)
-            logger.debug("Loaded best and last checkpoint before resuming.")
+    def _copy_loaded_checkpoint_and_metrics(self):
+        """copies the loaded checkpoint to the log dir. Optionally: old best ckpt and metrics.csv history if exist"""
+        if self.trainer.ckpt_path is None or self.trainer.global_rank != 0:
+            return
+        (new_ckpt_dir := Path(self.logger.log_dir) / "checkpoints").mkdir(exist_ok=True, parents=False)
+        shutil.copyfile(self.trainer.ckpt_path, new_ckpt_dir / "loaded.ckpt")
+        artifacts = "loaded ckpt"
+        old_best_model_path = Path(self.trainer.checkpoint_callback.best_model_path)
+        if old_best_model_path.exists() and old_best_model_path.is_file():
+            shutil.copyfile(old_best_model_path, new_ckpt_dir / old_best_model_path.name)
+            artifacts += ", best ckpt"
+        if (old_metrics_csv_path := Path(self.trainer.ckpt_path).parents[1] / "metrics.csv").exists():
+            old_metrics = open(old_metrics_csv_path).readlines()[0 : self.trainer.current_epoch + 1]
+            open(f"{self.logger.log_dir}/metrics.csv", "w").write("\n".join(old_metrics))
+            artifacts += ", metrics.csv history"
+        logger.info(f"Loaded artifacts from old dir: {artifacts}")
 
     def _prefix_from_trainer(self) -> str:
         """returns the prefix: "" (for training), "val_" for validating or "" for testing as well"""
