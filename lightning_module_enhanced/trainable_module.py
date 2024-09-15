@@ -114,12 +114,12 @@ class TrainableModuleMixin(TrainableModule):
         self._optimizer = optimizer
 
     def _model_ckpt_cbs(self) -> list[pl.Callback]:
-        prefix = "val_" if self.trainer.enable_validation else ""
+        prefix = "val_" if (self._trainer is not None and self.trainer.enable_validation) else ""
         res = []
         for i, monitor in enumerate(self.checkpoint_monitors):
             # note: save_last=True for len(model_ckpt_cbs)==0 only (i.e. first monitor)
             mode = self.metrics[monitor].mode if monitor != "loss" else "min"
-            filename = "{epoch}-{" + prefix + monitor + ":.2f}"
+            filename = "{epoch}-{" + prefix + monitor + ":.3f}"
             res.append(ModelCheckpoint(monitor=f"{prefix}{monitor}", filename=filename, save_last=(i == 0),
                                        save_on_train_epoch_end=True, mode=mode))
         return res
@@ -127,19 +127,16 @@ class TrainableModuleMixin(TrainableModule):
     @property
     def callbacks(self) -> list[pl.Callback]:
         """Gets the callbacks"""
-
-        # trainer not attached yet, so no model checkpoints are needed.
-        try:
-            _ = self.trainer
-        except RuntimeError:
+        if self._trainer is None: # trainer not attached yet, so no model checkpoints are needed.
             return [*self.default_callbacks, *self._callbacks]
-
-        trainer_cbs = [callback for callback in self.trainer.callbacks
-                       if isinstance(callback, ModelCheckpoint) and callback.monitor is not None]
-        if len(trainer_cbs) > 0:
-            logger.debug("ModelCheckpoint callbacks were provided in the Trainer. Not using the checkpoint_monitors!")
-            return [*self.default_callbacks, *self._callbacks, *trainer_cbs]
-        return [*self.default_callbacks, *self._callbacks, *self._model_ckpt_cbs()]
+        ckpt_cbs = self._model_ckpt_cbs()
+        if self._trainer is not None:
+            trainer_ckpt_cbs = [callback for callback in self.trainer.callbacks
+                               if isinstance(callback, ModelCheckpoint) and callback.monitor is not None]
+            if len(trainer_ckpt_cbs) > 0:
+                logger.debug("ModelCheckpoint callbacks provided in the Trainer. Not using the checkpoint_monitors!")
+                ckpt_cbs = trainer_ckpt_cbs
+        return [*self.default_callbacks, *self._callbacks, *ckpt_cbs]
 
     @callbacks.setter
     def callbacks(self, callbacks: list[pl.Callback]):
