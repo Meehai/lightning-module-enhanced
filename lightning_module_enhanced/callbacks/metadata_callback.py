@@ -25,7 +25,6 @@ class MetadataCallback(pl.Callback):
 
     def log_epoch_metric(self, key: str, value: tr.Tensor, epoch: int, prefix: str):
         """Adds a epoch metric to the current metadata. Called from LME"""
-        # TODO: remove this and just log model.metrics_history
         # test and train get the unprefixed key.
         prefixed_key = f"{prefix}{key}"
         if prefixed_key not in self.metadata["epoch_metrics"]:

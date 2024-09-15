@@ -4,6 +4,7 @@ from torch import nn, optim
 from torch.nn import functional as F
 import pytest
 import torch as tr
+import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 from pytorch_lightning.loggers import CSVLogger
 from pytorch_lightning import Trainer
@@ -112,8 +113,8 @@ def test_metrics_from_algorithm(): # Pasing metrics from model_algorithm is fine
     pl_logger = CSVLogger(get_project_root() / "test/logs", name=logdir, version=0)
 
     Trainer(max_epochs=3, logger=pl_logger).fit(model, train_loader)
-    assert len(model.metrics_history.history["my_metric"]["train"]) == 3
-    assert len(model.metrics_history.history["loss"]["train"]) == 3
+    metrics_df = pd.read_csv(f"{pl_logger.log_dir}/metrics.csv")
+    assert len(metrics_df) == 3 and "my_metric" in metrics_df.columns and "loss" in metrics_df.columns
 
 def test_epoch_metric():
     class MyEpochMetric(CoreMetric):
@@ -140,8 +141,8 @@ def test_epoch_metric():
     pl_logger = CSVLogger(get_project_root() / "test/logs", name=logdir, version=0)
 
     Trainer(max_epochs=3, logger=pl_logger).fit(model, train_loader)
-    assert len(model.metrics_history.history["my_epoch_metric"]["train"]) == 3
-    assert len(model.metrics_history.history["loss"]["train"]) == 3
+    metrics_df = pd.read_csv(f"{pl_logger.log_dir}/metrics.csv")
+    assert len(metrics_df) == 3 and "my_epoch_metric" in metrics_df.columns and "loss" in metrics_df.columns
 
 def test_epoch_metric_reduced():
     class MyEpochMetric(CoreMetric):
@@ -170,8 +171,8 @@ def test_epoch_metric_reduced():
     pl_logger = CSVLogger(get_project_root() / "test/logs", name=logdir, version=0)
 
     Trainer(max_epochs=3, logger=pl_logger).fit(model, train_loader)
-    assert len(model.metrics_history.history["my_epoch_metric"]["train"]) == 3
-    assert len(model.metrics_history.history["loss"]["train"]) == 3
+    metrics_df = pd.read_csv(f"{pl_logger.log_dir}/metrics.csv")
+    assert len(metrics_df) == 3 and "my_epoch_metric" in metrics_df.columns and "loss" in metrics_df.columns
 
 def test_epoch_metric_reduced_val():
     class MyEpochMetric(CoreMetric):
@@ -234,6 +235,58 @@ def test_CoreMetric_higher_is_better():
     assert len(cb) == 1
     cb = cb[0]
     assert cb.mode == "max", cb.mode
+
+def test_metrics_history_1():
+    """simple tests: at the end of training we should have 3 entries on l1/loss due to 3 epochs"""
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+    model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
+    pl_logger = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_1", version=0)
+    Trainer(max_epochs=3, logger=pl_logger).fit(model, DataLoader(Reader()), DataLoader(Reader()))
+    metrics_df = pd.read_csv(f"{pl_logger.log_dir}/metrics.csv")
+
+    assert len(metrics_df) == 3, len(metrics_df)
+    assert "l1" in metrics_df.columns and "loss" in metrics_df.columns
+    assert "val_l1" in metrics_df.columns and "val_loss" in metrics_df.columns
+
+
+
+def test_metrics_history_2():
+    """fine-tuning also should yield 3 epochs, even though we start from a pre-trained one"""
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
+
+    pl_logger = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_1", version=0)
+    Trainer(max_epochs=1, logger=pl_logger).fit(model, DataLoader(Reader()), DataLoader(Reader()))
+    assert len(pd.read_csv(f"{pl_logger.log_dir}/metrics.csv")) == 1
+
+    pl_logger2 = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_1", version=1)
+    Trainer(max_epochs=3, logger=pl_logger2).fit(model, DataLoader(Reader()), DataLoader(Reader()))
+    assert len(pd.read_csv(f"{pl_logger2.log_dir}/metrics.csv")) == 3
+
+def test_metrics_history_3():
+    """reload a training from first/2nd epoch. The metrics/training should continue"""
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
+
+    pl_logger = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_1", version=0)
+    Trainer(max_epochs=2, logger=pl_logger).fit(model, DataLoader(Reader()), DataLoader(Reader()))
+    assert len(df_metrics := pd.read_csv(f"{pl_logger.log_dir}/metrics.csv")) == 2
+    assert (df_metrics["loss"] != 0).all() and (df_metrics["val_loss"] != 0).all()
+
+    pl_logger2 = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_1", version=1)
+    Trainer(max_epochs=5, logger=pl_logger2).fit(model, DataLoader(Reader()), DataLoader(Reader()),
+                                                 ckpt_path=model.trainer.checkpoint_callback.best_model_path)
+    assert len(df_metrics2 := pd.read_csv(f"{pl_logger2.log_dir}/metrics.csv")) == 5
+    assert df_metrics.iloc[0:1].equals(df_metrics2.iloc[0:1])
 
 if __name__ == "__main__":
     test_CoreMetric_higher_is_better()
