@@ -12,14 +12,13 @@ from ..metrics import CoreMetric
 class MetricsHistory(pl.Callback):
     """MetricsHistory callback implementation"""
     def __init__(self):
-        self.history: dict[str, dict[str, list[float]]] = None
+        self.history: dict[str, dict[str, list[float]]] = {}
         self.expected_metrics = []
         self.higher_is_better: dict[str, bool] = None
 
     def _setup_metrics(self, pl_module: "LME"):
         self.expected_metrics = [*list(pl_module.metrics.keys()), "loss"]
-        if self.history is not None:
-            assert len(self.history) > 0
+        if len(self.history) > 0:
             for k in self.history.keys():
                 assert len(self.history[k]["train"]) > 0
             assert (a := set(self.expected_metrics)) == (b := set(self.history.keys())), (a, b)
@@ -35,7 +34,7 @@ class MetricsHistory(pl.Callback):
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: "LME"):
         if trainer.current_epoch == 0:
             self._setup_metrics(pl_module)
-        assert self.history is not None, "self.history is None: on_train_epoch_end somehow called before on_fit_start."
+        assert len(self.history) > 0, "self.history is None: on_train_epoch_end somehow called before on_fit_start."
 
         for metric_name in self.expected_metrics:
             if metric_name not in self.history:
