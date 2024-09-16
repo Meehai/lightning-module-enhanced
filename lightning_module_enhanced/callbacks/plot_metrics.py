@@ -30,11 +30,10 @@ class PlotMetrics(pl.Callback):
         ax.annotate(f"Epoch {metric_x + 1}\nMax {metric_y:.2f}", xy=(metric_x + 1, metric_y))
         ax.plot([metric_x + 1], [metric_y], "o")
 
-    def _do_plot(self, pl_module: Any, csv_data: list[dict[str, float]], metric_name: str, out_file: str):
+    def _do_plot(self, csv_data: list[dict[str, float]], metric_name: str, higher_is_better: bool, out_file: str):
         """Plot the figure with the metric"""
         ax = (fig := plt.figure()).gca()
         x_plot = range(1, len(csv_data) + 1)
-        higher_is_better = pl_module.metrics[metric_name].higher_is_better if metric_name != "loss" else False
         train_y = [row[metric_name] for row in csv_data]
         val_y = [row[f"val_{metric_name}"] for row in csv_data] if f"val_{metric_name}" in csv_data[0].keys() else None
         ax.plot(x_plot, _norm(train_y, metric_name), label="train")
@@ -48,11 +47,11 @@ class PlotMetrics(pl.Callback):
         fig.savefig(out_file)
         plt.close(fig)
 
+    @rank_zero_only
     @overrides
     def on_fit_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         assert any(isinstance(logger, CSVLogger) for logger in trainer.loggers), trainer.loggers
-        if self.log_dir is None: # cache it at epoch 1 before it hangs. TODO: check why it hangs and make minimal repro
-            self.log_dir = trainer.log_dir # IF I ACCESS TRAINER IN THE METHOD BELOW ON DDP IT HANGS FOR NO REASON ?!
+        self.log_dir = trainer.loggers[0].log_dir
 
     @rank_zero_only
     @overrides
@@ -62,9 +61,7 @@ class PlotMetrics(pl.Callback):
             return
         csv_data = [{k: float(v) for k, v in row.items()}
                     for row in csv.DictReader(open(f"{self.log_dir}/metrics.csv"))]
-        expected_metrics: list[str] = [*list(pl_module.metrics.keys()), "loss"]
-        for metric_name in expected_metrics:
-            if len(csv_data) == 0 or metric_name not in csv_data[0]:
-                logger.debug(f"'{metric_name}' not in {list(csv_data[0])}")
-                continue
-            self._do_plot(pl_module, csv_data, metric_name, out_file=f"{self.log_dir}/{metric_name}.png")
+        found_metrics =  [x for x in csv_data[0].keys() if x not in {"epoch", "step"} and not x.startswith("val_")]
+        for metric_name in found_metrics:
+            higher_is_better = pl_module.metrics[metric_name].higher_is_better if metric_name != "loss" else False
+            self._do_plot(csv_data, metric_name, higher_is_better, out_file=f"{self.log_dir}/{metric_name}.png")
