@@ -12,11 +12,17 @@ import numpy as np
 
 from ..logger import lme_logger as logger
 
-def _norm(x, metric_name: str):
+def _norm(x: list[float]) -> np.ndarray:
     x = np.array(x)
-    assert not np.isnan(x).any(), f"You have NaNs in your metric ({metric_name}): {x}"
-    median = np.median(x)
+    median = np.nan_to_num(np.nanmedian(x), nan=0)
+    x: np.ndarray = np.nan_to_num(x, nan=median)
     return x.clip(-2 * np.sign(median) * median, 2 * np.sign(median) * median)
+
+def _float_or_nan(x: str) -> float:
+    try:
+        return float(x)
+    except Exception:
+        return float("nan")
 
 class PlotMetrics(pl.Callback):
     """Plot metrics implementation"""
@@ -36,9 +42,9 @@ class PlotMetrics(pl.Callback):
         x_plot = range(1, len(csv_data) + 1)
         train_y = [row[metric_name] for row in csv_data]
         val_y = [row[f"val_{metric_name}"] for row in csv_data] if f"val_{metric_name}" in csv_data[0].keys() else None
-        ax.plot(x_plot, _norm(train_y, metric_name), label="train")
+        ax.plot(x_plot, _norm(train_y), label="train")
         if val_y is not None:
-            ax.plot(x_plot, _norm(val_y, metric_name), label="validation")
+            ax.plot(x_plot, _norm(val_y), label="validation")
         self._plot_best_dot(ax, train_y if val_y is None else val_y, higher_is_better)
         ax.set_xlabel("Epoch")
         name_trimmed = metric_name if len(metric_name) < 35 else f"{metric_name[0: 25]}...{metric_name[-7:]}"
@@ -59,9 +65,9 @@ class PlotMetrics(pl.Callback):
         if not Path(f"{self.log_dir}/metrics.csv").exists():
             logger.debug(f"No metrics.csv found in log dir: '{self.log_dir}'. Skipping this epoch")
             return
-        csv_data = [{k: float(v) for k, v in row.items()}
+        csv_data = [{k: _float_or_nan(v) for k, v in row.items()}
                     for row in csv.DictReader(open(f"{self.log_dir}/metrics.csv"))]
-        found_metrics =  [x for x in csv_data[0].keys() if x not in {"epoch", "step"} and not x.startswith("val_")]
+        found_metrics = [x for x in csv_data[0].keys() if x not in {"epoch", "step"} and not x.startswith("val_")]
         for metric_name in found_metrics:
             higher_is_better = pl_module.metrics[metric_name].higher_is_better if metric_name != "loss" else False
             self._do_plot(csv_data, metric_name, higher_is_better, out_file=f"{self.log_dir}/{metric_name}.png")
