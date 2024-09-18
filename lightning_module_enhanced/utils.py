@@ -21,13 +21,13 @@ def to_tensor(data):
     if isinstance(data, (np.int32, np.int8, np.int16, np.int64, np.float32, np.float64, int, float)):
         return tr.Tensor([data])
     if isinstance(data, list):
-        return [to_tensor(x) for x in data]
+        return type(data)([to_tensor(x) for x in data])
     if isinstance(data, tuple):
-        return tuple(to_tensor(x) for x in data)
+        return type(data)(to_tensor(x) for x in data)
     if isinstance(data, dict):
-        return {k: to_tensor(v) for k, v in data.items()}
+        return type(data)({k: to_tensor(v) for k, v in data.items()})
     if isinstance(data, set):
-        return {to_tensor(x) for x in data}
+        return type(data)({to_tensor(x) for x in data})
     if isinstance(data, tr.Tensor):
         return data
     if isinstance(data, np.ndarray):
@@ -48,13 +48,13 @@ def to_device(data, device: tr.device):
     if isinstance(data, (tr.Tensor, nn.Module)) or hasattr(data, "to"):
         return data.to(device)
     if isinstance(data, list):
-        return [to_device(x, device) for x in data]
+        return type(data)([to_device(x, device) for x in data])
     if isinstance(data, tuple):
-        return tuple(to_device(x, device) for x in data)
+        return type(data)(to_device(x, device) for x in data)
     if isinstance(data, set):
-        return {to_device(x, device) for x in data}
+        return type(data)({to_device(x, device) for x in data})
     if isinstance(data, dict):
-        return {k: to_device(data[k], device) for k in data}
+        return type(data)({k: to_device(data[k], device) for k in data})
     if isinstance(data, np.ndarray):
         if data.dtype == object:
             return to_device(data.tolist(), device)
@@ -71,13 +71,13 @@ def tr_detach_data(data: T) -> T:
     if isinstance(data, tr.Tensor) or hasattr(data, "detach"):
         return data.detach()
     if isinstance(data, list):
-        return [tr_detach_data(x) for x in data]
+        return type(data)([tr_detach_data(x) for x in data])
     if isinstance(data, tuple):
-        return tuple(tr_detach_data(x) for x in data)
+        return type(data)(tr_detach_data(x) for x in data)
     if isinstance(data, set):
-        return {tr_detach_data(x) for x in data}
+        return type(data)({tr_detach_data(x) for x in data})
     if isinstance(data, dict):
-        return {k: tr_detach_data(data[k]) for k in data}
+        return type(data)({k: tr_detach_data(data[k]) for k in data})
 
     logger.debug2(f"Got unknown type {type(data)}. Returning as is.")
     return data
