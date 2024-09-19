@@ -281,7 +281,7 @@ def test_metrics_history_3():
 
     pl_logger2 = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_3", version=1)
     Trainer(max_epochs=5, logger=pl_logger2).fit(model, DataLoader(Reader()), DataLoader(Reader()),
-                                                 ckpt_path=model.trainer.checkpoint_callback.best_model_path)
+                                                 ckpt_path=model.trainer.checkpoint_callback.last_model_path)
     assert len(data2 := list(csv.DictReader(open(f"{pl_logger2.log_dir}/metrics.csv", "r")))) == 5
     assert data[0:2] == data2[0:2]
 
