@@ -66,8 +66,7 @@ class PlotMetrics(pl.Callback):
             logger.debug(f"No metrics.csv found in log dir: '{self.log_dir}'. Skipping this epoch")
             return
         csv_data = [{k: _float_or_nan(v) for k, v in row.items()}
-                    for row in csv.DictReader(open(f"{self.log_dir}/metrics.csv"))]
-        csv_data = [{k: v for k, v in row.items() if row["epoch"] == row["epoch"]} for row in csv_data]
+                    for row in csv.DictReader(open(f"{self.log_dir}/metrics.csv")) if row["epoch"] != ""]
         found_metrics = [x for x in csv_data[0].keys() if x in pl_module.metrics]
         for metric_name in found_metrics:
             higher_is_better = pl_module.metrics[metric_name].higher_is_better if metric_name != "loss" else False
