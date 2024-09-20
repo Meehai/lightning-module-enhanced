@@ -21,7 +21,7 @@ def _norm(x: list[float]) -> np.ndarray:
 def _float_or_nan(x: str) -> float:
     try:
         return float(x)
-    except Exception:
+    except ValueError:
         return float("nan")
 
 class PlotMetrics(pl.Callback):
@@ -61,12 +61,13 @@ class PlotMetrics(pl.Callback):
 
     @rank_zero_only
     @overrides
+    # pylint: disable=consider-using-with
     def on_train_epoch_start(self, trainer: pl.Trainer, pl_module: Any):
-        if not Path(f"{self.log_dir}/metrics.csv").exists():
+        if not Path(pth := f"{self.log_dir}/metrics.csv").exists():
             logger.debug(f"No metrics.csv found in log dir: '{self.log_dir}'. Skipping this epoch")
             return
         csv_data = [{k: _float_or_nan(v) for k, v in row.items()}
-                    for row in csv.DictReader(open(f"{self.log_dir}/metrics.csv")) if row["epoch"] != ""]
+                    for row in csv.DictReader(open(pth, encoding="utf-8")) if row["epoch"] != ""]
         found_metrics = [x for x in csv_data[0].keys() if x in pl_module.metrics]
         for metric_name in found_metrics:
             higher_is_better = pl_module.metrics[metric_name].higher_is_better if metric_name != "loss" else False
