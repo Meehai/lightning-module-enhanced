@@ -1,7 +1,6 @@
 """Init module"""
 import logging
 import warnings
-from lightning_fabric.utilities.warnings import PossibleUserWarning
 
 # pylint: disable=reimported
 from .lme import LightningModuleEnhanced as LME, ModelAlgorithmOutput
@@ -13,3 +12,4 @@ logging.getLogger("pytorch_lightning.utilities.rank_zero").setLevel(logging.CRIT
 warnings.filterwarnings("ignore", category=UserWarning, module="pytorch_lightning")
 warnings.filterwarnings("ignore", category=UserWarning, module="lightning_fabric")
 warnings.filterwarnings("ignore", ".*does not have many workers.*")
+warnings.filterwarnings("ignore", "You are using `torch.load` with `weights_only=False`*.")

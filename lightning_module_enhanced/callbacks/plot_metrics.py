@@ -68,7 +68,7 @@ class PlotMetrics(pl.Callback):
             return
         csv_data = [{k: _float_or_nan(v) for k, v in row.items()}
                     for row in csv.DictReader(open(pth, encoding="utf-8")) if row["epoch"] != ""]
-        found_metrics = [x for x in csv_data[0].keys() if x in pl_module.metrics]
+        found_metrics = [x for x in csv_data[0].keys() if x in {"loss", *pl_module.metrics.keys()}]
         for metric_name in found_metrics:
             higher_is_better = pl_module.metrics[metric_name].higher_is_better if metric_name != "loss" else False
             self._do_plot(csv_data, metric_name, higher_is_better, out_file=f"{self.log_dir}/{metric_name}.png")
