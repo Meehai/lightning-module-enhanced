@@ -297,17 +297,23 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
             cnt = len(data["hyper_parameters"])
             loaded_count.extend([f"{cnt} hyper_parameter{'s' if cnt > 1 else ''}"] if cnt > 0 else [])
         if "optimizer_states" in data:
-            optimizers = make_list(self.optimizer) if self.optimizer is not None else []
-            assert (A := len(optimizers)) == (B := len(data["optimizer_states"])), (A, B)
-            for optimizer, optimizer_state in zip(optimizers, data["optimizer_states"]):
-                optimizer.load_state_dict(optimizer_state)
-            loaded_count.extend([f"{A} optimizer{'s' if A > 1 else ''}"] if A > 0 else [])
+            if self.optimizer is not None:
+                optimizers = make_list(self.optimizer)
+                assert (A := len(optimizers)) == (B := len(data["optimizer_states"])), (A, B)
+                for optimizer, optimizer_state in zip(optimizers, data["optimizer_states"]):
+                    optimizer.load_state_dict(optimizer_state)
+                loaded_count.extend([f"{A} optimizer{'s' if A > 1 else ''}"] if A > 0 else [])
+            else:
+                logger.warning("'optimizer_states' key found in checkpoint but no model.optimizer was set. Skipping.")
         if "lr_schedulers" in data:
-            schedulers = make_list(self.scheduler) if self.scheduler is not None else []
-            assert (A := len(schedulers)) == (B := len(data["lr_schedulers"])), (A, B)
-            for scheduler, scheduler_state in zip(schedulers, data["lr_schedulers"]):
-                scheduler["scheduler"].load_state_dict(scheduler_state)
-            loaded_count.extend([f"{A} scheduler{'s' if A > 1 else ''}"] if A > 0 else [])
+            if self.scheduler is not None:
+                schedulers = make_list(self.scheduler)
+                assert (A := len(schedulers)) == (B := len(data["lr_schedulers"])), (A, B)
+                for scheduler, scheduler_state in zip(schedulers, data["lr_schedulers"]):
+                    scheduler["scheduler"].load_state_dict(scheduler_state)
+                loaded_count.extend([f"{A} scheduler{'s' if A > 1 else ''}"] if A > 0 else [])
+            else:
+                logger.warning("'lr_schedulers' key found in checkpoint but no model.scheduler was set. Skipping.")
         logger.info(f"Loaded state from '{'state_dict' if isinstance(checkpoint_path, dict) else checkpoint_path}'. "
                     f"Loaded state for: {', '.join(loaded_count)}")
         return self
