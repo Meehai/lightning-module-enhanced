@@ -1,5 +1,5 @@
 """Multi Class Confusion Matrix"""
-from typing import Optional
+from __future__ import annotations
 from overrides import overrides
 from torchmetrics.functional.classification import multiclass_confusion_matrix
 import torch as tr
@@ -22,14 +22,15 @@ class MultiClassConfusionMatrix(CoreMetric):
 
     @overrides
     def batch_update(self, batch_result: tr.Tensor) -> None:
-        self.batch_results += batch_result.detach().cpu()
+        self.batch_results = self.batch_results.to(batch_result.device)
+        self.batch_results += batch_result.detach()
 
     @overrides
     def epoch_result(self) -> tr.Tensor:
         return self.batch_results
 
     @overrides
-    def epoch_result_reduced(self, epoch_result: Optional[tr.Tensor]) -> Optional[tr.Tensor]:
+    def epoch_result_reduced(self, epoch_result: tr.Tensor | None) -> tr.Tensor | None:
         return None
 
     @overrides
