@@ -186,7 +186,7 @@ def test_epoch_metric_reduced_val():
         def batch_update(self, batch_result: F.Tensor) -> None:
             pass
         def epoch_result(self) -> tr.Tensor:
-            return tr.Tensor([0])
+            return tr.Tensor([0]).to(self.running_model().device)
         def reset(self):
             self.batch_count.append(0)
 
@@ -217,7 +217,7 @@ def test_CoreMetric_higher_is_better():
         def batch_update(self, batch_result) -> None:
             pass
         def epoch_result(self) -> F.Tensor:
-            return tr.FloatTensor([self.running_model().trainer.current_epoch])
+            return tr.FloatTensor([self.running_model().trainer.current_epoch]).to(self.running_model().device)
 
     train_loader = DataLoader(Reader(), batch_size=10)
     shutil.rmtree(get_project_root() / "test/logs" / (logdir := "test_implicit_core_metrics"), ignore_errors=True)
