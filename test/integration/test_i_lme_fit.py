@@ -315,5 +315,10 @@ def test_i_load_from_checkpoint():
     assert model2.optimizer.state_dict() == model.optimizer.state_dict()
     assert model2.scheduler["scheduler"].state_dict() == model.scheduler["scheduler"].state_dict()
 
+    model3 = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model3.load_from_checkpoint(t1.checkpoint_callback.last_model_path)
+    assert model3.optimizer is None and model3.scheduler is None
+    assert model3.hparams.hello == "world"
+
 if __name__ == "__main__":
     test_fit_twice_from_ckpt()
