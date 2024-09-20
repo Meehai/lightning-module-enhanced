@@ -5,7 +5,7 @@ import pytest
 from torch import nn, optim
 from torch.utils.data import DataLoader
 from pytorch_lightning import Trainer
-from pytorch_lightning.loggers import TensorBoardLogger, CSVLogger
+from pytorch_lightning.loggers import CSVLogger
 from lightning_module_enhanced import LME
 from lightning_module_enhanced.multi_trainer import MultiTrainer
 from pathlib import Path
@@ -49,28 +49,28 @@ def test_multi_trainer_fit():
     save_dir = "/tmp/save_dir_2" if __name__ == "__main__" else TemporaryDirectory().name
     shutil.rmtree(save_dir, ignore_errors=True)
 
-    trainer = Trainer(max_epochs=3, logger=TensorBoardLogger(save_dir=save_dir, name="", version=0))
+    trainer = Trainer(max_epochs=3, logger=CSVLogger(save_dir=save_dir, name="", version=0))
     mt1 = MultiTrainer(trainer, num_trains=3)
     mt1.fit(model, train_dataloader, val_dataloader)
     out_path = Path(save_dir) / "version_0/MultiTrainer"
     assert len([x for x in out_path.iterdir() if x.is_dir()]) == 3
     assert mt1.done_so_far == 3
 
-    trainer = Trainer(max_epochs=3, logger=TensorBoardLogger(save_dir=save_dir, name="", version=0))
+    trainer = Trainer(max_epochs=3, logger=CSVLogger(save_dir=save_dir, name="", version=0))
     mt2 = MultiTrainer(trainer, num_trains=5)
     assert mt2.done_so_far == 3
     mt2.fit(model, train_dataloader, val_dataloader)
     assert len([x for x in out_path.iterdir() if x.is_dir()]) == 5
     assert mt2.done_so_far == 5
 
-    trainer = Trainer(max_epochs=3, logger=TensorBoardLogger(save_dir=save_dir, name="", version=0))
+    trainer = Trainer(max_epochs=3, logger=CSVLogger(save_dir=save_dir, name="", version=0))
     mt3 = MultiTrainer(trainer, num_trains=5)
     assert mt3.done_so_far == 5
     mt3.fit(model, train_dataloader, val_dataloader)
     assert len([x for x in out_path.iterdir() if x.is_dir()]) == 5
     assert mt3.done_so_far == 5
 
-    trainer = Trainer(max_epochs=3, logger=TensorBoardLogger(save_dir=save_dir, name="", version=1))
+    trainer = Trainer(max_epochs=3, logger=CSVLogger(save_dir=save_dir, name="", version=1))
     mt4 = MultiTrainer(trainer, num_trains=5)
     assert mt4.done_so_far == 0
     mt4.fit(model, train_dataloader, val_dataloader)
