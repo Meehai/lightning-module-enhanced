@@ -308,7 +308,8 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
             for scheduler, scheduler_state in zip(schedulers, data["lr_schedulers"]):
                 scheduler["scheduler"].load_state_dict(scheduler_state)
             loaded_count.extend([f"{A} scheduler{'s' if A > 1 else ''}"] if A > 0 else [])
-        logger.info(f"Loaded state from checkpoint '{checkpoint_path}'. Loaded state for: {', '.join(loaded_count)}")
+        logger.info(f"Loaded state from '{'state_dict' if isinstance(checkpoint_path, dict) else checkpoint_path}'. "
+                    f"Loaded state for: {', '.join(loaded_count)}")
         return self
 
     # Private methods
