@@ -12,6 +12,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from lightning_module_enhanced import LME, ModelAlgorithmOutput
 from lightning_module_enhanced.metrics import CallableCoreMetric, CoreMetric
 from lightning_module_enhanced.utils import get_project_root
+from lightning_module_enhanced.callbacks import PlotMetrics
 
 class Reader(Dataset):
     def __init__(self, d_out: int = 1, length: int = 100):
@@ -225,7 +226,6 @@ def test_CoreMetric_higher_is_better():
     model.optimizer = optim.SGD(model.parameters(), lr=0.1)
     model.metrics = {"epik_metric": EpikMetric(lambda y, gt: (y - gt) ** 2, higher_is_better=True)}
     model.model_algorithm = _model_algorithm
-    from lightning_module_enhanced.callbacks import PlotMetrics
     model.callbacks = [PlotMetrics()]
     model.checkpoint_monitors = ["epik_metric", "loss"]
 

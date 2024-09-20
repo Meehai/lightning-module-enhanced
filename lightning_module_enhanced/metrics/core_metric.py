@@ -67,8 +67,9 @@ class CoreMetric(nn.Module, ABC):
         return "max" if self.higher_is_better else "min"
 
     @property
-    def running_model(self) -> Callable[[], "LME"] | None:
+    def running_model(self) -> Callable[[], "LME"]:
         """returns the active running model, if available (during training/testing)"""
+        assert self._running_model is not None, "metric.runnin_model was not set by LME during training"
         return self._running_model
 
     @running_model.setter

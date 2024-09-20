@@ -1,3 +1,4 @@
+import pytest
 from lightning_module_enhanced.metrics import CallableCoreMetric
 from lightning_module_enhanced import LME
 from torch.utils.data import DataLoader
@@ -36,7 +37,8 @@ def test_core_metric_running_model_1():
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     model.metrics = {"mymetric": fn}
     Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
-    assert fn.running_model is None
+    with pytest.raises(AssertionError):
+        _ = fn.running_model
 
 def test_deepcopy_metric():
     """
