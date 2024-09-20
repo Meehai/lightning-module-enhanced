@@ -19,6 +19,6 @@ class ReduceLROnPlateauWithBurnIn(ReduceLROnPlateau):
             return
         super().step(*args, **kwargs)
 
-    @overrides
+    @overrides(check_at_runtime=False, check_signature=False) # compat with older torch versions for a while
     def get_lr(self):
         return super().get_lr()
