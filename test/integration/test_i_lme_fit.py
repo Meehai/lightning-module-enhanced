@@ -1,7 +1,7 @@
 from __future__ import annotations
 import pytest
-from ml_framework.lme import LME, ModelAlgorithmOutput
-from ml_framework.lme.utils import to_device, to_tensor
+from lightning_module_enhanced import LME, ModelAlgorithmOutput
+from lightning_module_enhanced.utils import to_device, to_tensor
 from pytorch_lightning import Trainer
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ReduceLROnPlateau
