@@ -32,9 +32,9 @@ class PlotMetrics(pl.Callback):
     def _plot_best_dot(self, ax: plt.Axes, scores: list[float], higher_is_better: bool):
         """Plot the dot. We require to know if the metric is max or min typed."""
         metric_x = np.argmax(scores) if higher_is_better else np.argmin(scores)
-        metric_y = scores[metric_x]
-        ax.annotate(f"Epoch {metric_x + 1}\nMax {metric_y:.2f}", xy=(metric_x + 1, metric_y))
-        ax.plot([metric_x + 1], [metric_y], "o")
+        metric_y, norm_metric_y = scores[metric_x], _norm(scores)[metric_x]
+        ax.annotate(f"Epoch {metric_x + 1}\nBest {metric_y:.2f}", xy=(metric_x + 1, norm_metric_y))
+        ax.plot([metric_x + 1], [norm_metric_y], "o")
 
     def _do_plot(self, csv_data: list[dict[str, float]], metric_name: str, higher_is_better: bool, out_file: str):
         """Plot the figure with the metric"""
