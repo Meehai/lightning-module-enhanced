@@ -286,9 +286,9 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
     def load_state_dict(self, *args, **kwargs):
         return self.base_model.load_state_dict(*args, **kwargs)
 
-    @overrides
-    def load_from_checkpoint(self, checkpoint_path: Path) -> LightningModuleEnhanced:
-        data = tr.load(checkpoint_path)
+    @overrides(check_signature=False)
+    def load_from_checkpoint(self, checkpoint_path: Path | str | dict) -> LightningModuleEnhanced:
+        data = tr.load(checkpoint_path) if isinstance(checkpoint_path, (str, Path)) else checkpoint_path
         self.load_state_dict(data["state_dict"], strict=True)
         loaded_count = ["weights"]
         if "hyper_parameters" in data:

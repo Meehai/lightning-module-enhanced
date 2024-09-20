@@ -1,3 +1,4 @@
+from __future__ import annotations
 from functools import partial
 import shutil
 from torch import nn, optim
