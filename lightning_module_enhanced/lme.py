@@ -147,6 +147,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
         self._unset_metrics_running_model()
 
     @overrides(check_signature=False)
+    # pylint: disable=not-callable
     def training_step(self, batch: Any, batch_idx: int, *args, **kwargs):
         """Training step: returns batch training loss and metrics."""
         # Warning: if not using lightning's self.optimizers(), and rather trying to user our self.optimizer, will
@@ -158,7 +159,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
         opts: list[LightningOptimizer] = _opt if isinstance(_opt, list) else [_opt]
         for opt in opts:
             opt.optimizer.zero_grad()
-        y, train_metrics, _, gt = self.model_algorithm(self, batch) # pylint: disable=not-callable
+        y, train_metrics, _, gt = self.model_algorithm(self, to_device(batch, self.device))
         self.cache_result = tr_detach_data(y)
         loss = train_metrics["loss"] if "loss" in train_metrics else self.criterion_fn(y, gt) # TODO
         self._update_metrics_at_batch_end(train_metrics)
@@ -172,26 +173,29 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
         return loss
 
     @overrides
+    # pylint: disable=not-callable
     def validation_step(self, batch: Any, batch_idx: int, *args, **kwargs):
         """Validation step: returns batch validation loss and metrics."""
-        y, val_metrics, _, gt = self.model_algorithm(self, batch) # pylint: disable=not-callable
+        y, val_metrics, _, gt = self.model_algorithm(self, to_device(batch, self.device))
         self.cache_result = tr_detach_data(y)
         val_metrics["loss"] = val_metrics["loss"] if "loss" in val_metrics else self.criterion_fn(y, gt) # TODO
         self._update_metrics_at_batch_end(val_metrics)
         return val_metrics["loss"]
 
     @overrides
+    # pylint: disable=not-callable
     def test_step(self, batch: Any, batch_idx: int, *args, **kwargs):
         """Testing step: returns batch test loss and metrics."""
-        y, test_metrics, _, gt = self.model_algorithm(self, batch) # pylint: disable=not-callable
+        y, test_metrics, _, gt = self.model_algorithm(self, to_device(batch, self.device))
         test_metrics["loss"] = test_metrics["loss"] if "loss" in test_metrics else self.criterion_fn(y, gt) # TODO
         self.cache_result = tr_detach_data(y)
         self._update_metrics_at_batch_end(test_metrics)
         return test_metrics["loss"]
 
     @overrides
+    # pylint: disable=not-callable
     def predict_step(self, batch: Any, batch_idx: int, *args, dataloader_idx: int = 0, **kwargs) -> Any:
-        return self.model_algorithm(self, batch)[0] # pylint: disable=not-callable
+        return self.model_algorithm(self, to_device(batch, self.device))[0]
 
     @overrides
     def configure_callbacks(self) -> Sequence[pl.Callback] | pl.Callback:
