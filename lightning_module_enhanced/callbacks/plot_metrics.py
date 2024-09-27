@@ -31,6 +31,7 @@ class PlotMetrics(pl.Callback):
 
     def _plot_best_dot(self, ax: plt.Axes, scores: list[float], higher_is_better: bool):
         """Plot the dot. We require to know if the metric is max or min typed."""
+        scores = np.nan_to_num(scores, -10**5 if higher_is_better else 10**5)
         metric_x = np.argmax(scores) if higher_is_better else np.argmin(scores)
         metric_y, norm_metric_y = scores[metric_x], _norm(scores)[metric_x]
         ax.annotate(f"Epoch {metric_x + 1}\nBest {metric_y:.2f}", xy=(metric_x + 1, norm_metric_y))
