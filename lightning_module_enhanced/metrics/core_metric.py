@@ -43,6 +43,7 @@ class CoreMetric(nn.Module, ABC):
         self.requires_grad_(requires_grad)
         # The running model. Will be None when not training and a reference to the running LME when training
         self._running_model: Callable | None = None
+        self.device: tr.device | str = "cpu"
 
     @abstractmethod
     @overrides(check_signature=False)
@@ -66,18 +67,6 @@ class CoreMetric(nn.Module, ABC):
         """compatibility with ModelCheckpoint"""
         return "max" if self.higher_is_better else "min"
 
-    @property
-    def running_model(self) -> Callable[[], "LME"]:
-        """returns the active running model, if available (during training/testing)"""
-        assert self._running_model is not None, "metric.runnin_model was not set by LME during training"
-        return self._running_model
-
-    @running_model.setter
-    def running_model(self, running_model: Callable[[], "LME"] | None):
-        assert running_model is None or (
-            isinstance(running_model(), nn.Module) and hasattr(running_model(), "metadata_callback")), running_model
-        self._running_model = running_model
-
     def epoch_result_reduced(self, epoch_result: tr.Tensor | None) -> tr.Tensor | None:
         """
         Reduces a potentially complex metric (confusion matrix or multi label accuracy) into a single number.
@@ -94,6 +83,11 @@ class CoreMetric(nn.Module, ABC):
             logger.debug2(f"Metric '{self}' has a non-number reduced value (shape: {shape}). Returning None.")
             return None
         return epoch_result_reduced
+
+    def to(self, device: tr.device | str) -> CoreMetric:
+        """seter of the device. Overwrite this in your metric implementation if you have more tensors"""
+        self.device = device
+        return self
 
     def __str__(self):
         f_str = f"[{parsed_str_type(self)}]. Mode: {self.mode}. Grad: {self.requires_grad}. " \

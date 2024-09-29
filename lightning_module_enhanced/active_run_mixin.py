@@ -4,7 +4,7 @@ from copy import deepcopy
 import torch as tr
 from torch import nn
 from .metrics import CoreMetric
-from .utils import tr_detach_data
+from .utils import tr_detach_data, to_device
 
 # pylint: disable=abstract-method
 class ActiveRunMixin(nn.Module):
@@ -21,7 +21,7 @@ class ActiveRunMixin(nn.Module):
     def _setup_active_metrics(self):
         """sets up self.active_run_metrics based on metrics for this train run. Called at on_fit_start."""
         assert len(self._active_run_metrics) == 0, "TODO: add breakpoint here to understand if/where it's hit"
-        self._active_run_metrics = {"": {"loss": self.criterion_fn, **self.metrics}}
+        self._active_run_metrics = {"": {"loss": self.criterion_fn, **to_device(self.metrics, self.device)}}
         if hasattr(self, "trainer") and self.trainer.enable_validation:
             self._active_run_metrics["val_"] = deepcopy(self._active_run_metrics[""])
 
@@ -30,19 +30,6 @@ class ActiveRunMixin(nn.Module):
         for prefix in self._active_run_metrics.keys():
             for metric in self._active_run_metrics[prefix].values():
                 metric.reset()
-
-    def _set_metrics_running_model(self):
-        """ran at fit/test start to set the running model"""
-        for prefix in self._active_run_metrics.keys():
-            for metric in self._active_run_metrics[prefix].values():
-                metric.running_model = lambda: self
-
-    def _unset_metrics_running_model(self):
-        """ran at fit/test end to unset the running model"""
-        for prefix in self._active_run_metrics.keys():
-            for metric in self._active_run_metrics[prefix].values():
-                metric.running_model = None
-        self._active_run_metrics = {}
 
     def _update_metrics_at_batch_end(self, batch_results: dict[str, tr.Tensor | None]):
         assert isinstance(batch_results, dict), f"Expected dict, got {type(batch_results)}"
