@@ -26,7 +26,7 @@ class MultiClassConfusionMatrix(CoreMetric):
         self.batch_results += batch_result.detach()
 
     @overrides
-    def epoch_result(self) -> tr.Tensor:
+    def epoch_result(self) -> tr.Tensor | None:
         return self.batch_results
 
     @overrides

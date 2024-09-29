@@ -16,9 +16,9 @@ from lightning_module_enhanced.utils import get_project_root
 from lightning_module_enhanced.callbacks import PlotMetrics
 
 class Reader(Dataset):
-    def __init__(self, d_out: int = 1, length: int = 100):
-        self.x = tr.randn(length, 2)
-        self.gt = tr.randn(length, d_out)
+    def __init__(self, d_in: int, d_out: int, n: int = 100):
+        self.x = tr.randn(n, d_in)
+        self.gt = tr.randn(n, d_out)
 
     def __getitem__(self, ix):
         return self.x[ix], self.gt[ix]
@@ -26,10 +26,31 @@ class Reader(Dataset):
     def __len__(self):
         return len(self.x)
 
+class MyMetric(CallableCoreMetric):
+    def __init__(self):
+        super().__init__(lambda y, gt: (y - gt).pow(2).mean(), higher_is_better=False)
+
+    def forward(self, y, gt):
+        assert self.running_model is not None
+        return super().forward(y, gt)
+
+counters = {"metric_grad": 0, "metric_non_grad": 0}
+
+def test_CoreMetric_running_model():
+    fn = MyMetric()
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+    model.metrics = {"mymetric": fn}
+    Trainer(max_epochs=1).fit(model, DataLoader(Reader(2, 1, 10)))
+    with pytest.raises(AssertionError):
+        _ = fn.running_model
+
 def test_load_metrics_metadata():
     """Fixes this: https://gitlab.com/meehai/lightning-module-enhanced/-/issues/11"""
-    train_loader = DataLoader(Reader(), batch_size=10)
-    val_loader = DataLoader(Reader(), batch_size=10)
+    train_loader = DataLoader(Reader(2, 1), batch_size=10)
+    val_loader = DataLoader(Reader(2, 1), batch_size=10)
     shutil.rmtree(get_project_root() / "test/logs" / (log_dir_name := "load_metrics_metadata"), ignore_errors=True)
 
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
@@ -58,7 +79,7 @@ def test_load_implicit_metrics(): # (!30) implicit metrics are no longer support
         metrics = {"loss": F.mse_loss(y, gt), "my_metric": (y - gt).abs().mean()}
         return y, metrics, x, gt
 
-    train_loader = DataLoader(Reader(), batch_size=10)
+    train_loader = DataLoader(Reader(2, 1), batch_size=10)
     shutil.rmtree(get_project_root() / "test/logs" / (logdir := "test_load_implicit_metrics"), ignore_errors=True)
 
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
@@ -83,7 +104,7 @@ def test_implicit_core_metrics(): # (!30) implicit metrics are no longer support
         def batch_update(self, batch_result) -> None:
             pass
 
-    train_loader = DataLoader(Reader(), batch_size=10)
+    train_loader = DataLoader(Reader(2, 1), batch_size=10)
     shutil.rmtree(get_project_root() / "test/logs" / (logdir := "test_implicit_core_metrics"), ignore_errors=True)
 
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
@@ -103,7 +124,7 @@ def test_metrics_from_algorithm(): # Pasing metrics from model_algorithm is fine
         metrics = {"loss": F.mse_loss(y, gt), "my_metric": (y - gt).abs().mean()}
         return y, metrics, x, gt
 
-    train_loader = DataLoader(Reader(), batch_size=10)
+    train_loader = DataLoader(Reader(2, 1), batch_size=10)
     shutil.rmtree(get_project_root() / "test/logs" / (logdir := "test_metrics_from_algorithm"), ignore_errors=True)
 
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
@@ -132,7 +153,7 @@ def test_epoch_metric():
         def reset(self):
             self.batch_results = []
 
-    train_loader = DataLoader(Reader(), batch_size=10)
+    train_loader = DataLoader(Reader(2, 1), batch_size=10)
     shutil.rmtree(get_project_root() / "test/logs" / (logdir := "test_epoch_metric"), ignore_errors=True)
 
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
@@ -162,7 +183,7 @@ def test_epoch_metric_reduced():
         def reset(self):
             self.batch_results = []
 
-    train_loader = DataLoader(Reader(d_out=5), batch_size=10)
+    train_loader = DataLoader(Reader(2, 5), batch_size=10)
     shutil.rmtree(get_project_root() / "test/logs" / (logdir := "test_epoch_metric_reduced"), ignore_errors=True)
 
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 5)))
@@ -186,13 +207,13 @@ def test_epoch_metric_reduced_val():
             self.batch_count[-1] += len(y)
         def batch_update(self, batch_result: F.Tensor) -> None:
             pass
-        def epoch_result(self) -> tr.Tensor:
+        def epoch_result(self) -> tr.Tensor | None:
             return tr.Tensor([0]).to(self.running_model().device)
         def reset(self):
             self.batch_count.append(0)
 
-    train_loader = DataLoader(Reader(d_out=5), batch_size=10)
-    val_loader = DataLoader(Reader(d_out=5, length=30), batch_size=10)
+    train_loader = DataLoader(Reader(2, 5), batch_size=10)
+    val_loader = DataLoader(Reader(2, 5, n=30), batch_size=10)
     shutil.rmtree(get_project_root() / "test/logs" / (logdir := "test_epoch_metric_reduced"), ignore_errors=True)
 
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 5)))
@@ -220,7 +241,7 @@ def test_CoreMetric_higher_is_better():
         def epoch_result(self) -> F.Tensor:
             return tr.FloatTensor([self.running_model().trainer.current_epoch]).to(self.running_model().device)
 
-    train_loader = DataLoader(Reader(), batch_size=10)
+    train_loader = DataLoader(Reader(2, 1), batch_size=10)
     shutil.rmtree(get_project_root() / "test/logs" / (logdir := "test_implicit_core_metrics"), ignore_errors=True)
 
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
@@ -245,7 +266,7 @@ def test_metrics_history_1():
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
     pl_logger = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_1", version=0)
-    Trainer(max_epochs=3, logger=pl_logger).fit(model, DataLoader(Reader()), DataLoader(Reader()))
+    Trainer(max_epochs=3, logger=pl_logger).fit(model, DataLoader(Reader(2, 1)), DataLoader(Reader(2, 1)))
     metrics_csv = list(csv.DictReader(open(f"{pl_logger.log_dir}/metrics.csv", "r")))
     assert len(metrics_csv) == 3
     assert "l1" in metrics_csv[0] and "loss" in metrics_csv[0]
@@ -260,11 +281,11 @@ def test_metrics_history_2():
     model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
 
     pl_logger = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_2", version=0)
-    Trainer(max_epochs=1, logger=pl_logger).fit(model, DataLoader(Reader()), DataLoader(Reader()))
+    Trainer(max_epochs=1, logger=pl_logger).fit(model, DataLoader(Reader(2, 1)), DataLoader(Reader(2, 1)))
     assert len(list(csv.DictReader(open(f"{pl_logger.log_dir}/metrics.csv", "r")))) == 1
 
     pl_logger2 = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_2", version=1)
-    Trainer(max_epochs=3, logger=pl_logger2).fit(model, DataLoader(Reader()), DataLoader(Reader()))
+    Trainer(max_epochs=3, logger=pl_logger2).fit(model, DataLoader(Reader(2, 1)), DataLoader(Reader(2, 1)))
     assert len(list(csv.DictReader(open(f"{pl_logger2.log_dir}/metrics.csv", "r")))) == 3
 
 def test_metrics_history_3():
@@ -276,15 +297,36 @@ def test_metrics_history_3():
     model.metrics = {"l1": (lambda y, gt: (y - gt).abs().mean(), "min")}
 
     pl_logger = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_3", version=0)
-    Trainer(max_epochs=2, logger=pl_logger).fit(model, DataLoader(Reader()), DataLoader(Reader()))
+    Trainer(max_epochs=2, logger=pl_logger).fit(model, DataLoader(Reader(2, 1)), DataLoader(Reader(2, 1)))
     assert len(data := list(csv.DictReader(open(f"{pl_logger.log_dir}/metrics.csv", "r")))) == 2
     assert all(x["loss"] != 0 for x in data) and all(x["val_loss"] != 0 for x in data), data
 
     pl_logger2 = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_3", version=1)
-    Trainer(max_epochs=5, logger=pl_logger2).fit(model, DataLoader(Reader()), DataLoader(Reader()),
+    Trainer(max_epochs=5, logger=pl_logger2).fit(model, DataLoader(Reader(2, 1)), DataLoader(Reader(2, 1)),
                                                  ckpt_path=model.trainer.checkpoint_callback.last_model_path)
     assert len(data2 := list(csv.DictReader(open(f"{pl_logger2.log_dir}/metrics.csv", "r")))) == 5
     assert data[0:2] == data2[0:2]
 
-if __name__ == "__main__":
-    test_metrics_history_3()
+def test_metrics_requires_grad():
+    def metric_grad(y, gt):
+        res = (y - gt).abs().mean()
+        counters["metric_grad"] += res.requires_grad
+        return res
+
+    def metric_non_grad(y, gt):
+        res = (y - gt).abs().mean()
+        counters["metric_non_grad"] += res.requires_grad
+        return res
+
+    model = LME(nn.Sequential(nn.Linear(10, 2), nn.Linear(2, 3)))
+    model.criterion_fn = lambda y, gt: (y - gt).abs().mean()
+    model.metrics = {
+        "metric1": CallableCoreMetric(metric_grad, higher_is_better=False, requires_grad=True),
+        "metric2": (metric_non_grad, "min"),
+    }
+    model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+
+    Trainer(max_epochs=10).fit(model, DataLoader(Reader(10, 3, n=5)))
+    assert counters["metric_grad"] == 50
+    assert counters["metric_non_grad"] == 0

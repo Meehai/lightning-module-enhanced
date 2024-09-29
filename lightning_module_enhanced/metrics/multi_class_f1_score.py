@@ -17,21 +17,19 @@ class MultiClassF1Score(CoreMetric):
 
     @overrides
     def forward(self, y: tr.Tensor, gt: tr.Tensor) -> tr.Tensor:
+        assert y.dtype in (tr.int64, tr.float32) and gt.dtype in (tr.int64, tr.float32), (y.dtype, gt.dtype)
         # support for both index tensors as well as float gt tensors (if one_hot in dataset)
         gt_argmax = gt.argmax(-1) if gt.dtype == tr.float else gt
         y_argmax = y.argmax(-1) if y.dtype == tr.float else y
-        stats = multiclass_stat_scores(y_argmax, gt_argmax, num_classes=self.num_classes, average="none")
-        # TP, FP, TN, FN
-        res = stats[:, 0:4].T
-        return res
+        stats = multiclass_stat_scores(y_argmax, gt_argmax, num_classes=self.num_classes, average=None)
+        return stats[:, 0:4].T # TP, FP, TN, FN
 
     @overrides
     def batch_update(self, batch_result: tr.Tensor) -> None:
-        self.batch_results = self.batch_results.to(batch_result.device)
-        self.batch_results += batch_result.detach()
+        self.batch_results = self.batch_results.to(batch_result.device) + batch_result.detach()
 
     @overrides
-    def epoch_result(self) -> tr.Tensor:
+    def epoch_result(self) -> tr.Tensor | None:
         tp, fp, _, fn = self.batch_results
         precision = tp / (tp + fp)
         recall = tp / (tp + fn)
