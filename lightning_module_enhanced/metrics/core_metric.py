@@ -54,7 +54,7 @@ class CoreMetric(nn.Module, ABC):
         """Updates the internal state based on the batch result from forward(y, gt)"""
 
     @abstractmethod
-    def epoch_result(self) -> tr.Tensor:
+    def epoch_result(self) -> tr.Tensor | None:
         """Called at each epoch end from the LME. Takes the internal state and returns the epoch result"""
 
     @abstractmethod

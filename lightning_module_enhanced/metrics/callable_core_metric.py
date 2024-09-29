@@ -51,7 +51,7 @@ class CallableCoreMetric(CoreMetric):
         self.batch_count += 1
 
     @overrides
-    def epoch_result(self) -> tr.Tensor:
+    def epoch_result(self) -> tr.Tensor | None:
         if self.batch_count is None:
             return None
         result = self.epoch_fn(self.batch_results, self.batch_count)

@@ -42,7 +42,7 @@ class MultiClassAccuracy(CoreMetric):
         self.count += num_per_class
 
     @overrides
-    def epoch_result(self) -> tr.Tensor:
+    def epoch_result(self) -> tr.Tensor | None:
         accs = self.scores / self.count
         accs[tr.isnan(accs)] = 0
         return accs
