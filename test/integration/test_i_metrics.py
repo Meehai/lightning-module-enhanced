@@ -12,6 +12,7 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from lightning_module_enhanced import LME, ModelAlgorithmOutput
 from lightning_module_enhanced.metrics import CallableCoreMetric, CoreMetric
+from lightning_module_enhanced.metrics.core_metric import MetricFnType
 from lightning_module_enhanced.utils import get_project_root
 from lightning_module_enhanced.callbacks import PlotMetrics
 
@@ -35,17 +36,6 @@ class MyMetric(CallableCoreMetric):
         return super().forward(y, gt)
 
 counters = {"metric_grad": 0, "metric_non_grad": 0}
-
-def test_CoreMetric_running_model():
-    fn = MyMetric()
-    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
-    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
-    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
-    model.metrics = {"mymetric": fn}
-    Trainer(max_epochs=1).fit(model, DataLoader(Reader(2, 1, 10)))
-    with pytest.raises(AssertionError):
-        _ = fn.running_model
 
 def test_load_metrics_metadata():
     """Fixes this: https://gitlab.com/meehai/lightning-module-enhanced/-/issues/11"""
@@ -208,7 +198,7 @@ def test_epoch_metric_reduced_val():
         def batch_update(self, batch_result: F.Tensor) -> None:
             pass
         def epoch_result(self) -> tr.Tensor | None:
-            return tr.Tensor([0]).to(self.running_model().device)
+            return tr.Tensor([0]).to(self.device)
         def reset(self):
             self.batch_count.append(0)
 
@@ -234,12 +224,16 @@ def test_CoreMetric_higher_is_better():
         return y, metrics, x, gt
 
     class EpikMetric(CallableCoreMetric):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.epoch = 0
         def forward(self, y, gt):
             return None
         def batch_update(self, batch_result) -> None:
             pass
         def epoch_result(self) -> F.Tensor:
-            return tr.FloatTensor([self.running_model().trainer.current_epoch]).to(self.running_model().device)
+            self.epoch += 1
+            return tr.FloatTensor([self.epoch]).to(self.device)
 
     train_loader = DataLoader(Reader(2, 1), batch_size=10)
     shutil.rmtree(get_project_root() / "test/logs" / (logdir := "test_implicit_core_metrics"), ignore_errors=True)

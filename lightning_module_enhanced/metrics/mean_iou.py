@@ -7,6 +7,7 @@ from overrides import overrides
 from ..logger import lme_logger as logger
 from .core_metric import CoreMetric
 
+# pylint: disable=not-callable
 class MeanIoU(CoreMetric):
     """mean iou based on the multi class classification stats during training. Only epoch results, no batch."""
     def __init__(self, classes: list[str], class_weights: list[float] | None = None, class_axis: int = -1):
@@ -41,21 +42,28 @@ class MeanIoU(CoreMetric):
     def batch_update(self, batch_result: tr.Tensor | None) -> None:
         if batch_result is None:
             return
-        self.batch_results = self.batch_results.to(self.running_model().device) + batch_result.detach()
+        self.batch_results = self.batch_results + batch_result.detach()
 
     @overrides
     def epoch_result(self) -> tr.Tensor | None:
         if (self.batch_results == 0).all():
             logger.debug(f"No batch results this epoch. Returning 0 for all {self.num_classes} classes.")
-            return tr.Tensor([0] * len(self.class_weights)).to(self.running_model().device)
+            return tr.Tensor([0] * len(self.class_weights)).to(self.device)
         tp, fp, _, fn = self.batch_results
         iou = tp / (tp + fp + fn) # (NC, )
-        wmean_iou = (iou * self.class_weights.to(iou.device)).nan_to_num(0).float() # (NC, )
+        wmean_iou = (iou * self.class_weights).nan_to_num(0).float() # (NC, )
         return wmean_iou
 
     @overrides
     def epoch_result_reduced(self, epoch_result: tr.Tensor | None) -> tr.Tensor | None:
         return epoch_result.sum().float() # sum because it's guaranteed that class_weights.sum() == 1
+
+    @overrides
+    def to(self, device: tr.device | str) -> MeanIoU:
+        self.device = device
+        self.batch_results = self.batch_results.to(device)
+        self.class_weights = self.class_weights.to(device)
+        return self
 
     def reset(self):
         self.batch_results *= 0

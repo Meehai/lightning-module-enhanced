@@ -127,7 +127,6 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
     @overrides
     def on_fit_start(self) -> None:
         self._setup_active_metrics()
-        self._set_metrics_running_model()
 
     @overrides
     def on_train_start(self) -> None:
@@ -135,16 +134,15 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
 
     @overrides
     def on_fit_end(self):
-        self._unset_metrics_running_model()
+        self._active_run_metrics = {}
 
     @overrides
     def on_test_start(self) -> None:
         self._setup_active_metrics()
-        self._set_metrics_running_model()
 
     @overrides
     def on_test_end(self):
-        self._unset_metrics_running_model()
+        self._active_run_metrics = {}
 
     @overrides(check_signature=False)
     # pylint: disable=not-callable
