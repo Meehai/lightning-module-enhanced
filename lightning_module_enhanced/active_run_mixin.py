@@ -68,7 +68,7 @@ class ActiveRunMixin(nn.Module):
 
                 value_reduced = metric_fn.epoch_result_reduced(metric_epoch_result)
                 if value_reduced is not None:
-                    assert (a := value_reduced.device) == (b := self.device), f"Expected {a}, got {b} ({metric_name})"
+                    assert (a := value_reduced.device) == (b := self.device), f"Expected {b}, got {a} ({metric_name})"
                     self.log(f"{prefix}{metric_name}", value_reduced, prog_bar=prog_bar, on_epoch=True)
                 # Call the metadata callback for the full result, since it can handle any sort of metrics
                 if self.trainer.global_rank == 0 and metric_epoch_result is not None: # TODO: remove this

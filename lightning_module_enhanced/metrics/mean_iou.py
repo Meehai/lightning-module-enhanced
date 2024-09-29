@@ -22,6 +22,7 @@ class MeanIoU(CoreMetric):
 
     def _get_class_tensor(self, tensor: tr.Tensor) -> tr.Tensor:
         assert tensor.dtype in (tr.int64, tr.float32), tensor.dtype
+        assert not tensor.isnan().any(), f"Tensor {tensor} has NaNs!"
         if tensor.dtype == tr.float32:
             if tensor.shape[self.class_axis] != self.num_classes:
                 raise ValueError(f"Expected {self.num_classes} classes on axis {self.class_axis}, got {tensor.shape}")
@@ -40,13 +41,13 @@ class MeanIoU(CoreMetric):
     def batch_update(self, batch_result: tr.Tensor | None) -> None:
         if batch_result is None:
             return
-        self.batch_results = self.batch_results.to(batch_result.device) + batch_result.detach()
+        self.batch_results = self.batch_results.to(self.running_model().device) + batch_result.detach()
 
     @overrides
     def epoch_result(self) -> tr.Tensor | None:
-        if len(self.batch_results) == 0:
+        if (self.batch_results == 0).all():
             logger.debug(f"No batch results this epoch. Returning 0 for all {self.num_classes} classes.")
-            return tr.Tensor([0] * len(self.class_weights))
+            return tr.Tensor([0] * len(self.class_weights)).to(self.running_model().device)
         tp, fp, _, fn = self.batch_results
         iou = tp / (tp + fp + fn) # (NC, )
         wmean_iou = (iou * self.class_weights.to(iou.device)).nan_to_num(0).float() # (NC, )
@@ -57,7 +58,7 @@ class MeanIoU(CoreMetric):
         return epoch_result.sum().float() # sum because it's guaranteed that class_weights.sum() == 1
 
     def reset(self):
-        self.batch_results = tr.zeros(4, self.num_classes).type(tr.float64)
+        self.batch_results *= 0
 
     def __repr__(self):
         return f"[MeanIoU] Classes: {self.classes} Class weights: {[round(x.item(), 2) for x in self.class_weights]}"
