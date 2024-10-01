@@ -23,7 +23,6 @@ class PlotCallbackGeneric(Callback):
         if len(trainer.loggers) == 0:
             return None
         out_dir = Path(f"{trainer.logger.log_dir}/pngs/{dir_name}/{trainer.current_epoch + 1}")
-        out_dir.mkdir(exist_ok=True, parents=True)
         return out_dir
 
     def _get_prediction(self, pl_module: LightningModule):
@@ -32,7 +31,7 @@ class PlotCallbackGeneric(Callback):
         return y
 
     def _check_if_should_skip(self, trainer: Trainer, batch_idx: int, n_batches: int) -> bool:
-        if self.mode == "first":
+        if self.mode == "first" or trainer.state.stage == "sanity_check":
             return batch_idx != 0
         tr.manual_seed(trainer.current_epoch) # hopefully guaranteed to give us the same permutation during an epoch
         n_batches = n_batches[0] if isinstance(n_batches, list) and len(n_batches) == 1 else n_batches # wtf?
