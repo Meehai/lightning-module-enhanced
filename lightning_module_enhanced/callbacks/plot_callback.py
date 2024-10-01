@@ -35,6 +35,7 @@ class PlotCallbackGeneric(Callback):
         if self.mode == "first":
             return batch_idx != 0
         tr.manual_seed(trainer.current_epoch) # hopefully guaranteed to give us the same permutation during an epoch
+        n_batches = n_batches[0] if isinstance(n_batches, list) and len(n_batches) == 1 else n_batches # wtf?
         return batch_idx != tr.randperm(n_batches)[0].item()
 
     def _do_call(self, pl_module: LightningModule, batch: dict, batch_idx: int, key: str, n_batches: int):
