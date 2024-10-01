@@ -84,6 +84,7 @@ class CoreMetric(nn.Module, ABC):
             return None
         return epoch_result_reduced
 
+    # pylint: disable=arguments-differ
     def to(self, device: tr.device | str) -> CoreMetric:
         """seter of the device. Overwrite this in your metric implementation if you have more tensors"""
         self.device = device

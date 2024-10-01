@@ -3,30 +3,28 @@ import shutil
 import torch as tr
 import pytest
 from torch import nn, optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import CSVLogger
 from lightning_module_enhanced import LME
 from lightning_module_enhanced.multi_trainer import MultiTrainer
 from pathlib import Path
 
-class Reader:
-    def __init__(self, n_data: int, n_dims: int):
-        self.n_data = n_data
-        self.n_dims = n_dims
-        self.data = tr.randn(n_data, n_dims)
-        self.labels = tr.randn(n_data, n_dims)
-
+class Reader(Dataset):
+    def __init__(self, d_in: int, d_out: int, n: int = 100):
+        self.d_in = d_in
+        self.d_out = d_out
+        self.x = tr.randn(n, d_in)
+        self.gt = tr.randn(n, d_out)
     def __getitem__(self, ix):
-        return self.data[ix], self.labels[ix]
-
+        return self.x[ix], self.gt[ix]
     def __len__(self):
-        return self.n_data
+        return len(self.x)
 
 class Model(nn.Module):
-    def __init__(self, n_dims: int):
+    def __init__(self, d_in: int, d_out: int):
         super().__init__()
-        self.fc = nn.Linear(n_dims, n_dims)
+        self.fc = nn.Linear(d_in, d_out)
 
     def forward(self, x: tr.Tensor):
         return self.fc(x)
@@ -38,9 +36,9 @@ def test_multi_trainer_ctor():
     assert e.done_so_far == 0
 
 def test_multi_trainer_fit():
-    train_data = Reader(n_data=100, n_dims=3)
-    validation_data = Reader(n_data=100, n_dims=3)
-    model = LME(Model(n_dims=train_data.n_dims))
+    train_data = Reader(3, 3, 100)
+    validation_data = Reader(3, 3, 100)
+    model = LME(Model(train_data.d_in, train_data.d_out))
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
@@ -78,8 +76,8 @@ def test_multi_trainer_fit():
     assert mt4.done_so_far == 5
 
 def test_multi_trainer_3():
-    train_data = Reader(n_data=100, n_dims=3)
-    model = LME(Model(n_dims=train_data.n_dims))
+    train_data = Reader(3, 3, 100)
+    model = LME(Model(train_data.d_in, train_data.d_out))
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
@@ -94,8 +92,8 @@ def test_multi_trainer_3():
     assert "fit_metadata.json" in [x.name for x in (Path(save_dir) / "12").iterdir()]
 
 def test_multi_trainer_parallel_cpu():
-    train_data = Reader(n_data=100, n_dims=3)
-    model = LME(Model(n_dims=train_data.n_dims))
+    train_data = Reader(3, 3, 100)
+    model = LME(Model(train_data.d_in, train_data.d_out))
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)

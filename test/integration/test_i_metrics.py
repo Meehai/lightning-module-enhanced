@@ -20,17 +20,14 @@ class Reader(Dataset):
     def __init__(self, d_in: int, d_out: int, n: int = 100):
         self.x = tr.randn(n, d_in)
         self.gt = tr.randn(n, d_out)
-
     def __getitem__(self, ix):
         return self.x[ix], self.gt[ix]
-
     def __len__(self):
         return len(self.x)
 
 class MyMetric(CallableCoreMetric):
     def __init__(self):
         super().__init__(lambda y, gt: (y - gt).pow(2).mean(), higher_is_better=False)
-
     def forward(self, y, gt):
         assert self.running_model is not None
         return super().forward(y, gt)
