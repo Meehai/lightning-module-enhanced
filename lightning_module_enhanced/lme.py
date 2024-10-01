@@ -390,3 +390,6 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
             if item == "base_model":
                 return self.__getattr__("base_model")
             return self.base_model.__getattr__(item)
+
+    def __repr__(self) -> str:
+        return str(self.summary)

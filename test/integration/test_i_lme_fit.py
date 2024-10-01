@@ -1,6 +1,9 @@
 from __future__ import annotations
 import pytest
 from lightning_module_enhanced import LME, ModelAlgorithmOutput
+from lightning_module_enhanced.callbacks import PlotCallbackGeneric, PlotMetrics
+from lightning_module_enhanced.utils import get_project_root
+from pytorch_lightning.loggers import CSVLogger
 from pytorch_lightning import Trainer
 from torch.utils.data import Dataset, DataLoader
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -320,5 +323,22 @@ def test_i_load_from_checkpoint():
     assert model3.optimizer is None and model3.scheduler is None
     assert model3.hparams.hello == "world"
 
+@pytest.mark.parametrize("mode", ["first", "random"])
+def test_fit_with_PlotCallbacks(mode: str):
+    last_epoch_seen = -1
+    def plot_fn(model: LME, batch: tuple, y: tr.Tensor, out_dir):
+        nonlocal last_epoch_seen
+        assert model.trainer.current_epoch == last_epoch_seen + 1
+        last_epoch_seen += 1
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.optimizer = optim.SGD(model.parameters(), lr=0.1)
+    model.callbacks = [PlotMetrics(), PlotCallbackGeneric(plot_fn, mode=mode)]
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+    # with pytest.raises(AssertionError): # TODO: doesn't raise in gitlab O_o
+    #     Trainer(max_epochs=1).fit(model, DataLoader(Reader(2, 1, 10)))
+    pl_logger = CSVLogger(get_project_root() / "test/logs", name="test_fit_with_PlotCallbacks", version=0)
+    Trainer(max_epochs=3, logger=pl_logger).fit(model, DataLoader(Reader(2, 1, 10)))
+
 if __name__ == "__main__":
-    test_fit_twice_from_ckpt()
+    test_fit_with_PlotCallbacks()
