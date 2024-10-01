@@ -149,34 +149,37 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
     def training_step(self, batch: Any, batch_idx: int, *args, **kwargs):
         """Training step: returns batch training loss and metrics."""
         # Warning: if not using lightning's self.optimizers(), and rather trying to user our self.optimizer, will
-        # result in checkpoints not being saved.
-        # After more digging it's because self.optimizers() doesn't return self.optimizer (the torch optimizer), but
-        # rather lightning's warpper on top of it that can be used using other trainer strategies (ddp) and also
-        # updates some internal states, like trainer.global_step.
-        _opt = self.optimizers()
-        opts: list[LightningOptimizer] = _opt if isinstance(_opt, list) else [_opt]
+        # result in checkpoints not being saved. After more digging it's because self.optimizers() doesn't return
+        # self.optimizer (the torch optimizer), but rather lightning's warpper on top of it that can be used using other
+        # trainer strategies (ddp) and also updates some internal states, like trainer.global_step.
+        opts: list[LightningOptimizer] = make_list(self.optimizers())
         for opt in opts:
             opt.optimizer.zero_grad()
-        y, train_metrics, _, gt = self.model_algorithm(self, to_device(batch, self.device))
-        self.cache_result = tr_detach_data(y)
-        loss = train_metrics["loss"] if "loss" in train_metrics else self.criterion_fn(y, gt) # TODO
+        algo_output = self.model_algorithm(self, to_device(batch, self.device))
+        if algo_output is None:
+            logger.debug("Algorithm output is None. Skipping this batch.")
+            return None
+        y, train_metrics, _, __ = algo_output
+        self.cache_result = tr_detach_data(y) # TODO: this is only for PlotMetrics
+        assert "loss" in train_metrics and train_metrics["loss"].requires_grad, "Loss not set or doesn't require grad"
         self._update_metrics_at_batch_end(train_metrics)
         # Manual optimization like real men. We disable automatic_optimization in the constructor.
-        if loss is not None and loss.requires_grad:
-            self.manual_backward(loss)
-            for opt in opts:
-                opt.step()
-        else:
-            logger.debug(f"Loss is None or doesn't require grad ({loss}). Skipping this batch.")
-        return loss
+        self.manual_backward(train_metrics["loss"])
+        for opt in opts:
+            opt.step()
+        return train_metrics["loss"]
 
     @overrides
     # pylint: disable=not-callable
     def validation_step(self, batch: Any, batch_idx: int, *args, **kwargs):
         """Validation step: returns batch validation loss and metrics."""
-        y, val_metrics, _, gt = self.model_algorithm(self, to_device(batch, self.device))
-        self.cache_result = tr_detach_data(y)
-        val_metrics["loss"] = val_metrics["loss"] if "loss" in val_metrics else self.criterion_fn(y, gt) # TODO
+        algo_output = self.model_algorithm(self, to_device(batch, self.device))
+        if algo_output is None:
+            logger.debug("Algorithm output is None. Skipping this batch.")
+            return None
+        y, val_metrics, _, __ = algo_output
+        self.cache_result = tr_detach_data(y) # TODO: this is only for PlotMetrics
+        assert "loss" in val_metrics, "Loss not set"
         self._update_metrics_at_batch_end(val_metrics)
         return val_metrics["loss"]
 
@@ -184,11 +187,14 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
     # pylint: disable=not-callable
     def test_step(self, batch: Any, batch_idx: int, *args, **kwargs):
         """Testing step: returns batch test loss and metrics."""
-        y, test_metrics, _, gt = self.model_algorithm(self, to_device(batch, self.device))
-        test_metrics["loss"] = test_metrics["loss"] if "loss" in test_metrics else self.criterion_fn(y, gt) # TODO
+        algo_output = self.model_algorithm(self, to_device(batch, self.device))
+        if algo_output is None:
+            logger.debug("Algorithm output is None. Skipping this batch.")
+            return None
+        y, test_metrics, _, __ = algo_output
         self.cache_result = tr_detach_data(y)
         self._update_metrics_at_batch_end(test_metrics)
-        return test_metrics["loss"]
+        return test_metrics.get("loss", None)
 
     @overrides
     # pylint: disable=not-callable

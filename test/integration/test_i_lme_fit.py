@@ -1,19 +1,20 @@
 from __future__ import annotations
 import pytest
 from lightning_module_enhanced import LME, ModelAlgorithmOutput
-from lightning_module_enhanced.utils import to_device, to_tensor
 from pytorch_lightning import Trainer
-from torch.utils.data import DataLoader
+from torch.utils.data import Dataset, DataLoader
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch import nn, optim
 import torch as tr
 
-class Reader:
-    def __len__(self):
-        return 10
-
+class Reader(Dataset):
+    def __init__(self, d_in: int, d_out: int, n: int = 100):
+        self.x = tr.randn(n, d_in)
+        self.gt = tr.randn(n, d_out)
     def __getitem__(self, ix):
-        return tr.randn(2), tr.randn(1)
+        return self.x[ix], self.gt[ix]
+    def __len__(self):
+        return len(self.x)
 
 class MultiArgsLME(LME):
     def __init__(self, *args, **kwargs):
@@ -22,7 +23,7 @@ class MultiArgsLME(LME):
 
     @staticmethod
     def model_algorithm_multi_args(self, train_batch: dict) -> ModelAlgorithmOutput:
-        x, gt = train_batch[0], to_device(to_tensor(train_batch[1]), self.device)
+        x, gt = train_batch
         y = self.forward(**x) if isinstance(x, dict) else self.forward(x)
         return y, self.lme_metrics(y, gt), x, gt
 
@@ -31,14 +32,14 @@ def test_fit_1():
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
-    Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
+    Trainer(max_epochs=1).fit(model, DataLoader(Reader(2, 1, 10)))
 
 def test_fit_no_criterion():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     try:
-        Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
+        Trainer(max_epochs=1).fit(model, DataLoader(Reader(2, 1, 10)))
         assert False
     except NotImplementedError:
         pass
@@ -48,7 +49,7 @@ def test_fit_no_optimizer():
     model.criterion_fn = lambda y, gt: (y - gt).abs().mean()
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     try:
-        Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
+        Trainer(max_epochs=1).fit(model, DataLoader(Reader(2, 1, 10)))
         assert False
     except ValueError:
         pass
@@ -60,8 +61,8 @@ def test_fit_twice():
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
-    Trainer(max_epochs=10).fit(model, DataLoader(Reader()))
-    Trainer(max_epochs=20).fit(model, DataLoader(Reader()))
+    Trainer(max_epochs=10).fit(model, DataLoader(Reader(2, 1, 10)))
+    Trainer(max_epochs=20).fit(model, DataLoader(Reader(2, 1, 10)))
     assert model.trainer.current_epoch == 20
     assert len(model.metrics) == 0
 
@@ -71,8 +72,8 @@ def test_fit_twice_with_validation():
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
-    Trainer(max_epochs=10).fit(model, DataLoader(Reader()), DataLoader(Reader()))
-    Trainer(max_epochs=20).fit(model, DataLoader(Reader()), DataLoader(Reader()))
+    Trainer(max_epochs=10).fit(model, DataLoader(Reader(2, 1, 10)), DataLoader(Reader(2, 1, 10)))
+    Trainer(max_epochs=20).fit(model, DataLoader(Reader(2, 1, 10)), DataLoader(Reader(2, 1, 10)))
     assert model.trainer.current_epoch == 20
     assert len(model.metrics) == 0
 
@@ -82,8 +83,8 @@ def test_fit_twice_with_validation_only_once_1():
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
-    Trainer(max_epochs=10).fit(model, DataLoader(Reader()), DataLoader(Reader()))
-    Trainer(max_epochs=20).fit(model, DataLoader(Reader()))
+    Trainer(max_epochs=10).fit(model, DataLoader(Reader(2, 1, 10)), DataLoader(Reader(2, 1, 10)))
+    Trainer(max_epochs=20).fit(model, DataLoader(Reader(2, 1, 10)))
     assert model.trainer.current_epoch == 20
     assert len(model.metrics) == 0
 
@@ -93,8 +94,8 @@ def test_fit_twice_with_validation_only_once_2():
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
-    Trainer(max_epochs=20).fit(model, DataLoader(Reader()))
-    Trainer(max_epochs=10).fit(model, DataLoader(Reader()), DataLoader(Reader()))
+    Trainer(max_epochs=20).fit(model, DataLoader(Reader(2, 1, 10)))
+    Trainer(max_epochs=10).fit(model, DataLoader(Reader(2, 1, 10)), DataLoader(Reader(2, 1, 10)))
     assert model.trainer.current_epoch == 10
     assert len(model.metrics) == 0
     # This should start from epoch 0 towards epoch 10, basically from scratch, but with pretrained weights
@@ -108,8 +109,8 @@ def test_fit_twice_with_validation_only_once_3():
     model.metrics = {"metric1": (lambda y, gt: (y - gt).pow(2).mean(), "min")}
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
-    Trainer(max_epochs=20).fit(model, DataLoader(Reader()))
-    Trainer(max_epochs=10).fit(model, DataLoader(Reader()), DataLoader(Reader()))
+    Trainer(max_epochs=20).fit(model, DataLoader(Reader(2, 1, 10)))
+    Trainer(max_epochs=10).fit(model, DataLoader(Reader(2, 1, 10)), DataLoader(Reader(2, 1, 10)))
     assert model.trainer.current_epoch == 10
     assert len(model.metrics) == 1
     # This should start from epoch 0 towards epoch 10, basically from scratch, but with pretrained weights
@@ -123,9 +124,9 @@ def test_fit_twice_from_ckpt():
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     trainer1 = Trainer(max_epochs=5)
-    trainer1.fit(model, DataLoader(Reader()))
+    trainer1.fit(model, DataLoader(Reader(2, 1, 10)))
     Trainer(max_epochs=10).fit(
-        model, DataLoader(Reader()), DataLoader(Reader()), ckpt_path=trainer1.checkpoint_callbacks[0].last_model_path
+        model, DataLoader(Reader(2, 1, 10)), DataLoader(Reader(2, 1, 10)), ckpt_path=trainer1.checkpoint_callbacks[0].last_model_path
     )
     # This should start from epoch 5 towards epoch 10
     assert list(model.metadata_callback.metadata["epoch_metrics"]["loss"].keys())[0] == "0", \
@@ -144,8 +145,8 @@ def test_fit_and_test_good():
         "metric2": (lambda y, gt: (y - gt) * 0, "min"),
     }
 
-    Trainer(max_epochs=1).fit(model, DataLoader(Reader()))
-    res = Trainer().test(model, DataLoader(Reader()))
+    Trainer(max_epochs=1).fit(model, DataLoader(Reader(2, 1, 10)))
+    res = Trainer().test(model, DataLoader(Reader(2, 1, 10)))
     assert len(res) == 1
     assert sorted(res[0].keys()) == ["loss", "metric1", "metric2"], res[0].keys()
 
@@ -155,14 +156,13 @@ def test_fit_with_scheduler():
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
     model.scheduler = {"scheduler": ReduceLROnPlateau(model.optimizer, factor=0.9, patience=5), "monitor": "loss"}
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
-    Trainer(max_epochs=3).fit(model, DataLoader(Reader()))
+    Trainer(max_epochs=3).fit(model, DataLoader(Reader(2, 1, 10)))
     assert model.scheduler["scheduler"].last_epoch == 2
 
 def test_fit_different_forward_params_1():
     class MyReader:
         def __len__(self):
             return 10
-
         def __getitem__(self, ix):
             # data contains a dict with key 'input' which maps to nn.Linear's forward function arg
             return {"input": tr.randn(2)}, tr.randn(1)
@@ -302,7 +302,7 @@ def test_i_load_from_checkpoint():
     assert f"{exc.value}" == "Not in metrics: {'some_metric'}"
     model.checkpoint_monitors = ["loss"]
     model.hparams.hello = "world"
-    (t1 := Trainer(max_epochs=3)).fit(model, DataLoader(Reader()))
+    (t1 := Trainer(max_epochs=3)).fit(model, DataLoader(Reader(2, 1, 10)))
 
     model2 = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model2.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
