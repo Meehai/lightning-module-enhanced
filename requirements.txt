@@ -3,6 +3,6 @@ pytorch_lightning==2.4.0
 torchinfo==1.8.0
 torchmetrics==1.4.1
 overrides==7.7.0
-matplotlib==3.7.5
-loggez==0.3
+matplotlib>=3.7.5
+loggez>=0.3
 pool-resources==0.3.0
