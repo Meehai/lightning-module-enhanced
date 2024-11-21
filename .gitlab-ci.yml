@@ -1,4 +1,4 @@
-image: python:3.8-bullseye
+image: python:3.10-bullseye
 
 workflow:
   rules:
@@ -11,7 +11,7 @@ workflow:
 before_script:
   - apt-get update
   - export PYTHONPATH="$PYTHONPATH:`pwd`"
-  - cat requirements.txt | sed "s/torch==2.4.1/torch @ https:\/\/download.pytorch.org\/whl\/cpu\/torch-2.4.1%2Bcpu-cp38-cp38-linux_x86_64.whl/g" > /tmp/requirements_ci.txt
+  - cat requirements.txt | sed "s/torch==2.5.1/torch @ https:\/\/download.pytorch.org\/whl\/cpu\/torch-2.5.1%2Bcpu-cp310-cp310-linux_x86_64.whl/g" > /tmp/requirements_ci.txt
   - pip install -r /tmp/requirements_ci.txt
   - pip install pylint pytest
 

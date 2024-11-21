@@ -1,4 +1,4 @@
-torch==2.4.1
+torch==2.5.1
 pytorch_lightning==2.4.0
 torchinfo==1.8.0
 torchmetrics==1.4.1

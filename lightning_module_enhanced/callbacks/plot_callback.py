@@ -1,4 +1,5 @@
 """Module to create a plot callback for train and/or validation for a Lightning Module"""
+# pylint: disable=too-many-positional-arguments
 from __future__ import annotations
 from typing import Callable
 from pathlib import Path

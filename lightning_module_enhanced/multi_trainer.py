@@ -1,4 +1,5 @@
 """Experiment base class"""
+# pylint: disable=too-many-positional-arguments
 from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
