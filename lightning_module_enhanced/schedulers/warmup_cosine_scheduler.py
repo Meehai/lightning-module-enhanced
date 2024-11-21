@@ -1,4 +1,5 @@
 """Warmup cosine Scheduler"""
+# pylint: disable=too-many-positional-arguments
 import math
 from torch.optim.lr_scheduler import LambdaLR
 
