@@ -3,6 +3,7 @@ import pytest
 from lightning_module_enhanced import LME, ModelAlgorithmOutput
 from lightning_module_enhanced.callbacks import PlotCallbackGeneric, PlotMetrics
 from lightning_module_enhanced.utils import get_project_root
+from lightning_module_enhanced.schedulers import MinMaxLR
 from pytorch_lightning.loggers import CSVLogger
 from pytorch_lightning import Trainer
 from torch.utils.data import Dataset, DataLoader
@@ -153,7 +154,7 @@ def test_fit_and_test_good():
     assert len(res) == 1
     assert sorted(res[0].keys()) == ["loss", "metric1", "metric2"], res[0].keys()
 
-def test_fit_with_scheduler():
+def test_fit_with_ReduceLROnPlateau_scheduler():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
@@ -161,6 +162,17 @@ def test_fit_with_scheduler():
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     Trainer(max_epochs=3).fit(model, DataLoader(Reader(2, 1, 10)))
     assert model.scheduler["scheduler"].last_epoch == 2
+
+def test_fit_with_DeltaLR_scheduler():
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    model.optimizer = optim.SGD(model.parameters(), lr=0.01)
+    model.scheduler = {"scheduler": MinMaxLR(model.optimizer, min_lr=0.001, max_lr=0.5,
+                                             n_steps=2, warmup_steps=2), "monitor": "loss"}
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+    Trainer(max_epochs=10).fit(model, DataLoader(Reader(2, 1, 10)))
+    assert model.metadata_callback.metadata["optimizer"]["lr_history"] == \
+        [0.01, 0.01, 0.0055, 0.001, 0.0055, 0.01, 0.255, 0.5, 0.255, 0.01]
 
 def test_fit_different_forward_params_1():
     class MyReader:
@@ -341,4 +353,4 @@ def test_fit_with_PlotCallbacks(mode: str):
     Trainer(max_epochs=3, logger=pl_logger).fit(model, DataLoader(Reader(2, 1, 10)))
 
 if __name__ == "__main__":
-    test_fit_with_PlotCallbacks()
+    test_fit_with_DeltaLR_scheduler()
