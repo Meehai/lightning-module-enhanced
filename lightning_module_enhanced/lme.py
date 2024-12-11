@@ -159,8 +159,8 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
         if algo_output is None:
             logger.debug("Algorithm output is None. Skipping this batch.")
             return None
-        y, train_metrics, _, __ = algo_output
-        self.cache_result = tr_detach_data(y) # TODO: this is only for PlotMetrics
+        _, train_metrics, _, _ = algo_output
+        self.cache_result = tr_detach_data(algo_output) # TODO: this is only for PlotMetrics
         assert "loss" in train_metrics and train_metrics["loss"].requires_grad, "Loss not set or doesn't require grad"
         self._update_metrics_at_batch_end(train_metrics)
         # Manual optimization like real men. We disable automatic_optimization in the constructor.
@@ -177,8 +177,8 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
         if algo_output is None:
             logger.debug("Algorithm output is None. Skipping this batch.")
             return None
-        y, val_metrics, _, __ = algo_output
-        self.cache_result = tr_detach_data(y) # TODO: this is only for PlotMetrics
+        _, val_metrics, _, _ = algo_output
+        self.cache_result = tr_detach_data(algo_output) # TODO: this is only for PlotMetrics
         assert "loss" in val_metrics, "Loss not set"
         self._update_metrics_at_batch_end(val_metrics)
         return val_metrics["loss"]
@@ -191,8 +191,8 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
         if algo_output is None:
             logger.debug("Algorithm output is None. Skipping this batch.")
             return None
-        y, test_metrics, _, __ = algo_output
-        self.cache_result = tr_detach_data(y)
+        _, test_metrics, _, _ = algo_output
+        self.cache_result = tr_detach_data(algo_output) # TODO: this is only for PlotMetrics
         self._update_metrics_at_batch_end(test_metrics)
         return test_metrics.get("loss", None)
 
