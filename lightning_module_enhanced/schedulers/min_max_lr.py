@@ -1,4 +1,4 @@
-"""Warmup cosine Scheduler"""
+"""MinMax Learning rate linear scheduler"""
 # pylint: disable=too-many-positional-arguments
 import torch as tr
 from torch.optim.lr_scheduler import LRScheduler
