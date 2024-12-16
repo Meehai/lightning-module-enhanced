@@ -23,6 +23,8 @@ def to_tensor(data):
     if isinstance(data, list):
         return type(data)([to_tensor(x) for x in data])
     if isinstance(data, tuple):
+        if hasattr(data, "_asdict"): # NameTuple
+            return type(data)(**to_tensor(data._asdict())) # pylint: disable=protected-access
         return type(data)(to_tensor(x) for x in data)
     if isinstance(data, dict):
         return type(data)({k: to_tensor(v) for k, v in data.items()})
@@ -50,6 +52,8 @@ def to_device(data, device: tr.device):
     if isinstance(data, list):
         return type(data)([to_device(x, device) for x in data])
     if isinstance(data, tuple):
+        if hasattr(data, "_asdict"): # NameTuple
+            return type(data)(**to_device(data._asdict(), device)) # pylint: disable=protected-access
         return type(data)(to_device(x, device) for x in data)
     if isinstance(data, set):
         return type(data)({to_device(x, device) for x in data})
@@ -73,6 +77,8 @@ def tr_detach_data(data: T) -> T:
     if isinstance(data, list):
         return type(data)([tr_detach_data(x) for x in data])
     if isinstance(data, tuple):
+        if hasattr(data, "_asdict"): # NameTuple
+            return type(data)(**tr_detach_data(data._asdict())) # pylint: disable=protected-access
         return type(data)(tr_detach_data(x) for x in data)
     if isinstance(data, set):
         return type(data)({tr_detach_data(x) for x in data})
