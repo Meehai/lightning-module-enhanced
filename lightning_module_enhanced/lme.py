@@ -389,7 +389,10 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
         except AttributeError:
             if item == "base_model":
                 return self.__getattr__("base_model")
-            return self.base_model.__getattr__(item)
+            try:
+                return self.base_model.__getattribute__(item)
+            except AttributeError:
+                return self.base_model.__getattr__(item)
 
     def __repr__(self) -> str:
         return str(self.summary)
