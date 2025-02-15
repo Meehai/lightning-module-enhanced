@@ -107,6 +107,9 @@ class MetadataCallback(pl.Callback):
     @overrides(check_signature=False)
     def load_state_dict(self, state_dict: dict[str, Any]) -> None:
         self.metadata = json.loads(state_dict) # type: ignore
+        # https://stackoverflow.com/questions/1450957/pythons-json-module-converts-int-dictionary-keys-to-strings
+        for k, v in self.metadata["epoch_metrics"].items():
+            self.metadata["epoch_metrics"][k] = {int(k2): v2 for k2, v2 in v.items()}
 
     def save(self):
         """Saves the file on disk"""
