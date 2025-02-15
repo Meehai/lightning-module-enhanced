@@ -115,12 +115,13 @@ class TrainableModuleMixin(TrainableModule):
     def _model_ckpt_cbs(self) -> list[pl.Callback]:
         prefix = "val_" if (self._trainer is not None and self.trainer.enable_validation) else ""
         res = []
-        for i, monitor in enumerate(self.checkpoint_monitors):
-            # note: save_last=True for len(model_ckpt_cbs)==0 only (i.e. first monitor)
+        for monitor in self.checkpoint_monitors:
             mode = self.metrics[monitor].mode if monitor != "loss" else "min"
             filename = "{epoch}-{" + prefix + monitor + ":.3f}"
-            res.append(ModelCheckpoint(monitor=f"{prefix}{monitor}", filename=filename, save_last=(i == 0),
-                                       save_on_train_epoch_end=True, mode=mode))
+            res.append(ModelCheckpoint(monitor=f"{prefix}{monitor}", filename=filename, save_last=False,
+                                       save_on_train_epoch_end=True, mode=mode, save_weights_only=True))
+        res.append(ModelCheckpoint(monitor="loss", filename="last", save_last=True,  # last only
+                                       save_on_train_epoch_end=True, mode="min", save_top_k=0))
         return res
 
     @property
@@ -164,7 +165,7 @@ class TrainableModuleMixin(TrainableModule):
             logger.debug2("No metrics were set. Returning empty dict")
             return {}
         try: # for active runs
-            res = self._active_run_metrics.get(self._prefix_from_trainer(), self._metrics)
+            res = self.active_run_metrics.get(self._prefix_from_trainer(), self._metrics)
             return {k: v for k, v in res.items() if k != "loss"}
         except Exception:
             return self._metrics
