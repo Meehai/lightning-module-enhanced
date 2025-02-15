@@ -133,7 +133,7 @@ def test_fit_twice_from_ckpt():
         model, DataLoader(Reader(2, 1, 10)), DataLoader(Reader(2, 1, 10)), ckpt_path=trainer1.checkpoint_callbacks[0].last_model_path
     )
     # This should start from epoch 5 towards epoch 10
-    assert list(model.metadata_callback.metadata["epoch_metrics"]["loss"].keys())[0] == "0", \
+    assert list(model.metadata_callback.metadata["epoch_metrics"]["loss"].keys())[0] == 0, \
         list(model.metadata_callback.metadata["epoch_metrics"]["loss"].keys())[0]
     assert len(model.metadata_callback.metadata["epoch_metrics"]["loss"]) == 10
     assert model.trainer.current_epoch == 10
