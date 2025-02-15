@@ -53,8 +53,9 @@ class MetadataCallback(pl.Callback):
     @rank_zero_only
     @overrides(check_signature=False)
     def on_fit_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
-        self.metadata["best_model"] = self._log_best_model_fit_end(pl_module)
         self.metadata = {**self.metadata, **self._log_timestamp_end("fit")}
+        if (best_model_meta := self._log_best_model_epoch_start_and_fit_end(pl_module)) is not None:
+            self.metadata["best_model"] = best_model_meta
         self.save()
         if any(isinstance(x, WandbLogger) for x in trainer.loggers):
             wandb_logger: WandbLogger = [x for x in trainer.loggers if isinstance(x, WandbLogger)][0]
@@ -69,6 +70,8 @@ class MetadataCallback(pl.Callback):
             self.metadata["train_dataset_size"] = len(trainer.train_dataloader.dataset)
         if "validation_dataset_size" not in self.metadata and trainer.val_dataloaders is not None:
             self.metadata["validation_dataset_size"] = len(pl_module.trainer.val_dataloaders.dataset)
+        if (best_model_meta := self._log_best_model_epoch_start_and_fit_end(pl_module)) is not None:
+            self.metadata["best_model"] = best_model_meta
 
     @rank_zero_only
     @overrides(check_signature=False)
@@ -113,11 +116,10 @@ class MetadataCallback(pl.Callback):
 
     def save(self):
         """Saves the file on disk"""
-        # Force epoch metrics to be at the end for viewing purposes.
         if self.log_file_path is None:
             return
         metadata = {k: v for k, v in self.metadata.items() if k != "epoch_metrics"}
-        metadata["epoch_metrics"] = self.metadata["epoch_metrics"]
+        metadata["epoch_metrics"] = self.metadata["epoch_metrics"] # put metrics at the end to view more clearly
         with open(self.log_file_path, "w", encoding="utf8") as fp:
             try:
                 json.dump(metadata, fp, indent=4)
@@ -274,7 +276,7 @@ class MetadataCallback(pl.Callback):
         }
         return res
 
-    def _log_scheduler_best_model_fit_end(self, pl_module: "LME", best_epoch: int) -> int | None:
+    def _log_scheduler_best_model_fit_end(self, pl_module: "LME") -> int | None:
         """updates bset model dict with the number of learning rate reduces done by the scheduler during training"""
         if pl_module.scheduler is None:
             return None
@@ -285,30 +287,42 @@ class MetadataCallback(pl.Callback):
             logger.debug(f"Scheduler {sch} doesn't have a factor attribute")
             return None
         first_lr = self.metadata["optimizer"]["lr_history"][0]
-        last_lr = self.metadata["optimizer"]["lr_history"][best_epoch]
+        last_lr = self.metadata["optimizer"]["lr_history"][-1]
         res = 0 if first_lr == last_lr else int(first_lr / last_lr * sch.factor)
         return res
 
-    def _log_best_model_fit_end(self, pl_module: "LME") -> dict:
-        # find best and last modelcheckpoint callbacks. best will be None if we don't use a validation set loader.
-        cb = self._get_monitored_model_checkpoint(pl_module)
-        if cb is None:
-            return {}
-        ckpt_path = Path(cb.best_model_path)
-        assert ckpt_path.exists() and ckpt_path.is_file(), "Best checkpoint does not exist."
-
-        best_model_pkl = tr.load(ckpt_path, map_location="cpu")
-        best_model_dict = {
-            "path": f"{ckpt_path}",
-            "hyper_parameters": best_model_pkl.get("hyper_parameters", {}),
-            "epoch": best_model_pkl["epoch"],
-            "optimizer_lr": flat_if_one([self._get_optimizer_current_lr(o) for o in best_model_pkl["optimizer_states"]])
-        }
-        if (sch := self._log_scheduler_best_model_fit_end(pl_module, best_model_pkl["epoch"])) is not None:
-            best_model_dict["scheduler_num_lr_reduced"] = sch
-        return best_model_dict
-
     # train_epoch_end private methods
+    def _log_best_model_epoch_start_and_fit_end(self, pl_module: "LME") -> dict | None:
+        """logs the best model if it was this epoch"""
+        cb = self._get_monitored_model_checkpoint(pl_module)
+        epoch = pl_module.trainer.current_epoch
+        prefix = "" if "val_" not in pl_module.active_run_metrics else "val_"
+        if cb.monitor not in self.metadata["epoch_metrics"]:
+            if epoch != 0:
+                logger.warning(f"{cb.monitor=} not in metadata and {epoch=}. Likely resuming from ckpt without it.")
+            return None
+        is_best_model = False
+        default_score = (1<<31) * (-1 if cb.mode == "max" else 1)
+        metric_fn = pl_module.active_run_metrics[prefix][cb.monitor.removeprefix(prefix)] # remove the prefix :)
+        metrics = self.metadata["epoch_metrics"][cb.monitor]
+        # 'best_model' is not in metadata only for epoch == 1 in theory or after loading a ckpt with other metrics
+        best_score = self.metadata["best_model"]["score"] if "best_model" in self.metadata else default_score
+        # Note: use epoch-1 always. on_epoch_start makes sense. However, on_fit_end increments one more time as well.
+        epoch_score = metric_fn.epoch_result_reduced(tr.Tensor(metrics[epoch - 1])).item()
+        is_best_model = epoch_score < best_score if metric_fn.mode == "min" else epoch_score > best_score
+        if not is_best_model:
+            return None
+        res = {
+            "path": cb.best_model_path,
+            "hyper_parameters": dict(pl_module.hparams),
+            "epoch": epoch - 1,
+            "optimizer_lr": self._get_optimizer_current_lr(pl_module.optimizer),
+            "monitor": cb.monitor,
+            "score": epoch_score,
+        }
+        if (sch := self._log_scheduler_best_model_fit_end(pl_module)) is not None:
+            res["scheduler_num_lr_reduced"] = sch
+        return res
 
     def _log_timestamp_train_epoch_end(self) -> dict:
         """

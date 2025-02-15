@@ -20,7 +20,6 @@ class Reader(Dataset):
 
 class CustomScheduler(ReduceLROnPlateau):
     def step(self, metrics, epoch=None):
-        print("!!!Applied!!!")
         self._reduce_lr(epoch)
 
 def test_MetadataCallback_train_1():
@@ -139,7 +138,8 @@ def test_MetadataCallback_scheduler_CustomScheduler():
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     Trainer(max_epochs=3).fit(model, DataLoader(Reader(2, 1, 10)))
     best_epoch = model.metadata_callback.metadata["best_model"]["epoch"]
-    assert model.metadata_callback.metadata["best_model"]["scheduler_num_lr_reduced"] == best_epoch
+    num_reduced = model.metadata_callback.metadata["best_model"]["scheduler_num_lr_reduced"]
+    assert num_reduced == best_epoch, (num_reduced, best_epoch)
     assert model.metadata_callback.metadata["best_model"]["optimizer_lr"] == 0.01 * (0.5 ** best_epoch)
 
 def test_MetadataCallback_early_stopping():
@@ -182,4 +182,4 @@ def test_MetadataCallback_metadata_hparams():
     assert meta3["test_hparams"] == {'my_hparam': 1, 'other': [2, 3, 4, None, 5]}
 
 if __name__ == "__main__":
-    test_MetadataCallback_scheduler_ReduceLROnPlateau()
+    test_MetadataCallback_train_1()

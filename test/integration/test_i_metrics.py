@@ -32,11 +32,13 @@ class MyMetric(CallableCoreMetric):
 
 counters = {"metric_grad": 0, "metric_non_grad": 0}
 
-def test_load_metrics_metadata():
+def test_load_metrics_metadata(request):
     """Fixes this: https://gitlab.com/meehai/lightning-module-enhanced/-/issues/11"""
     train_loader = DataLoader(Reader(2, 1), batch_size=10)
     val_loader = DataLoader(Reader(2, 1), batch_size=10)
-    shutil.rmtree(get_project_root() / "test/logs" / (log_dir_name := "load_metrics_metadata"), ignore_errors=True)
+    log_dir_name = "load_metrics_metadata"
+    shutil.rmtree(get_project_root() / "test/logs" / log_dir_name, ignore_errors=True)
+    request.addfinalizer(lambda: shutil.rmtree(get_project_root() / "test/logs" / log_dir_name, ignore_errors=True))
 
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = optim.SGD(model.parameters(), lr=0.1)
@@ -55,7 +57,6 @@ def test_load_metrics_metadata():
         model.metadata_callback.metadata["epoch_metrics"]
     assert (get_project_root() / "test/logs" / log_dir_name / "version_1" / "checkpoints" / "loaded.ckpt").exists()
     assert (get_project_root() / "test/logs" / log_dir_name / "version_1" / "checkpoints" / ckpt_path.name).exists()
-    shutil.rmtree(get_project_root() / "test/logs" / log_dir_name, ignore_errors=True)
 
 def test_load_implicit_metrics(): # (!30) implicit metrics are no longer supported because very buggy
     def _model_algorithm(model, batch: tuple[tr.Tensor, tr.Tensor]) -> ModelAlgorithmOutput:
@@ -231,7 +232,7 @@ def test_CoreMetric_higher_is_better():
             return tr.FloatTensor([self.epoch]).to(self.device)
 
     train_loader = DataLoader(Reader(2, 1), batch_size=10)
-    shutil.rmtree(get_project_root() / "test/logs" / (logdir := "test_implicit_core_metrics"), ignore_errors=True)
+    shutil.rmtree(get_project_root() / "test/logs" / (logdir := "test_CoreMetric_higher_is_better"), ignore_errors=True)
 
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = optim.SGD(model.parameters(), lr=0.1)
@@ -291,7 +292,7 @@ def test_metrics_history_3():
 
     pl_logger2 = CSVLogger(get_project_root() / "test/logs", name="test_metrics_history_3", version=1)
     Trainer(max_epochs=5, logger=pl_logger2).fit(model, DataLoader(Reader(2, 1)), DataLoader(Reader(2, 1)),
-                                                 ckpt_path=model.trainer.checkpoint_callback.last_model_path)
+                                                 ckpt_path=model.checkpoint_callback.last_model_path)
     assert len(data2 := list(csv.DictReader(open(f"{pl_logger2.log_dir}/metrics.csv", "r")))) == 5
     assert data[0:2] == data2[0:2]
 
@@ -318,3 +319,10 @@ def test_metrics_requires_grad():
     Trainer(max_epochs=10).fit(model, DataLoader(Reader(10, 3, n=5)))
     assert counters["metric_grad"] == 50
     assert counters["metric_non_grad"] == 0
+
+if __name__ == "__main__":
+    # from types import SimpleNamespace
+    # request = SimpleNamespace(finalizers=[])
+    # request.addfinalizer = lambda func: request.finalizers.append(func)
+    test_CoreMetric_higher_is_better()#request)
+    # for finalizer in request.finalizers: finalizer()

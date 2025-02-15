@@ -121,7 +121,6 @@ def test_fit_twice_with_validation_only_once_3():
     assert list(model.metadata_callback.metadata["epoch_metrics"]["loss"].keys())[0] == 0
     assert len(model.metadata_callback.metadata["epoch_metrics"]["loss"]) == 10
 
-
 def test_fit_twice_from_ckpt():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
     model.optimizer = optim.SGD(model.parameters(), lr=0.01)
@@ -130,7 +129,8 @@ def test_fit_twice_from_ckpt():
     trainer1 = Trainer(max_epochs=5)
     trainer1.fit(model, DataLoader(Reader(2, 1, 10)))
     Trainer(max_epochs=10).fit(
-        model, DataLoader(Reader(2, 1, 10)), DataLoader(Reader(2, 1, 10)), ckpt_path=trainer1.checkpoint_callbacks[0].last_model_path
+        model, DataLoader(Reader(2, 1, 10)), DataLoader(Reader(2, 1, 10)),
+        ckpt_path=trainer1.checkpoint_callbacks[-1].last_model_path
     )
     # This should start from epoch 5 towards epoch 10
     assert list(model.metadata_callback.metadata["epoch_metrics"]["loss"].keys())[0] == 0, \
@@ -325,13 +325,13 @@ def test_i_load_from_checkpoint():
     model2.scheduler = {"scheduler": ReduceLROnPlateau(model.optimizer, factor=0.9, patience=5), "monitor": "loss"}
     model2.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
 
-    model2.load_from_checkpoint(t1.checkpoint_callback.last_model_path)
+    model2.load_from_checkpoint(t1.checkpoint_callbacks[-1].last_model_path)
     assert model2.hparams.hello == "world"
     assert model2.optimizer.state_dict() == model.optimizer.state_dict()
     assert model2.scheduler["scheduler"].state_dict() == model.scheduler["scheduler"].state_dict()
 
     model3 = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
-    model3.load_from_checkpoint(t1.checkpoint_callback.last_model_path)
+    model3.load_from_checkpoint(t1.checkpoint_callbacks[-1].last_model_path)
     assert model3.optimizer is None and model3.scheduler is None
     assert model3.hparams.hello == "world"
 
@@ -353,4 +353,4 @@ def test_fit_with_PlotCallbacks(mode: str):
     Trainer(max_epochs=3, logger=pl_logger).fit(model, DataLoader(Reader(2, 1, 10)))
 
 if __name__ == "__main__":
-    test_fit_with_DeltaLR_scheduler()
+    test_fit_twice_from_ckpt()

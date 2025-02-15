@@ -9,6 +9,7 @@ import pytorch_lightning as pl
 from lightning_fabric.utilities.seed import seed_everything
 from lightning_fabric.utilities.exceptions import MisconfigurationException
 from pytorch_lightning.core.optimizer import LightningOptimizer
+from pytorch_lightning.callbacks import Checkpoint
 from torch import nn, optim
 from torchinfo import summary, ModelStatistics
 
@@ -134,7 +135,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
 
     @overrides
     def on_fit_end(self):
-        self._active_run_metrics = {}
+        self.active_run_metrics = {}
 
     @overrides
     def on_test_start(self) -> None:
@@ -142,7 +143,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
 
     @overrides
     def on_test_end(self):
-        self._active_run_metrics = {}
+        self.active_run_metrics = {}
 
     @overrides(check_signature=False)
     # pylint: disable=not-callable
@@ -234,13 +235,56 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
             return res, make_list(scheduler)
         return res
 
-    # Public methods
+    @overrides(check_signature=False)
+    def load_from_checkpoint(self, checkpoint_path: Path | str | dict) -> LightningModuleEnhanced:
+        data = tr.load(checkpoint_path) if isinstance(checkpoint_path, (str, Path)) else checkpoint_path
+        self.load_state_dict(data["state_dict"], strict=True)
+        loaded_count = ["weights"]
+        if "hyper_parameters" in data:
+            for k, v in data["hyper_parameters"].items():
+                self.hparams[k] = v
+            cnt = len(data["hyper_parameters"])
+            loaded_count.extend([f"{cnt} hyper_parameter{'s' if cnt > 1 else ''}"] if cnt > 0 else [])
+        if "optimizer_states" in data:
+            if self.optimizer is not None:
+                optimizers = make_list(self.optimizer)
+                assert (A := len(optimizers)) == (B := len(data["optimizer_states"])), (A, B)
+                for optimizer, optimizer_state in zip(optimizers, data["optimizer_states"]):
+                    optimizer.load_state_dict(optimizer_state)
+                loaded_count.extend([f"{A} optimizer{'s' if A > 1 else ''}"] if A > 0 else [])
+            else:
+                logger.warning("'optimizer_states' key found in checkpoint but no model.optimizer was set. Skipping.")
+        if "lr_schedulers" in data:
+            if self.scheduler is not None:
+                schedulers = make_list(self.scheduler)
+                assert (A := len(schedulers)) == (B := len(data["lr_schedulers"])), (A, B)
+                for scheduler, scheduler_state in zip(schedulers, data["lr_schedulers"]):
+                    scheduler["scheduler"].load_state_dict(scheduler_state)
+                loaded_count.extend([f"{A} scheduler{'s' if A > 1 else ''}"] if A > 0 else [])
+            else:
+                logger.warning("'lr_schedulers' key found in checkpoint but no model.scheduler was set. Skipping.")
+        logger.info(f"Loaded state from '{'state_dict' if isinstance(checkpoint_path, dict) else checkpoint_path}'. "
+                    f"Loaded state for: {', '.join(loaded_count)}")
+        return self
+
+    # Overrides on top of the standard pytorch nn.Module
+
+    @overrides(check_signature=False)
+    def state_dict(self):
+        return self.base_model.state_dict()
+
+    @overrides(check_signature=False)
+    def load_state_dict(self, *args, **kwargs):
+        return self.base_model.load_state_dict(*args, **kwargs)
+
 
     def forward(self, *args, **kwargs):
         tr_args = to_device(args, self.device)
         tr_kwargs = to_device(kwargs, self.device)
         res = self.base_model.forward(*tr_args, **tr_kwargs)
         return res
+
+    # Public methods
 
     def np_forward(self, *args, **kwargs):
         """Forward numpy data to the model, returns whatever the model returns, usually torch data"""
@@ -286,45 +330,14 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
             metrics["loss"] = self.criterion_fn(y, gt)
         return metrics
 
-    @overrides(check_signature=False)
-    def state_dict(self):
-        return self.base_model.state_dict()
-
-    @overrides(check_signature=False)
-    def load_state_dict(self, *args, **kwargs):
-        return self.base_model.load_state_dict(*args, **kwargs)
-
-    @overrides(check_signature=False)
-    def load_from_checkpoint(self, checkpoint_path: Path | str | dict) -> LightningModuleEnhanced:
-        data = tr.load(checkpoint_path) if isinstance(checkpoint_path, (str, Path)) else checkpoint_path
-        self.load_state_dict(data["state_dict"], strict=True)
-        loaded_count = ["weights"]
-        if "hyper_parameters" in data:
-            for k, v in data["hyper_parameters"].items():
-                self.hparams[k] = v
-            cnt = len(data["hyper_parameters"])
-            loaded_count.extend([f"{cnt} hyper_parameter{'s' if cnt > 1 else ''}"] if cnt > 0 else [])
-        if "optimizer_states" in data:
-            if self.optimizer is not None:
-                optimizers = make_list(self.optimizer)
-                assert (A := len(optimizers)) == (B := len(data["optimizer_states"])), (A, B)
-                for optimizer, optimizer_state in zip(optimizers, data["optimizer_states"]):
-                    optimizer.load_state_dict(optimizer_state)
-                loaded_count.extend([f"{A} optimizer{'s' if A > 1 else ''}"] if A > 0 else [])
-            else:
-                logger.warning("'optimizer_states' key found in checkpoint but no model.optimizer was set. Skipping.")
-        if "lr_schedulers" in data:
-            if self.scheduler is not None:
-                schedulers = make_list(self.scheduler)
-                assert (A := len(schedulers)) == (B := len(data["lr_schedulers"])), (A, B)
-                for scheduler, scheduler_state in zip(schedulers, data["lr_schedulers"]):
-                    scheduler["scheduler"].load_state_dict(scheduler_state)
-                loaded_count.extend([f"{A} scheduler{'s' if A > 1 else ''}"] if A > 0 else [])
-            else:
-                logger.warning("'lr_schedulers' key found in checkpoint but no model.scheduler was set. Skipping.")
-        logger.info(f"Loaded state from '{'state_dict' if isinstance(checkpoint_path, dict) else checkpoint_path}'. "
-                    f"Loaded state for: {', '.join(loaded_count)}")
-        return self
+    @property
+    def checkpoint_callback(self) -> Checkpoint:
+        """Returns the checkpoint callback. Must exist (as we create it) but also must be after trainer was attached."""
+        callbacks: list[Checkpoint] = self.trainer.checkpoint_callbacks
+        assert callbacks is not None, f"Cannot be none: {self=}, {self.trainer=}"
+        res = callbacks[0]
+        res.last_model_path = callbacks[-1].last_model_path # we have a separate one just for this (w/ optimizer stuff)
+        return res
 
     # Private methods
 
@@ -368,14 +381,14 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
         prefix = "val" if is_val else ""
         monitor = monitor[4:] if is_val else monitor
 
-        if is_val and "val_" not in self._active_run_metrics:
+        if is_val and "val_" not in self.active_run_metrics:
             raise MisconfigurationException(f"Monitor: {monitor} but no validation set provided")
-        if monitor not in (metrics := self._active_run_metrics[prefix]):
+        if monitor not in (metrics := self.active_run_metrics[prefix]):
             raise MisconfigurationException(f"Monitor: {monitor} not in metrics: {metrics}")
         if self.trainer.current_epoch == 0:
             return
 
-        metric = self._active_run_metrics[prefix][monitor]
+        metric = self.active_run_metrics[prefix][monitor]
         try:
             self.scheduler["scheduler"].step()
         except Exception:
