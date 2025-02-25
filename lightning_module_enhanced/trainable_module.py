@@ -5,6 +5,7 @@ TrainableModule is a standalone mixin class used to add the necessary properties
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Callable, List, Dict, Union
+import os
 from torch import optim, nn
 import torch as tr
 import pytorch_lightning as pl
@@ -106,9 +107,7 @@ class TrainableModuleMixin(TrainableModule):
 
     @optimizer.setter
     def optimizer(self, optimizer: OptimizerType | optim.Optimizer):
-        assert isinstance(optimizer, (optim.Optimizer, list)), type(optimizer)
-        optimizer_types = (type(x) for x in make_list(optimizer))
-        assert all(lambda x: isinstance(x, optim.optimizer) for x in optimizer_types), optimizer_types
+        assert all(isinstance(o, optim.Optimizer) for o in make_list(optimizer)), optimizer
         logger.info(f"Set the optimizer to: {', '.join(parsed_str_type(o) for o in make_list(optimizer))}")
         self._optimizer = optimizer
 
@@ -118,8 +117,9 @@ class TrainableModuleMixin(TrainableModule):
         for monitor in self.checkpoint_monitors:
             mode = self.metrics[monitor].mode if monitor != "loss" else "min"
             filename = "{epoch}-{" + prefix + monitor + ":.3f}"
+            save_weights_only = os.getenv("LME_SAVE_WEIGHTS_ONLY_MONITOR_CKPTS", "1") == "1"
             res.append(ModelCheckpoint(monitor=f"{prefix}{monitor}", filename=filename, save_last=False,
-                                       save_on_train_epoch_end=True, mode=mode, save_weights_only=True))
+                                       save_on_train_epoch_end=True, mode=mode, save_weights_only=save_weights_only))
         res.append(ModelCheckpoint(monitor="loss", filename="last", save_last=True,  # last only
                                        save_on_train_epoch_end=True, mode="min", save_top_k=0))
         return res
