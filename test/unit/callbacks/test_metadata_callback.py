@@ -3,7 +3,7 @@ import shutil
 from pathlib import Path
 from lightning_module_enhanced.callbacks import MetadataCallback
 
-def test_metadata_callback_save_and_load_equallity(request):
+def test_MetadataCallback_save_and_load_equallity(request):
     # this also tests that keys are preserved as is (i.e epoch metric from int to str)
     (log_dir := Path(TemporaryDirectory().name)).mkdir(exist_ok=False)
     request.addfinalizer(lambda: shutil.rmtree(log_dir, ignore_errors=True))

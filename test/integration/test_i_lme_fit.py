@@ -352,5 +352,16 @@ def test_fit_with_PlotCallbacks(mode: str):
     pl_logger = CSVLogger(get_project_root() / "test/logs", name="test_fit_with_PlotCallbacks", version=0)
     Trainer(max_epochs=3, logger=pl_logger).fit(model, DataLoader(Reader(2, 1, 10)))
 
+def test_fit_with_two_optimizers():
+    model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
+    model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+    model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+    all_params = list(model.parameters())
+    model.optimizer = [
+        optim.SGD(all_params[0:len(all_params)//2], lr=0.01),
+        optim.SGD(all_params[len(all_params)//2:], lr=0.05)
+    ]
+    Trainer(max_epochs=1).fit(model, DataLoader(Reader(2, 1, 10)))
+
 if __name__ == "__main__":
     test_fit_twice_from_ckpt()
