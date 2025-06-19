@@ -316,10 +316,11 @@ class MetadataCallback(pl.Callback):
             "path": cb.best_model_path,
             "hyper_parameters": dict(pl_module.hparams),
             "epoch": epoch - 1,
-            "optimizer_lr": self._get_optimizer_current_lr(pl_module.optimizer),
+            "optimizer_lr": flat_if_one([self._get_optimizer_current_lr(o) for o in make_list(pl_module.optimizer)]),
             "monitor": cb.monitor,
             "score": epoch_score,
         }
+
         if (sch := self._log_scheduler_best_model_fit_end(pl_module)) is not None:
             res["scheduler_num_lr_reduced"] = sch
         return res
