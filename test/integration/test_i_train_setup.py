@@ -1,4 +1,5 @@
 from functools import partial
+import pytest
 from lightning_module_enhanced import LME
 from lightning_module_enhanced.trainable_module import TrainableModuleMixin
 from lightning_fabric.utilities.exceptions import MisconfigurationException
@@ -35,11 +36,8 @@ def test_all_are_none():
     assert model.criterion_fn.metric_fn == TrainableModuleMixin._default_criterion_fn
     assert model.optimizer is None
     assert model.scheduler is None
-    try:
+    with pytest.raises(ValueError):
         Trainer(max_epochs=1).fit(model, DataLoader(Reader(2, 1, 10)))
-        raise Exception
-    except ValueError:
-        pass
 
 def test_train_setup_minimal():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))
@@ -56,11 +54,8 @@ def test_train_setup_scheduler_bad_2():
     model.scheduler = {"scheduler": ReduceLROnPlateau(model.optimizer, factor=0.9, patience=5), "monitor": "val_loss"}
     # fails because no val_loss is available. We cannot make a pre-flight check because this is set up at .fit() time
     # and we have no val dataloader.
-    try:
+    with pytest.raises(MisconfigurationException):
         Trainer(max_epochs=1).fit(model, DataLoader(Reader(2, 1, 10)))
-        raise Exception
-    except MisconfigurationException:
-        pass
 
 def test_train_setup_scheduler_good():
     model = LME(nn.Sequential(nn.Linear(2, 3), nn.Linear(3, 1)))

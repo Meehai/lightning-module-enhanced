@@ -314,7 +314,7 @@ def test_i_load_from_checkpoint():
     model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
     with pytest.raises(AssertionError) as exc:
         model.checkpoint_monitors = ["loss", "some_metric"]
-    assert f"{exc.value}" == "Not in metrics: {'some_metric'}"
+    assert f"{exc.value}" == "Not in metrics: {'some_metric'} (metrics: [])"
     model.checkpoint_monitors = ["loss"]
     model.hparams.hello = "world"
     (t1 := Trainer(max_epochs=3)).fit(model, DataLoader(Reader(2, 1, 10)))
