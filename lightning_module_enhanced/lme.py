@@ -1,6 +1,6 @@
 """Generic Pytorch Lightning module on top of a Pytorch nn.Module"""
 from __future__ import annotations
-from typing import Any, Sequence, Callable, NamedTuple, Dict, Union
+from typing import Any, Sequence, Callable, NamedTuple
 from pathlib import Path
 import shutil
 from overrides import overrides
@@ -18,8 +18,8 @@ from .active_run_mixin import ActiveRunMixin
 from .logger import lme_logger as logger
 from .utils import to_tensor, to_device, tr_detach_data, make_list
 
-ModelAlgorithmOutput = NamedTuple("ModelAlgorithmOutput", y=tr.Tensor, metrics=Dict[str, tr.Tensor],
-                                  x=Union[None, tr.Tensor, Dict[str, tr.Tensor]], gt=Union[None, tr.Tensor])
+ModelAlgorithmOutput = NamedTuple("ModelAlgorithmOutput", y=tr.Tensor, metrics=dict[str, tr.Tensor],
+                                  x=tr.Tensor | dict[str, tr.Tensor] | None, gt=tr.Tensor | None)
 
 # pylint: disable=too-many-ancestors, arguments-differ, unused-argument, abstract-method
 class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.LightningModule):

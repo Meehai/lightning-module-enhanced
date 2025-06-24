@@ -32,7 +32,7 @@ MetricFnType = Callable[[tr.Tensor, tr.Tensor], tr.Tensor]
 
 class CoreMetric(nn.Module, ABC):
     """Generic CoreMetric for a LME."""
-    def __init__(self, higher_is_better: bool, requires_grad: bool = False):
+    def __init__(self, higher_is_better: bool, requires_grad: bool = False, device: str | tr.device | None = None):
         assert isinstance(higher_is_better, bool) and isinstance(requires_grad, bool)
         super().__init__()
         self.batch_results: tr.Tensor | None = None
@@ -41,9 +41,7 @@ class CoreMetric(nn.Module, ABC):
         self.requires_grad = requires_grad
         # By default, all metrics do not require gradients. This is updated for loss in LME.
         self.requires_grad_(requires_grad)
-        # The running model. Will be None when not training and a reference to the running LME when training
-        self._running_model: Callable | None = None
-        self.device: tr.device | str = "cpu"
+        self._device: tr.device | str | None = device
 
     @abstractmethod
     @overrides(check_signature=False)
@@ -61,6 +59,15 @@ class CoreMetric(nn.Module, ABC):
     @abstractmethod
     def reset(self):
         """This is called at each epoch end after compute(). It resets the state for the next epoch."""
+
+    @property
+    def device(self) -> tr.device:
+        """the device of this metric"""
+        return self._device or tr.device("cpu")
+
+    @device.setter
+    def device(self, device: str | tr.device):
+        self._device = device
 
     @property
     def mode(self) -> str:
@@ -91,8 +98,8 @@ class CoreMetric(nn.Module, ABC):
         return self
 
     def __str__(self):
-        f_str = f"[{parsed_str_type(self)}]. Mode: {self.mode}. Grad: {self.requires_grad}. " \
-                f"Count: {self.batch_count.sum() if self.batch_count is not None else '0 (None)'}"
+        f_str = (f"[{parsed_str_type(self)}]. Mode: {self.mode}. Grad: {self.requires_grad}. "
+                 f"Count: {self.batch_count.sum() if self.batch_count is not None else '0 (None)'}")
         return f_str
 
     def __repr__(self):
@@ -100,3 +107,6 @@ class CoreMetric(nn.Module, ABC):
 
     def __call__(self, *args, **kwargs) -> tr.Tensor:
         return self.forward(*args, **kwargs)
+
+    def __deepcopy__(self, memo):
+        return type(self)(higher_is_better=self.higher_is_better, requires_grad=self.requires_grad, device=self.device)

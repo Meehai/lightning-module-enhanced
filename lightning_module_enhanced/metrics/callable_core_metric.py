@@ -74,4 +74,4 @@ class CallableCoreMetric(CoreMetric):
 
     def __deepcopy__(self, memo):
         return type(self)(self.metric_fn, epoch_fn=self.epoch_fn, higher_is_better=self.higher_is_better,
-                          requires_grad=self.requires_grad)
+                          requires_grad=self.requires_grad, device=self.device)

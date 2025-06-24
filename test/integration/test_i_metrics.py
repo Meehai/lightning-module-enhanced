@@ -27,7 +27,6 @@ class MyMetric(CallableCoreMetric):
     def __init__(self):
         super().__init__(lambda y, gt: (y - gt).pow(2).mean(), higher_is_better=False)
     def forward(self, y, gt):
-        assert self.running_model is not None
         return super().forward(y, gt)
 
 counters = {"metric_grad": 0, "metric_non_grad": 0}
@@ -132,9 +131,9 @@ def test_epoch_metric():
             self.reset()
         def forward(self, y: tr.Tensor, gt: tr.Tensor):
             self.batch_results.extend((y - gt).abs().mean(dim=1))
-        def batch_update(self, batch_result: F.Tensor) -> None:
+        def batch_update(self, batch_result: tr.Tensor) -> None:
             pass
-        def epoch_result(self) -> F.Tensor:
+        def epoch_result(self) -> tr.Tensor:
             return sum(self.batch_results) / len(self.batch_results)
         def reset(self):
             self.batch_results = []
@@ -160,11 +159,11 @@ def test_epoch_metric_reduced():
             self.reset()
         def forward(self, y: tr.Tensor, gt: tr.Tensor):
             return (y - gt).abs()
-        def batch_update(self, batch_result: F.Tensor) -> None:
+        def batch_update(self, batch_result: tr.Tensor) -> None:
             self.batch_results.extend(batch_result)
-        def epoch_result(self) -> F.Tensor:
+        def epoch_result(self) -> tr.Tensor:
             return sum(self.batch_results) / len(self.batch_results)
-        def epoch_result_reduced(self, epoch_result: F.Tensor | None) -> F.Tensor | None:
+        def epoch_result_reduced(self, epoch_result: tr.Tensor | None) -> tr.Tensor | None:
             return sum(epoch_result) / len(epoch_result)
         def reset(self):
             self.batch_results = []
@@ -185,13 +184,13 @@ def test_epoch_metric_reduced():
 
 def test_epoch_metric_reduced_val():
     class MyEpochMetric(CoreMetric):
-        def __init__(self):
-            super().__init__(higher_is_better=False)
+        def __init__(self, **kwargs):
+            super().__init__(**{**kwargs, "higher_is_better": False})
             self.batch_count = []
             self.reset()
         def forward(self, y: tr.Tensor, gt: tr.Tensor):
             self.batch_count[-1] += len(y)
-        def batch_update(self, batch_result: F.Tensor) -> None:
+        def batch_update(self, batch_result: tr.Tensor) -> None:
             pass
         def epoch_result(self) -> tr.Tensor | None:
             return tr.Tensor([0]).to(self.device)
@@ -227,7 +226,7 @@ def test_CoreMetric_higher_is_better():
             return None
         def batch_update(self, batch_result) -> None:
             pass
-        def epoch_result(self) -> F.Tensor:
+        def epoch_result(self) -> tr.Tensor:
             self.epoch += 1
             return tr.FloatTensor([self.epoch]).to(self.device)
 

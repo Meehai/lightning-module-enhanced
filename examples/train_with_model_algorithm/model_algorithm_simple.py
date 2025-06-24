@@ -4,7 +4,7 @@ from __future__ import annotations
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import CSVLogger
 import torch as tr
-from lightning_module_enhanced import LME
+from lightning_module_enhanced import LME, ModelAlgorithmOutput
 from lightning_module_enhanced.callbacks import PlotMetrics
 
 class MyReader:
@@ -19,12 +19,12 @@ class MyReader:
     def __getitem__(self, ix):
         return tr.randn(self.in_c), tr.randn(self.out_c)
 
-def my_model_algo(model: LME, batch: dict) -> tuple[tr.Tensor, dict[str, tr.Tensor]]:
+def my_model_algo(model: LME, batch: dict) -> ModelAlgorithmOutput:
     x, gt = batch
     y = model.forward(x)
     res = model.lme_metrics(y, gt, include_loss=False) # if set to True, remove next line
     res["loss"] = model.criterion_fn(y, gt)
-    return y, res, x, gt
+    return ModelAlgorithmOutput(y=y, metrics=res, x=x, gt=gt)
 
 if __name__ == "__main__":
     in_c, out_c = 5, 10
