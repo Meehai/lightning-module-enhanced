@@ -111,7 +111,7 @@ class TrainableModuleMixin(TrainableModule):
         logger.info(f"Set the optimizer to: {', '.join(parsed_str_type(o) for o in make_list(optimizer))}")
         self._optimizer = optimizer
 
-    def _model_ckpt_cbs(self) -> list[pl.Callback]:
+    def _build_model_ckpts_cbs(self) -> list[ModelCheckpoint]:
         prefix = "val_" if (self._trainer is not None and self.trainer.enable_validation) else ""
         res = []
         for monitor in self.checkpoint_monitors:
@@ -121,7 +121,7 @@ class TrainableModuleMixin(TrainableModule):
             res.append(ModelCheckpoint(monitor=f"{prefix}{monitor}", filename=filename, save_last=False,
                                        save_on_train_epoch_end=True, mode=mode, save_weights_only=save_weights_only))
         res.append(ModelCheckpoint(monitor="loss", filename="last", save_last=True,  # last only
-                                       save_on_train_epoch_end=True, mode="min", save_top_k=0))
+                                   save_on_train_epoch_end=True, mode="min", save_top_k=0))
         return res
 
     @property
@@ -129,7 +129,7 @@ class TrainableModuleMixin(TrainableModule):
         """Gets the callbacks"""
         if self._trainer is None: # trainer not attached yet, so no model checkpoints are needed.
             return [*self.default_callbacks, *self._callbacks]
-        ckpt_cbs = self._model_ckpt_cbs()
+        ckpt_cbs = self._build_model_ckpts_cbs()
         if self._trainer is not None:
             trainer_ckpt_cbs = [callback for callback in self.trainer.callbacks
                                if isinstance(callback, ModelCheckpoint) and callback.monitor is not None]
@@ -223,6 +223,7 @@ class TrainableModuleMixin(TrainableModule):
     def checkpoint_monitors(self, checkpoint_monitors: list[str]) -> list[str]:
         assert "loss" in checkpoint_monitors, f"'loss' must be in checkpoint monitors. Got: {checkpoint_monitors}"
         cm_wo_loss = set(x for x in checkpoint_monitors if x != "loss")
-        assert all(x in self.metrics for x in cm_wo_loss), f"Not in metrics: {(cm_wo_loss - self.metrics.keys())}"
+        assert all(x in self.metrics for x in cm_wo_loss), \
+            f"Not in metrics: {(cm_wo_loss - self.metrics.keys())} (metrics: {list(self.metrics.keys())})"
         self._checkpoint_monitors = checkpoint_monitors
         logger.debug(f"Set the checkpoint monitors to: {self._checkpoint_monitors}")

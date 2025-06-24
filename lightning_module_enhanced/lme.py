@@ -9,7 +9,7 @@ import pytorch_lightning as pl
 from lightning_fabric.utilities.seed import seed_everything
 from lightning_fabric.utilities.exceptions import MisconfigurationException
 from pytorch_lightning.core.optimizer import LightningOptimizer
-from pytorch_lightning.callbacks import Checkpoint
+from pytorch_lightning.callbacks import ModelCheckpoint
 from torch import nn, optim
 from torchinfo import summary, ModelStatistics
 
@@ -331,10 +331,15 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
         return metrics
 
     @property
-    def checkpoint_callback(self) -> Checkpoint:
+    def checkpoint_callbacks(self) -> list[ModelCheckpoint]:
+        """returns all the checkpoint callbacks (with proper checkpoint_monitors support)"""
+        return [cb for cb in self.callbacks if isinstance(cb, ModelCheckpoint)]
+
+    @property
+    def checkpoint_callback(self) -> ModelCheckpoint:
         """Returns the checkpoint callback. Must exist (as we create it) but also must be after trainer was attached."""
-        callbacks: list[Checkpoint] = self.trainer.checkpoint_callbacks
-        assert callbacks is not None, f"Cannot be none: {self=}, {self.trainer=}"
+        _ = self.trainer # this throws in case there is no trainer attached matching lighting's behavior
+        callbacks = self.checkpoint_callbacks # note: using trainer.callbacks messes checkpoint_monitors!
         res = callbacks[0]
         res.last_model_path = callbacks[-1].last_model_path # we have a separate one just for this (w/ optimizer stuff)
         return res

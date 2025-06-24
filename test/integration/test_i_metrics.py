@@ -323,5 +323,6 @@ if __name__ == "__main__":
     # from types import SimpleNamespace
     # request = SimpleNamespace(finalizers=[])
     # request.addfinalizer = lambda func: request.finalizers.append(func)
-    test_CoreMetric_higher_is_better()#request)
+    # test_CoreMetric_higher_is_better()#request)
     # for finalizer in request.finalizers: finalizer()
+    test_metrics_history_3()
