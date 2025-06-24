@@ -5,6 +5,7 @@ import torch as tr
 from torch import nn
 from .metrics import CoreMetric
 from .utils import tr_detach_data, to_device
+from .logger import lme_logger as logger
 
 # pylint: disable=abstract-method
 class ActiveRunMixin(nn.Module):
@@ -23,6 +24,7 @@ class ActiveRunMixin(nn.Module):
         assert len(self.active_run_metrics) == 0, "TODO: add breakpoint here to understand if/where it's hit"
         self.active_run_metrics = {"": {"loss": self.criterion_fn, **to_device(self.metrics, self.device)}}
         if hasattr(self, "trainer") and self.trainer.enable_validation:
+            logger.debug(f"Validation set found. Cloning all {len(self.active_run_metrics[''])} metrics.")
             self.active_run_metrics["val_"] = deepcopy(self.active_run_metrics[""])
 
     def _reset_all_active_metrics(self):

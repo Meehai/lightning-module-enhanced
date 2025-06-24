@@ -17,8 +17,8 @@ class MeanIoU(CoreMetric):
     Depending on the use case, both are valid. For the Dronescapes paper, they used samplewise which may be a gotcha.
     """
     def __init__(self, classes: list[str], class_weights: list[float] | None = None, class_axis: int = -1,
-                 mode: str = "global"):
-        super().__init__(higher_is_better=True)
+                 mode: str = "global", **kwargs):
+        super().__init__(higher_is_better=True, **kwargs)
         assert mode in ("global", "samplewise"), mode
         class_weights = [1 / len(classes) for _ in range(len(classes))] if class_weights is None else class_weights
         assert abs(sum(class_weights) - 1) < 1e-3, f"Should sum to 1, got : {sum(class_weights)}"
@@ -87,3 +87,7 @@ class MeanIoU(CoreMetric):
     def __repr__(self):
         return (f"[MeanIoU] Mode {self.iou_mode}. Classes: {self.classes}. "
                 f"Class weights: {[round(x.item(), 2) for x in self.class_weights]}.")
+
+    def __deepcopy__(self, memo):
+        return MeanIoU(classes=self.classes, class_weights=self.class_weights, class_axis=self.class_axis,
+                       mode=self.iou_mode, requires_grad=self.requires_grad, device=self.device)

@@ -13,8 +13,8 @@ class MultiClassAccuracy(CoreMetric):
     the epoch.
     """
 
-    def __init__(self, num_classes: int):
-        super().__init__(higher_is_better=True)
+    def __init__(self, num_classes: int, **kwargs):
+        super().__init__(higher_is_better=True, **kwargs)
         self.num_classes = num_classes
         self.scores = tr.zeros(num_classes)
         self.count = tr.zeros(num_classes)
@@ -60,3 +60,6 @@ class MultiClassAccuracy(CoreMetric):
     def __str__(self):
         f_str = f"{super().__str__()}. Num classes: {self.num_classes}."
         return f_str
+
+    def __deepcopy__(self, memo):
+        return MultiClassAccuracy(num_classes=self.num_classes, requires_grad=self.requires_grad, device=self.device)

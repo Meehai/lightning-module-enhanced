@@ -10,8 +10,8 @@ from .core_metric import CoreMetric
 class MultiClassF1Score(CoreMetric):
     """Multi class F1 Score implementation"""
 
-    def __init__(self, num_classes: int):
-        super().__init__(higher_is_better=True)
+    def __init__(self, num_classes: int, **kwargs):
+        super().__init__(higher_is_better=True, **kwargs)
         self.num_classes = num_classes
         self.batch_results = tr.zeros(4, num_classes).type(tr.DoubleTensor)
 
@@ -48,3 +48,6 @@ class MultiClassF1Score(CoreMetric):
 
     def __str__(self):
         return f"MultiClassF1Score ({self.num_classes} classes)"
+
+    def __deepcopy__(self, memo):
+        return MultiClassF1Score(num_classes=self.num_classes, requires_grad=self.requires_grad, device=self.device)

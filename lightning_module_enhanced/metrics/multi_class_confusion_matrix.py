@@ -10,8 +10,8 @@ from .core_metric import CoreMetric
 class MultiClassConfusionMatrix(CoreMetric):
     """Multi Class Confusion Matrix implementation"""
 
-    def __init__(self, num_classes: int):
-        super().__init__(higher_is_better=False)
+    def __init__(self, num_classes: int, **kwargs):
+        super().__init__(higher_is_better=False, **kwargs)
         self.batch_results = tr.zeros(num_classes, num_classes).type(tr.LongTensor)
         self.num_classes = num_classes
 
@@ -39,3 +39,7 @@ class MultiClassConfusionMatrix(CoreMetric):
 
     def __str__(self):
         return f"MultiClassConfusionMatrix ({self.num_classes} classes)"
+
+    def __deepcopy__(self, memo):
+        return MultiClassConfusionMatrix(num_classes=self.num_classes,
+                                         requires_grad=self.requires_grad, device=self.device)
