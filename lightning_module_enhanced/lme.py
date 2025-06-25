@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Sequence, Callable, NamedTuple
 from pathlib import Path
 import shutil
+import os
 from overrides import overrides
 import torch as tr
 import pytorch_lightning as pl
@@ -13,7 +14,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from torch import nn, optim
 from torchinfo import summary, ModelStatistics
 
-from .trainable_module import TrainableModuleMixin, TrainableModule
+from .trainable_module import TrainableModuleMixin, TrainableModule, LME_RESERVED_PROPERTIES
 from .active_run_mixin import ActiveRunMixin
 from .logger import lme_logger as logger
 from .utils import to_tensor, to_device, tr_detach_data, make_list
@@ -58,13 +59,14 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
             raise ValueError("Cannot have nested LME modules. LME must extend only a basic torch nn.Module")
         super().__init__()
         super(nn.Module, self).__init__()
-        for prop in self._lme_reserved_properties:
-            assert not hasattr(base_model, prop), f"Cannot clash with {self._lme_reserved_properties=}: {prop}"
+        for prop in LME_RESERVED_PROPERTIES:
+            assert not hasattr(base_model, prop), f"Cannot clash with {LME_RESERVED_PROPERTIES=}: {prop}"
         self.base_model = base_model
         self.automatic_optimization = False
         self._summary: ModelStatistics | None = None
         self._model_algorithm = model_algorithm if model_algorithm is not None else type(self)._default_algorithm
         self.cache_result = None
+        self._save_weights_only_monitor_ckpts = os.getenv("LME_SAVE_WEIGHTS_ONLY_MONITOR_CKPTS", "1") == "1"
 
     # Getters and setters for properties
     @property
@@ -221,17 +223,64 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
         self._run_and_log_metrics_at_epoch_end()
         self._reset_all_active_metrics()
 
+    # pylint: disable=too-many-branches
+    def on_load_checkpoint(self, checkpoint):
+        super().on_load_checkpoint(checkpoint)
+        if os.getenv("LME_LOAD_MODEL_CHECKPOINT_BEST_SCORES", "0") == "1":
+            # see load_state_dict of ModelCheckpoint in PL. If we change the dir (i.e. fine tune), it doesn't get set.
+            # see 'test_i_lme_fit.py::test_fit_twice_and_proper_resume_metrics_state'
+            logger.info("LME_LOAD_MODEL_CHECKPOINT_BEST_SCORES set to 1. Loading best scores from ckpt too!")
+            for cb in self.checkpoint_callbacks:
+                if cb.state_key not in checkpoint["callbacks"]:
+                    logger.warning(f"{cb.state_key} not in the existing checkpoint_callbacks. Skipping")
+                    continue
+                cb_sd: dict[str, Any] = checkpoint["callbacks"][cb.state_key]
+                old_ckpt_dir = Path(cb_sd["best_model_path"]).parent
+                new_ckpt_dir = Path(cb.dirpath)
+                if old_ckpt_dir == new_ckpt_dir:
+                    continue
+                new_ckpt_dir.mkdir(exist_ok=True, parents=False)
+                for k, v in cb_sd.items():
+                    if k == "best_k_models": # update this dict to use the new ckpt path
+                        res = {}
+                        for _k, _v in cb_sd[k].items(): # a dir of {ckpt_dir: score}
+                            if Path(_k).parent != old_ckpt_dir:
+                                raise ValueError(f"Should not happen: {Path(_k).parent=} vs {old_ckpt_dir=}")
+                            res[f"{new_ckpt_dir}/{Path(_k).name}"] = _v
+                        setattr(cb, k, res)
+                        continue
+                    if k == "dirpath": # this one shouldn't be loaded
+                        continue
+                    if k.find("path") == -1:
+                        logger.debug2(f"Loading ModelCheckpoint({cb.monitor}).{k}={v}")
+                        if v is None or (isinstance(v, (str, dict)) and len(v) == 0):
+                            continue
+                        setattr(cb, k, v)
+                    else: # for path, we copy the ckpt and update the path!
+                        old_ckpt_path = Path(v)
+                        if v == "":
+                            logger.debug2(f"{v=}. Skipping.")
+                            continue
+                        new_ckpt_path = new_ckpt_dir / old_ckpt_path.name
+                        setattr(cb, k, str(new_ckpt_path))
+                        logger.debug2(f"Loading ModelCheckpoint({cb.monitor}).{k}={new_ckpt_path}")
+                        if new_ckpt_path.exists():
+                            logger.debug2(f"{new_ckpt_path=} already exists!")
+                            continue
+                        if not old_ckpt_path.exists():
+                            logger.debug2(f"{old_ckpt_path=} doesn't exist!")
+                            continue
+                        shutil.copyfile(old_ckpt_path, new_ckpt_path)
+
     @overrides(check_signature=False)
     def configure_optimizers(self) -> list[optim.Optimizer] | \
             tuple[list[optim.Optimizer], list[optim.lr_scheduler.LRScheduler]]:
-        """
-        Configure the optimizer(s). We always return a list of optimizers (even if just 1)
-        """
+        """Configure the optimizer(s). We always return a list of optimizers (even if just 1)"""
         if self.optimizer is None:
             raise ValueError("No optimizer. Use model.optimizer=optim.XXX or add an optimizer property in base model")
         res = make_list(self.optimizer)
         assert all(isinstance(x, optim.Optimizer) for x in res), (type(x) for x in res)
-        if(scheduler := self.scheduler) is not None:
+        if (scheduler := self.scheduler) is not None:
             return res, make_list(scheduler)
         return res
 
@@ -276,7 +325,6 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
     @overrides(check_signature=False)
     def load_state_dict(self, *args, **kwargs):
         return self.base_model.load_state_dict(*args, **kwargs)
-
 
     def forward(self, *args, **kwargs):
         tr_args = to_device(args, self.device)
@@ -362,7 +410,7 @@ class LightningModuleEnhanced(TrainableModuleMixin, ActiveRunMixin, pl.Lightning
             shutil.copyfile(old_best_model_path, new_ckpt_dir / old_best_model_path.name)
             artifacts += ", best ckpt"
         if (old_metrics_csv_path := Path(self.trainer.ckpt_path).parents[1] / "metrics.csv").exists():
-            old_metrics = open(old_metrics_csv_path).readlines()[0 : self.trainer.current_epoch + 1]
+            old_metrics = open(old_metrics_csv_path).readlines()[0: self.trainer.current_epoch + 1]
             open(f"{self.logger.log_dir}/metrics.csv", "w").write("\n".join(old_metrics))
             artifacts += ", metrics.csv history"
         logger.info(f"Loaded artifacts from old dir: {artifacts}")

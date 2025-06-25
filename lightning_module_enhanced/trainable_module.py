@@ -4,8 +4,7 @@ TrainableModule is a standalone mixin class used to add the necessary properties
 """
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Callable, List, Dict, Union
-import os
+from typing import Callable
 from torch import optim, nn
 import torch as tr
 import pytorch_lightning as pl
@@ -15,11 +14,12 @@ from .callbacks import MetadataCallback
 from .logger import lme_logger as logger
 from .utils import parsed_str_type, make_list
 
-OptimizerType = Union[optim.Optimizer, List[optim.Optimizer]]
-_SchedulerType = Dict[str, Union[optim.lr_scheduler.LRScheduler, str]]
-SchedulerType = Union[_SchedulerType, List[_SchedulerType], None]
+OptimizerType = optim.Optimizer | list[optim.Optimizer]
+_SchedulerType = dict[str, optim.lr_scheduler.LRScheduler | str]
+SchedulerType = _SchedulerType | list[_SchedulerType] | None
 CriterionFnType = CallableCoreMetric
 
+LME_RESERVED_PROPERTIES = ["criterion_fn", "optimizer", "scheduler", "metrics", "callbacks"]
 
 class TrainableModule(nn.Module, ABC):
     """
@@ -74,7 +74,6 @@ class TrainableModuleMixin(TrainableModule):
         # The default callbacks that are singletons. Cannot be overwritten and only one instance must exist.
         self._callbacks: list[pl.Callback] = []
         self._checkpoint_monitors = None
-        self._lme_reserved_properties = ["criterion_fn", "optimizer", "scheduler", "metrics", "callbacks"]
 
     @property
     def default_callbacks(self):
@@ -117,9 +116,9 @@ class TrainableModuleMixin(TrainableModule):
         for monitor in self.checkpoint_monitors:
             mode = self.metrics[monitor].mode if monitor != "loss" else "min"
             filename = "{epoch}-{" + prefix + monitor + ":.3f}"
-            save_weights_only = os.getenv("LME_SAVE_WEIGHTS_ONLY_MONITOR_CKPTS", "1") == "1"
             res.append(ModelCheckpoint(monitor=f"{prefix}{monitor}", filename=filename, save_last=False,
-                                       save_on_train_epoch_end=True, mode=mode, save_weights_only=save_weights_only))
+                                       save_on_train_epoch_end=True, mode=mode,
+                                       save_weights_only=self._save_weights_only_monitor_ckpts)) # set in LME
         res.append(ModelCheckpoint(monitor="loss", filename="last", save_last=True,  # last only
                                    save_on_train_epoch_end=True, mode="min", save_top_k=0))
         return res
