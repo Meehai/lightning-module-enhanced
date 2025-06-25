@@ -1,9 +1,11 @@
 from __future__ import annotations
 import pytest
+from pathlib import Path
 from lightning_module_enhanced import LME, ModelAlgorithmOutput
 from lightning_module_enhanced.callbacks import PlotCallbackGeneric, PlotMetrics
 from lightning_module_enhanced.utils import get_project_root
 from lightning_module_enhanced.schedulers import MinMaxLR
+from lightning_module_enhanced.metrics import CallableCoreMetric
 from pytorch_lightning.loggers import CSVLogger
 from pytorch_lightning import Trainer
 from torch.utils.data import Dataset, DataLoader
@@ -362,6 +364,51 @@ def test_fit_with_two_optimizers():
         optim.SGD(all_params[len(all_params)//2:], lr=0.05)
     ]
     Trainer(max_epochs=1).fit(model, DataLoader(Reader(2, 1, 10)))
+
+def test_fit_twice_and_proper_resume_metrics_state(tmpdir: str, monkeypatch: pytest.MonkeyPatch):
+    class EpikMetric(CallableCoreMetric):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.epoch = 0
+        def forward(self, y, gt):
+            return None
+        def batch_update(self, batch_result) -> None:
+            pass
+        def epoch_result(self) -> tr.Tensor:
+            self.epoch += 1
+            # return "1" after 3 epochs so we can test after a load from epoch 3 it maintains it as 'best epoch'
+            return tr.FloatTensor([self.epoch if self.epoch <= 3 else 1]).to(self.device)
+        def reset(self):
+            pass
+
+    def build_model(d_in: int, d_out: int) -> LME:
+        model = LME(tr.nn.Linear(d_in, d_out))
+        model.criterion_fn = lambda y, gt: (y - gt).pow(2).mean()
+        model.optimizer = tr.optim.SGD(model.parameters(), lr=0.01)
+        model.metrics = {"epik_metric": EpikMetric(lambda y, gt: (y - gt) ** 2, higher_is_better=True)}
+        model.model_algorithm = lambda model, batch: (y := model(batch[0]), model.lme_metrics(y, batch[1]), *batch)
+        model.callbacks = [PlotMetrics()]
+        model.checkpoint_monitors = ["epik_metric", "loss"]
+        model._save_weights_only_monitor_ckpts = False # so the intermediate ckpts also save all states for reload
+        return model
+
+    monkeypatch.setenv("LME_LOAD_MODEL_CHECKPOINT_BEST_SCORES", "1")
+    d_in, d_out = 5, 10
+    model = build_model(d_in, d_out)
+    print(model.summary)
+    train_loader = tr.utils.data.DataLoader(Reader(n=30, d_in=d_in, d_out=d_out), batch_size=10)
+    val_loader = tr.utils.data.DataLoader(Reader(n=30, d_in=d_in, d_out=d_out), batch_size=10)
+    trainer = Trainer(max_epochs=5, logger=[CSVLogger(tmpdir)])
+    trainer.fit(model, train_loader, val_dataloaders=val_loader)
+
+    ckpt_path = model.checkpoint_callback.best_model_path
+    model = build_model(d_in, d_out)
+    trainer = Trainer(max_epochs=5, logger=[CSVLogger(tmpdir)])
+    trainer.fit(model, train_loader, val_dataloaders=val_loader, ckpt_path=ckpt_path)
+
+    all_ckpts = (Path(tmpdir) / "lightning_logs/version_1/checkpoints").iterdir()
+    ckpts = [k for k in all_ckpts if k.name.find("val_epik_metric") != -1]
+    assert len(ckpts) == 1, ckpts
 
 if __name__ == "__main__":
     test_fit_twice_from_ckpt()
